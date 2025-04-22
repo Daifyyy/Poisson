@@ -136,8 +136,8 @@ over_under = over_under_prob(matrix)
 btts = btts_prob(matrix)
 xpoints = calculate_expected_points(outcomes)
 
-xg_home = calculate_pseudo_xg(season_df, home_team)
-xg_away = calculate_pseudo_xg(season_df, away_team)
+xg_home = calculate_team_pseudo_xg(season_df, home_team)
+xg_away = calculate_team_pseudo_xg(season_df, away_team)
 
 strength_home = analyze_opponent_strength(season_df, home_team, is_home=True)
 strength_away = analyze_opponent_strength(season_df, away_team, is_home=False)
