@@ -4,7 +4,7 @@ from utils.poisson_utils import (
     load_data, validate_dataset, calculate_team_strengths,
     expected_goals_weighted_final, expected_team_stats_weighted,
     poisson_prediction, match_outcomes_prob, over_under_prob,
-    btts_prob, prob_to_odds,
+    btts_prob, prob_to_odds,calculate_pseudo_xg,
     analyze_opponent_strength, calculate_expected_points,
     generate_score_heatmap, get_top_scorelines, plot_top_scorelines,
     calculate_elo_ratings, calculate_recent_form, detect_current_season,
@@ -136,8 +136,8 @@ over_under = over_under_prob(matrix)
 btts = btts_prob(matrix)
 xpoints = calculate_expected_points(outcomes)
 
-xg_home = calculate_team_pseudo_xg(season_df, home_team)
-xg_away = calculate_team_pseudo_xg(season_df, away_team)
+xg_home = calculate_pseudo_xg(season_df, home_team)
+xg_away = calculate_pseudo_xg(season_df, away_team)
 
 strength_home = analyze_opponent_strength(season_df, home_team, is_home=True)
 strength_away = analyze_opponent_strength(season_df, away_team, is_home=False)
@@ -150,11 +150,10 @@ st.markdown(f"### `{home_team}` **{round(home_exp, 2)}** : **{round(away_exp, 2)
 # 🔢 Statistiky v řádku
 st.markdown("## 📊 Klíčové metriky")
 cols = st.columns(4)
-cols[0].metric("xG sezóna", f"{xg_home['avg_xG']} vs {xg_away['avg_xG']}")
-cols[1].metric("xG (posledních 5)", f"{xg_home['xG_last5']} vs {xg_away['xG_last5']}")
-cols[2].metric("Oček. body (xP)", f"{xpoints['Home xP']} vs {xpoints['Away xP']}")
-cols[3].metric("BTTS / Over 2.5", f"{btts['BTTS Yes']}% / {over_under['Over 2.5']}%")
-cols[3].caption(f"Kurzy: {prob_to_odds(btts['BTTS Yes'])} / {prob_to_odds(over_under['Over 2.5'])}")
+cols[0].metric("xG sezóna", f"{xg_home['xG_home']} vs {xg_away['xG_away']}")
+cols[1].metric("Oček. body (xP)", f"{xpoints['Home xP']} vs {xpoints['Away xP']}")
+cols[2].metric("BTTS / Over 2.5", f"{btts['BTTS Yes']}% / {over_under['Over 2.5']}%")
+cols[2].caption(f"Kurzy: {prob_to_odds(btts['BTTS Yes'])} / {prob_to_odds(over_under['Over 2.5'])}")
 
 # 🧠 Pravděpodobnosti výsledků
 st.markdown("## 🧠 Pravděpodobnosti výsledků")

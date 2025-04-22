@@ -409,7 +409,57 @@ def calculate_team_pseudo_xg(df):
 
     return results
 
-    return results
+def calculate_pseudo_xg(df, team):
+    df = df.copy()
+    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
+    df = df.dropna(subset=['Date'])
+    df = df.sort_values('Date')
+
+    # Filtrování dat pro daný tým
+    home_matches = df[df['HomeTeam'] == team]
+    away_matches = df[df['AwayTeam'] == team]
+
+    # Koeficienty pro různé typy střel (xG model)
+    shot_coeffs = {
+        "on_target": 0.1,  # Střela na branku
+        "off_target": 0.05,  # Střela mimo branku
+        "long_distance": 0.05,  # Střela z dálky
+        "inside_box": 0.7  # Střela z pokutového území
+    }
+
+    # Počítáme vážený xG pro domácí a venkovní zápasy
+    home_xg = (home_matches['HST'] * shot_coeffs["on_target"] + home_matches['HS'] * shot_coeffs["off_target"]).mean()
+    away_xg = (away_matches['AST'] * shot_coeffs["on_target"] + away_matches['AS'] * shot_coeffs["off_target"]).mean()
+
+    total_shots = df['HS'].where(df['HomeTeam'] == team, df['AS'])
+    total_sot = df['HST'].where(df['HomeTeam'] == team, df['AST'])
+    total_goals = df['FTHG'].where(df['HomeTeam'] == team, df['FTAG'])
+
+    # Vypočítáme celkové xG pro tým
+    xg_total = (total_sot * shot_coeffs["on_target"] + total_shots * shot_coeffs["off_target"]).sum()
+    avg_xg = xg_total / len(df) if len(df) > 0 else 0
+
+    # Počítání gólů a inkasovaných gólů
+    total_goals_sum = total_goals.sum()
+    goals_home = home_matches['FTHG'].sum()
+    goals_away = away_matches['FTAG'].sum()
+    conceded_home = home_matches['FTAG'].sum()
+    conceded_away = away_matches['FTHG'].sum()
+
+    return {
+        "avg_xG": round(avg_xg, 3),
+        "xG_home": round(home_xg, 3),
+        "xG_away": round(away_xg, 3),
+        "xG_per_goal": round(xg_total / total_goals_sum, 2) if total_goals_sum > 0 else 0,
+        "xG_total": round(xg_total, 2),
+        "goals_home": goals_home,
+        "goals_away": goals_away,
+        "conceded_home": conceded_home,
+        "conceded_away": conceded_away,
+        "xG_total_home": round(home_xg, 2),
+        "xG_total_away": round(away_xg, 2)
+    }
+
 
 
 def analyze_opponent_strength(df, team, is_home=True):
