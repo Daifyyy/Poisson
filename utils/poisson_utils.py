@@ -84,9 +84,8 @@ def prob_to_odds(prob_percent):
     return round(100 / prob_percent, 2)
 
 def generate_score_heatmap(matrix, home_team, away_team):
-    fig, ax = plt.subplots(figsize=(4, 3))
+    fig, ax = plt.subplots(figsize=(8, 6))
     sns.heatmap(matrix * 100, annot=True, fmt=".1f", cmap="YlOrRd", ax=ax, cbar_kws={'label': 'Pravděpodobnost (%)'})
-    ax.set_title(f"Skóre: {home_team} vs {away_team}")
     ax.set_xlabel(f"{away_team} góly")
     ax.set_ylabel(f"{home_team} góly")
     return fig
@@ -106,85 +105,37 @@ def plot_top_scorelines(score_probs, home_team, away_team):
     ax.set_ylabel("Pravděpodobnost (%)")
     return fig
 
-# def expected_team_stats_combined(df, home_team, away_team, stat_columns):
-#     latest_date = df['Date'].max()
-#     one_year_ago = latest_date - pd.Timedelta(days=365)
-#     season_df = df[df['Date'] >= one_year_ago]
-
-#     output = {}
-#     for stat_name, (home_col, away_col) in stat_columns.items():
-#         avg_home = df[home_col].mean()
-#         avg_away = df[away_col].mean()
-
-#         # Výkonnost za posledních 5 domácích a 5 venkovních zápasů
-#         last5_home = df[df['HomeTeam'] == home_team].sort_values('Date').tail(5)
-#         last5_away = df[df['AwayTeam'] == away_team].sort_values('Date').tail(5)
-
-#         home_attack = (last5_home[home_col].mean() + season_df[season_df['HomeTeam'] == home_team][home_col].mean()) / 2 / avg_home
-#         away_defense = (last5_away[home_col].mean() + season_df[season_df['HomeTeam'] == away_team][home_col].mean()) / 2 / avg_home
-
-#         away_attack = (last5_away[away_col].mean() + season_df[season_df['AwayTeam'] == away_team][away_col].mean()) / 2 / avg_away
-#         home_defense = (last5_home[away_col].mean() + season_df[season_df['AwayTeam'] == home_team][away_col].mean()) / 2 / avg_away
-
-#         expected_home = avg_home * home_attack * away_defense
-#         expected_away = avg_away * away_attack * home_defense
-
-#         output[stat_name] = {'Home': round(expected_home, 2), 'Away': round(expected_away, 2)}
-
-#     return output
-
-
-
-
-
-def expected_team_stats_weighted(df, home_team, away_team, stat_columns):
+def expected_team_stats_weighted_by_elo(df, home_team, away_team, stat_columns, elo_dict):
+    import numpy as np
     df = df.copy()
     df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
     df = df.dropna(subset=['Date'])
     df = df.sort_values('Date')
 
-    latest_date = df['Date'].max()
-    one_year_ago = latest_date - pd.Timedelta(days=365)
+    # Získání ELO soupeře
+    elo_away = elo_dict.get(away_team, 1500)
+    elo_home = elo_dict.get(home_team, 1500)
 
-    season_df = df[df['Date'] >= one_year_ago]
-    historical_df = df[df['Date'] < one_year_ago]
+    # Vypočítání percentilů ELO
+    all_elos = list(elo_dict.values())
+    high_threshold = np.percentile(all_elos, 70)
+    low_threshold = np.percentile(all_elos, 30)
 
-    def safe_mean(df_subset, col):
-        if col in df_subset.columns and not df_subset[col].isna().all():
-            return df_subset[col].mean()
-        return 0.0
+    def classify_opponent(elo):
+        if elo >= high_threshold:
+            return 'strong'
+        elif elo <= low_threshold:
+            return 'weak'
+        else:
+            return 'average'
 
-    def expected_for_stat(sub_df, home_col, away_col):
-        avg_home = safe_mean(sub_df, home_col)
-        avg_away = safe_mean(sub_df, away_col)
-
-        if avg_home == 0 or avg_away == 0:
-            return 0.0, 0.0
-
-        ha = safe_mean(sub_df[sub_df['HomeTeam'] == home_team], home_col) / avg_home
-        hd = safe_mean(sub_df[sub_df['AwayTeam'] == home_team], away_col) / avg_away
-        aa = safe_mean(sub_df[sub_df['AwayTeam'] == away_team], away_col) / avg_away
-        ad = safe_mean(sub_df[sub_df['HomeTeam'] == away_team], home_col) / avg_home
-
-        expected_home = avg_home * ha * ad
-        expected_away = avg_away * aa * hd
-
-        return expected_home, expected_away
-
-    # Posledních 5 zápasů celkem
-    last5_home = df[(df['HomeTeam'] == home_team) | (df['AwayTeam'] == home_team)].sort_values('Date').tail(5)
-    last5_away = df[(df['HomeTeam'] == away_team) | (df['AwayTeam'] == away_team)].sort_values('Date').tail(5)
-    last5_df = pd.concat([last5_home, last5_away])
-
-    def stat_from_last5(team, col_home, col_away):
-        matches = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)].sort_values('Date').tail(5)
-        vals = []
-        for _, row in matches.iterrows():
-            if row['HomeTeam'] == team:
-                vals.append(row.get(col_home, 0))
-            elif row['AwayTeam'] == team:
-                vals.append(row.get(col_away, 0))
-        return np.mean(vals) if vals else 0.0
+    def filter_matches(team, is_home, opponent_elo):
+        team_col = 'HomeTeam' if is_home else 'AwayTeam'
+        opp_col = 'AwayTeam' if is_home else 'HomeTeam'
+        matches = df[df[team_col] == team]
+        matches['OppELO'] = matches[opp_col].map(elo_dict)
+        matches['EloDiff'] = abs(matches['OppELO'] - opponent_elo)
+        return matches.sort_values('EloDiff').head(10)  # top 10 nejbližších podle ELO
 
     output = {}
     for stat_name, (home_col, away_col) in stat_columns.items():
@@ -192,134 +143,207 @@ def expected_team_stats_weighted(df, home_team, away_team, stat_columns):
             output[stat_name] = {'Home': 0.0, 'Away': 0.0}
             continue
 
-        hist_home, hist_away = expected_for_stat(historical_df, home_col, away_col)
-        season_home, season_away = expected_for_stat(season_df, home_col, away_col)
-        last5_home_val = stat_from_last5(home_team, home_col, away_col)
-        last5_away_val = stat_from_last5(away_team, home_col, away_col)
+        home_matches = filter_matches(home_team, is_home=True, opponent_elo=elo_away)
+        away_matches = filter_matches(away_team, is_home=False, opponent_elo=elo_home)
 
-        final_home = 0.3 * hist_home + 0.4 * season_home + 0.3 * last5_home_val
-        final_away = 0.3 * hist_away + 0.4 * season_away + 0.3 * last5_away_val
+        home_vals = []
+        for _, row in home_matches.iterrows():
+            if row['HomeTeam'] == home_team:
+                val = row.get(home_col, 0)
+            else:
+                val = row.get(away_col, 0)
+            home_vals.append(val)
+
+        away_vals = []
+        for _, row in away_matches.iterrows():
+            if row['AwayTeam'] == away_team:
+                val = row.get(away_col, 0)
+            else:
+                val = row.get(home_col, 0)
+            away_vals.append(val)
 
         output[stat_name] = {
-            'Home': round(final_home, 1),
-            'Away': round(final_away, 1)
+            'Home': round(np.mean(home_vals), 1) if home_vals else 0.0,
+            'Away': round(np.mean(away_vals), 1) if away_vals else 0.0
         }
 
     return output
 
 
 
-def expected_goals_weighted_final(df, home_team, away_team):
+# def expected_goals_weighted_final(df, home_team, away_team):
+#     df = df.copy()
+#     df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
+#     df = df.dropna(subset=['Date'])
+#     df = df.sort_values('Date')
+
+#     latest_date = df['Date'].max()
+#     one_year_ago = latest_date - pd.Timedelta(days=365)
+
+#     season_df = df[df['Date'] >= one_year_ago]
+#     historical_df = df[df['Date'] < one_year_ago]
+
+#     def calculate_team_strengths(df, fallback_df=None):
+#         all_teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
+#         strengths = {}
+
+#         for team in all_teams:
+#             home_attack = df[df['HomeTeam'] == team]['FTHG'].mean()
+#             away_attack = df[df['AwayTeam'] == team]['FTAG'].mean()
+#             home_defense = df[df['HomeTeam'] == team]['FTAG'].mean()
+#             away_defense = df[df['AwayTeam'] == team]['FTHG'].mean()
+
+#             if all(np.isnan(v) for v in [home_attack, away_attack, home_defense, away_defense]) and fallback_df is not None:
+#                 home_attack = fallback_df[fallback_df['HomeTeam'] == team]['FTHG'].mean()
+#                 away_attack = fallback_df[fallback_df['AwayTeam'] == team]['FTAG'].mean()
+#                 home_defense = fallback_df[fallback_df['HomeTeam'] == team]['FTAG'].mean()
+#                 away_defense = fallback_df[fallback_df['AwayTeam'] == team]['FTHG'].mean()
+
+#             strengths[team] = {
+#                 'attack': np.nanmean([home_attack, away_attack]),
+#                 'defense': np.nanmean([home_defense, away_defense])
+#             }
+
+#         return strengths
+
+#     def get_expected(df_subset, strengths):
+#         league_avg_home = df_subset['FTHG'].mean()
+#         league_avg_away = df_subset['FTAG'].mean()
+
+#         if np.isnan(league_avg_home) or np.isnan(league_avg_away):
+#             return np.nan, np.nan
+
+#         ha = np.nanmean([
+#             df_subset[df_subset['HomeTeam'] == home_team]['FTHG'].mean(),
+#             df_subset[df_subset['AwayTeam'] == home_team]['FTAG'].mean()
+#         ]) / league_avg_home
+
+#         hd = np.nanmean([
+#             df_subset[df_subset['AwayTeam'] == home_team]['FTAG'].mean(),
+#             df_subset[df_subset['HomeTeam'] == home_team]['FTAG'].mean()
+#         ]) / league_avg_away
+
+#         aa = np.nanmean([
+#             df_subset[df_subset['AwayTeam'] == away_team]['FTAG'].mean(),
+#             df_subset[df_subset['HomeTeam'] == away_team]['FTHG'].mean()
+#         ]) / league_avg_away
+
+#         ad = np.nanmean([
+#             df_subset[df_subset['HomeTeam'] == away_team]['FTHG'].mean(),
+#             df_subset[df_subset['AwayTeam'] == away_team]['FTHG'].mean()
+#         ]) / league_avg_home
+
+#         if any(pd.isna(x) for x in [ha, hd, aa, ad]):
+#             return np.nan, np.nan
+
+#         expected_home = league_avg_home * ha * ad
+#         expected_away = league_avg_away * aa * hd
+#         return expected_home, expected_away
+
+#     hist_strengths = calculate_team_strengths(historical_df)
+#     season_strengths = calculate_team_strengths(season_df, fallback_df=df)
+
+#     hist_home, hist_away = get_expected(historical_df, hist_strengths)
+#     season_home, season_away = get_expected(season_df, season_strengths)
+
+#     # Posledních 5 zápasů celkem (home i away)
+#     last5_home = df[(df['HomeTeam'] == home_team) | (df['AwayTeam'] == home_team)].sort_values('Date').tail(5)
+#     last5_away = df[(df['HomeTeam'] == away_team) | (df['AwayTeam'] == away_team)].sort_values('Date').tail(5)
+#     last5_df = pd.concat([last5_home, last5_away])
+
+#     # Zde se výpočet obejde bez síly soupeřů
+#     def expected_from_last5(team, is_home):
+#         team_matches = last5_df[(last5_df['HomeTeam'] == team) | (last5_df['AwayTeam'] == team)]
+#         goals_scored = []
+#         goals_conceded = []
+
+#         for _, row in team_matches.iterrows():
+#             if row['HomeTeam'] == team:
+#                 goals_scored.append(row['FTHG'])
+#                 goals_conceded.append(row['FTAG'])
+#             else:
+#                 goals_scored.append(row['FTAG'])
+#                 goals_conceded.append(row['FTHG'])
+
+#         return np.mean(goals_scored), np.mean(goals_conceded)
+
+#     last5_home_exp, _ = expected_from_last5(home_team, is_home=True)
+#     _, last5_away_exp = expected_from_last5(away_team, is_home=False)
+
+#     def any_nan(*args):
+#         return any(pd.isna(x) for x in args)
+
+#     if any_nan(hist_home, season_home, last5_home_exp, hist_away, season_away, last5_away_exp):
+#         raise ValueError(f"❌ Nedostatek dat pro predikci mezi {home_team} a {away_team}.")
+
+#     final_home = 0.3 * hist_home + 0.4 * season_home + 0.3 * last5_home_exp
+#     final_away = 0.3 * hist_away + 0.4 * season_away + 0.3 * last5_away_exp
+
+#     return round(final_home, 1), round(final_away, 1)
+
+def expected_goals_weighted_by_elo(df, home_team, away_team, elo_dict):
+    import numpy as np
     df = df.copy()
     df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
     df = df.dropna(subset=['Date'])
     df = df.sort_values('Date')
 
+    # Rozdělení období
     latest_date = df['Date'].max()
     one_year_ago = latest_date - pd.Timedelta(days=365)
+    df_hist = df[df['Date'] < one_year_ago]
+    df_season = df[df['Date'] >= one_year_ago]
+    df_last5 = df[(df['HomeTeam'] == home_team) | (df['AwayTeam'] == home_team) |
+                  (df['HomeTeam'] == away_team) | (df['AwayTeam'] == away_team)].sort_values('Date').tail(10)
 
-    season_df = df[df['Date'] >= one_year_ago]
-    historical_df = df[df['Date'] < one_year_ago]
+    # Pomocná funkce na základě ELO
+    def filter_by_elo(sub_df, team, is_home, opponent_elo, n=10):
+        team_col = 'HomeTeam' if is_home else 'AwayTeam'
+        opp_col = 'AwayTeam' if is_home else 'HomeTeam'
+        gf_col = 'FTHG' if is_home else 'FTAG'
+        ga_col = 'FTAG' if is_home else 'FTHG'
 
-    def calculate_team_strengths(df, fallback_df=None):
-        all_teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
-        strengths = {}
+        matches = sub_df[sub_df[team_col] == team].copy()
+        matches['OppELO'] = matches[opp_col].map(elo_dict)
+        matches['EloDiff'] = abs(matches['OppELO'] - opponent_elo)
+        matches = matches.sort_values('EloDiff').head(n)
 
-        for team in all_teams:
-            home_attack = df[df['HomeTeam'] == team]['FTHG'].mean()
-            away_attack = df[df['AwayTeam'] == team]['FTAG'].mean()
-            home_defense = df[df['HomeTeam'] == team]['FTAG'].mean()
-            away_defense = df[df['AwayTeam'] == team]['FTHG'].mean()
+        gf = matches[gf_col].mean() if not matches.empty else 1.0
+        ga = matches[ga_col].mean() if not matches.empty else 1.0
+        return gf, ga
 
-            if all(np.isnan(v) for v in [home_attack, away_attack, home_defense, away_defense]) and fallback_df is not None:
-                home_attack = fallback_df[fallback_df['HomeTeam'] == team]['FTHG'].mean()
-                away_attack = fallback_df[fallback_df['AwayTeam'] == team]['FTAG'].mean()
-                home_defense = fallback_df[fallback_df['HomeTeam'] == team]['FTAG'].mean()
-                away_defense = fallback_df[fallback_df['AwayTeam'] == team]['FTHG'].mean()
+    elo_away = elo_dict.get(away_team, 1500)
+    elo_home = elo_dict.get(home_team, 1500)
 
-            strengths[team] = {
-                'attack': np.nanmean([home_attack, away_attack]),
-                'defense': np.nanmean([home_defense, away_defense])
-            }
+    # Všechny tři složky
+    hist_home, hist_home_ga = filter_by_elo(df_hist, home_team, is_home=True, opponent_elo=elo_away)
+    hist_away, hist_away_ga = filter_by_elo(df_hist, away_team, is_home=False, opponent_elo=elo_home)
 
-        return strengths
+    season_home, season_home_ga = filter_by_elo(df_season, home_team, is_home=True, opponent_elo=elo_away)
+    season_away, season_away_ga = filter_by_elo(df_season, away_team, is_home=False, opponent_elo=elo_home)
 
-    def get_expected(df_subset, strengths):
-        league_avg_home = df_subset['FTHG'].mean()
-        league_avg_away = df_subset['FTAG'].mean()
+    last5_home, last5_home_ga = filter_by_elo(df_last5, home_team, is_home=True, opponent_elo=elo_away)
+    last5_away, last5_away_ga = filter_by_elo(df_last5, away_team, is_home=False, opponent_elo=elo_home)
 
-        if np.isnan(league_avg_home) or np.isnan(league_avg_away):
-            return np.nan, np.nan
+    # Ligové průměry
+    league_avg_home_goals = df['FTHG'].mean()
+    league_avg_away_goals = df['FTAG'].mean()
 
-        ha = np.nanmean([
-            df_subset[df_subset['HomeTeam'] == home_team]['FTHG'].mean(),
-            df_subset[df_subset['AwayTeam'] == home_team]['FTAG'].mean()
-        ]) / league_avg_home
+    def compute_expected(gf, ga, l_home, l_away):
+        return l_home * (gf / l_home) * (ga / l_away)
 
-        hd = np.nanmean([
-            df_subset[df_subset['AwayTeam'] == home_team]['FTAG'].mean(),
-            df_subset[df_subset['HomeTeam'] == home_team]['FTAG'].mean()
-        ]) / league_avg_away
+    ehist_home = compute_expected(hist_home, hist_away_ga, league_avg_home_goals, league_avg_away_goals)
+    eseason_home = compute_expected(season_home, season_away_ga, league_avg_home_goals, league_avg_away_goals)
+    elast5_home = compute_expected(last5_home, last5_away_ga, league_avg_home_goals, league_avg_away_goals)
 
-        aa = np.nanmean([
-            df_subset[df_subset['AwayTeam'] == away_team]['FTAG'].mean(),
-            df_subset[df_subset['HomeTeam'] == away_team]['FTHG'].mean()
-        ]) / league_avg_away
+    ehist_away = compute_expected(hist_away, hist_home_ga, league_avg_away_goals, league_avg_home_goals)
+    eseason_away = compute_expected(season_away, season_home_ga, league_avg_away_goals, league_avg_home_goals)
+    elast5_away = compute_expected(last5_away, last5_home_ga, league_avg_away_goals, league_avg_home_goals)
 
-        ad = np.nanmean([
-            df_subset[df_subset['HomeTeam'] == away_team]['FTHG'].mean(),
-            df_subset[df_subset['AwayTeam'] == away_team]['FTHG'].mean()
-        ]) / league_avg_home
+    expected_home = 0.3 * ehist_home + 0.4 * eseason_home + 0.3 * elast5_home
+    expected_away = 0.3 * ehist_away + 0.4 * eseason_away + 0.3 * elast5_away
 
-        if any(pd.isna(x) for x in [ha, hd, aa, ad]):
-            return np.nan, np.nan
-
-        expected_home = league_avg_home * ha * ad
-        expected_away = league_avg_away * aa * hd
-        return expected_home, expected_away
-
-    hist_strengths = calculate_team_strengths(historical_df)
-    season_strengths = calculate_team_strengths(season_df, fallback_df=df)
-
-    hist_home, hist_away = get_expected(historical_df, hist_strengths)
-    season_home, season_away = get_expected(season_df, season_strengths)
-
-    # Posledních 5 zápasů celkem (home i away)
-    last5_home = df[(df['HomeTeam'] == home_team) | (df['AwayTeam'] == home_team)].sort_values('Date').tail(5)
-    last5_away = df[(df['HomeTeam'] == away_team) | (df['AwayTeam'] == away_team)].sort_values('Date').tail(5)
-    last5_df = pd.concat([last5_home, last5_away])
-
-    # Zde se výpočet obejde bez síly soupeřů
-    def expected_from_last5(team, is_home):
-        team_matches = last5_df[(last5_df['HomeTeam'] == team) | (last5_df['AwayTeam'] == team)]
-        goals_scored = []
-        goals_conceded = []
-
-        for _, row in team_matches.iterrows():
-            if row['HomeTeam'] == team:
-                goals_scored.append(row['FTHG'])
-                goals_conceded.append(row['FTAG'])
-            else:
-                goals_scored.append(row['FTAG'])
-                goals_conceded.append(row['FTHG'])
-
-        return np.mean(goals_scored), np.mean(goals_conceded)
-
-    last5_home_exp, _ = expected_from_last5(home_team, is_home=True)
-    _, last5_away_exp = expected_from_last5(away_team, is_home=False)
-
-    def any_nan(*args):
-        return any(pd.isna(x) for x in args)
-
-    if any_nan(hist_home, season_home, last5_home_exp, hist_away, season_away, last5_away_exp):
-        raise ValueError(f"❌ Nedostatek dat pro predikci mezi {home_team} a {away_team}.")
-
-    final_home = 0.3 * hist_home + 0.4 * season_home + 0.3 * last5_home_exp
-    final_away = 0.3 * hist_away + 0.4 * season_away + 0.3 * last5_away_exp
-
-    return round(final_home, 1), round(final_away, 1)
-
-
+    return round(expected_home, 2), round(expected_away, 2)
 
 def validate_dataset(df):
     required_columns = ['Date', 'FTHG', 'FTAG', 'HomeTeam', 'AwayTeam']
@@ -698,3 +722,129 @@ def calculate_expected_and_actual_points(df):
         }
 
     return results
+
+def extended_home_away_opponent_form(df, team):
+    import numpy as np
+    df = df.copy()
+    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
+    df = df.dropna(subset=['Date'])
+    df = df.sort_values('Date')
+
+    # Rozdělení podle síly soupeřů
+    team_avg_goals = {}
+    for t in pd.concat([df['HomeTeam'], df['AwayTeam']]).unique():
+        home_g = df[df['HomeTeam'] == t]['FTHG'].mean()
+        away_g = df[df['AwayTeam'] == t]['FTAG'].mean()
+        team_avg_goals[t] = np.nanmean([home_g, away_g])
+
+    sorted_teams = sorted(team_avg_goals.items(), key=lambda x: x[1], reverse=True)
+    top = set([t for t, _ in sorted_teams[:int(0.3 * len(sorted_teams))]])
+    bottom = set([t for t, _ in sorted_teams[-int(0.3 * len(sorted_teams)):]])
+    middle = set(team_avg_goals.keys()) - top - bottom
+
+    def summarize(matches):
+        if matches.empty:
+            return {"g": 0, "s": 0, "sot": 0, "pts": 0, "xg": 0, "games": 0}
+        g = matches["goals"].mean()
+        s = matches["shots"].mean()
+        sot = matches["sot"].mean()
+        conv = round(g / sot, 2) if sot > 0 else 0
+        xg = round(sot * conv, 2)
+        pts = matches["points"].mean()
+        return {"g": round(g, 2), "s": round(s, 1), "sot": round(sot, 1), "pts": round(pts, 2), "xg": xg, "games": len(matches)}
+
+    result = {"home": {}, "away": {}}
+    for loc, is_home in [("home", True), ("away", False)]:
+        col_team = 'HomeTeam' if is_home else 'AwayTeam'
+        col_opp = 'AwayTeam' if is_home else 'HomeTeam'
+        goals_col = 'FTHG' if is_home else 'FTAG'
+        shots_col = 'HS' if is_home else 'AS'
+        sot_col = 'HST' if is_home else 'AST'
+
+        subset = df[df[col_team] == team].copy()
+        subset["opponent"] = subset[col_opp]
+        subset["goals"] = subset[goals_col]
+        subset["shots"] = subset[shots_col]
+        subset["sot"] = subset[sot_col]
+        subset["points"] = subset.apply(lambda r: 3 if r["FTHG"] > r["FTAG"] and is_home else 3 if r["FTAG"] > r["FTHG"] and not is_home else 1 if r["FTHG"] == r["FTAG"] else 0, axis=1)
+
+        result[loc]["vs_strong"] = summarize(subset[subset["opponent"].isin(top)])
+        result[loc]["vs_average"] = summarize(subset[subset["opponent"].isin(middle)])
+        result[loc]["vs_weak"] = summarize(subset[subset["opponent"].isin(bottom)])
+
+    return result
+
+def merged_home_away_opponent_form(df, team):
+    df = df.copy()
+    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
+    df = df.dropna(subset=['Date'])
+    df = df.sort_values('Date')
+
+    # Rozdělení týmů podle síly
+    team_avg_goals = {}
+    for t in pd.concat([df['HomeTeam'], df['AwayTeam']]).unique():
+        home_g = df[df['HomeTeam'] == t]['FTHG'].mean()
+        away_g = df[df['AwayTeam'] == t]['FTAG'].mean()
+        team_avg_goals[t] = np.nanmean([home_g, away_g])
+
+    sorted_teams = sorted(team_avg_goals.items(), key=lambda x: x[1], reverse=True)
+    top = set(t for t, _ in sorted_teams[:int(len(sorted_teams) * 0.3)])
+    bottom = set(t for t, _ in sorted_teams[-int(len(sorted_teams) * 0.3):])
+    middle = set(team_avg_goals.keys()) - top - bottom
+
+    def summarize(matches, is_home):
+        if matches.empty:
+            return {"Z": 0, "G": 0, "OG": 0, "S": 0, "SOT": 0, "xG": 0, "PTS": 0}
+        goals_for = matches["FTHG"] if is_home else matches["FTAG"]
+        goals_against = matches["FTAG"] if is_home else matches["FTHG"]
+        shots = matches["HS"] if is_home else matches["AS"]
+        sot = matches["HST"] if is_home else matches["AST"]
+        conv = goals_for.mean() / sot.mean() if sot.mean() > 0 else 0
+        xg = round(sot.mean() * conv, 2)
+        points = matches.apply(
+            lambda r: 3 if (r["FTHG"] > r["FTAG"] if is_home else r["FTAG"] > r["FTHG"]) else 1 if r["FTHG"] == r["FTAG"] else 0,
+            axis=1
+        ).mean()
+        return {
+            "Z": len(matches),
+            "G": round(goals_for.mean(), 2),
+            "OG": round(goals_against.mean(), 2),
+            "S": round(shots.mean(), 1),
+            "SOT": round(sot.mean(), 1),
+            "xG": xg,
+            "PTS": round(points, 2)
+        }
+
+    def combine_metrics(strong, average, weak, label):
+        return {
+            label: {
+                "Zápasy": f"{strong['Z']} / {average['Z']}",
+                "Góly": f"{strong['G']} / {average['G']}",
+                "Obdržené": f"{strong['OG']} / {average['OG']}",
+                "Střely": f"{strong['S']} / {average['S']}",
+                "Na branku": f"{strong['SOT']} / {average['SOT']}",
+                "xG": f"{strong['xG']} / {average['xG']}",
+                "Body/zápas": f"{strong['PTS']} / {average['PTS']}"
+            }
+        }
+
+    def generate_table():
+        result = {}
+        for label, group in [("💪 Silní", top), ("⚖️ Průměrní", middle), ("🪶 Slabí", bottom)]:
+            home = df[(df['HomeTeam'] == team) & (df['AwayTeam'].isin(group))]
+            away = df[(df['AwayTeam'] == team) & (df['HomeTeam'].isin(group))]
+            home_stats = summarize(home, is_home=True)
+            away_stats = summarize(away, is_home=False)
+            result[label] = {
+                "Zápasy": f"{home_stats['Z']} / {away_stats['Z']}",
+                "Góly": f"{home_stats['G']} / {away_stats['G']}",
+                "Obdržené": f"{home_stats['OG']} / {away_stats['OG']}",
+                "Střely": f"{home_stats['S']} / {away_stats['S']}",
+                "Na branku": f"{home_stats['SOT']} / {away_stats['SOT']}",
+                "xG": f"{home_stats['xG']} / {away_stats['xG']}",
+                "Body/zápas": f"{home_stats['PTS']} / {away_stats['PTS']}"
+            }
+        return result
+
+    return generate_table()
+
