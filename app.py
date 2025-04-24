@@ -1,12 +1,13 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+from flask import Flask, request, jsonify
 from utils.poisson_utils import (
     load_data, validate_dataset, calculate_team_strengths,
-    
+    get_head_to_head_stats,classify_team_strength,
     poisson_prediction, match_outcomes_prob, over_under_prob,
-    btts_prob, prob_to_odds,calculate_pseudo_xg,
-    analyze_opponent_strength, calculate_expected_points,
+    btts_prob, prob_to_odds,calculate_pseudo_xg,calculate_match_tempo,
+    analyze_opponent_strength, calculate_expected_points,classify_team_strength,
     generate_score_heatmap, expected_goals_weighted_by_elo,
     calculate_elo_ratings, calculate_recent_form, detect_current_season,expected_team_stats_weighted_by_elo,
     calculate_team_pseudo_xg,calculate_expected_and_actual_points,merged_home_away_opponent_form
@@ -304,9 +305,10 @@ for stat, values in elo_stats.items():
 #             st.caption(["💪 Silní", "⚖️ Průměrní", "🪶 Slabí"][i])
             
 st.markdown("## 🏟️ Výkon dle typu soupeřů (Doma / Venku)")
-
-def display_merged_table(data, team_name):
-    st.markdown(f"### {team_name}")
+strength_home = classify_team_strength(df, home_team)
+strength_away = classify_team_strength(df, away_team)
+def display_merged_table(data, team_name, teamstrength):
+    st.markdown(f"### {team_name} ({teamstrength})")
     df_disp = pd.DataFrame(data).T  # index = ['💪 Silní', '⚖️ Průměrní', '🪶 Slabí']
     df_disp = df_disp[["Zápasy", "Góly", "Obdržené", "Střely", "Na branku", "xG", "Body/zápas"]]
     st.dataframe(df_disp)
@@ -314,8 +316,56 @@ def display_merged_table(data, team_name):
 merged_home = merged_home_away_opponent_form(df, home_team)
 merged_away = merged_home_away_opponent_form(df, away_team)
 
-display_merged_table(merged_home, home_team)
-display_merged_table(merged_away, away_team)
+display_merged_table(merged_home, home_team,strength_home)
+display_merged_table(merged_away, away_team,strength_away)
+
+# 🔁 Head-to-head
+st.markdown("## 🤜 Head-to-Head statistiky")
+h2h_stats = get_head_to_head_stats(df, home_team, away_team)
+if h2h_stats:
+    st.markdown(f"""
+    - Počet zápasů: **{h2h_stats['matches']}**
+    - Výhry {home_team}: **{h2h_stats['home_wins']}**
+    - Výhry {away_team}: **{h2h_stats['away_wins']}**
+    - Remízy: **{h2h_stats['draws']}**
+    - Průměr gólů: **{h2h_stats['avg_goals']}**
+    - BTTS: **{h2h_stats['btts_pct']}%**
+    - Over 2.5: **{h2h_stats['over25_pct']}%**
+    """)
+else:
+    st.info("⚠️ Nenašly se žádné vzájemné zápasy.")
+
+
+# 🎮 Styl hry – Tempo & Nerovnováha
+st.markdown("## 🎮 Styl hry")
+
+tempo_home = calculate_match_tempo(df, home_team, elo_dict.get(away_team, 1500), True, elo_dict)
+tempo_away = calculate_match_tempo(df, away_team, elo_dict.get(home_team, 1500), False, elo_dict)
+
+style_cols = st.columns(2)
+
+# Tempo zápasu
+with style_cols[0]:
+    st.markdown("### 🕒 Tempo zápasu")
+    st.metric(f"{home_team}", tempo_home['tempo'])
+    st.markdown(f"{tempo_home['rating']} ({tempo_home['percentile']} %)")
+    st.markdown("---")
+    st.metric(f"{away_team}", tempo_away['tempo'])
+    st.markdown(f"{tempo_away['rating']} ({tempo_away['percentile']} %)")
+
+# Nerovnováha
+with style_cols[1]:
+    st.markdown("### ⚖️ Nerovnováha zápasu")
+    st.metric(f"{home_team}", tempo_home['imbalance'])
+    st.markdown(f"{tempo_home['imbalance_type']}")
+    st.markdown("---")
+    st.metric(f"{away_team}", tempo_away['imbalance'])
+    st.markdown(f"{tempo_away['imbalance_type']}")
+
+
+
+
+
 
 # 🔥 Heatmapa
 st.markdown("## 📊 Heatmapa skóre")

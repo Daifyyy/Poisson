@@ -848,3 +848,120 @@ def merged_home_away_opponent_form(df, team):
 
     return generate_table()
 
+def get_head_to_head_stats(df, home_team, away_team, last_n=5):
+    h2h = df[((df['HomeTeam'] == home_team) & (df['AwayTeam'] == away_team)) |
+             ((df['HomeTeam'] == away_team) & (df['AwayTeam'] == home_team))].sort_values('Date', ascending=False).head(last_n)
+
+    if h2h.empty:
+        return None
+
+    results = {
+        "matches": len(h2h),
+        "home_wins": 0,
+        "away_wins": 0,
+        "draws": 0,
+        "avg_goals": round((h2h['FTHG'] + h2h['FTAG']).mean(), 2),
+        "btts_pct": round(100 * h2h.apply(lambda r: r['FTHG'] > 0 and r['FTAG'] > 0, axis=1).mean(), 1),
+        "over25_pct": round(100 * ((h2h['FTHG'] + h2h['FTAG']) > 2.5).mean(), 1)
+    }
+
+    for _, row in h2h.iterrows():
+        if row['FTHG'] == row['FTAG']:
+            results['draws'] += 1
+        elif (row['HomeTeam'] == home_team and row['FTHG'] > row['FTAG']) or \
+             (row['AwayTeam'] == home_team and row['FTAG'] > row['FTHG']):
+            results['home_wins'] += 1
+        else:
+            results['away_wins'] += 1
+
+    return results
+
+def calculate_match_tempo(df, team, opponent_elo, is_home, elo_dict, last_n=10):
+    team_col = 'HomeTeam' if is_home else 'AwayTeam'
+    opp_col = 'AwayTeam' if is_home else 'HomeTeam'
+    df = df.copy()
+    df['OppELO'] = df[opp_col].map(elo_dict)
+    df['EloDiff'] = abs(df['OppELO'] - opponent_elo)
+    matches = df[df[team_col] == team].sort_values('EloDiff').head(last_n)
+
+    if matches.empty:
+        matches = df[df[team_col] == team].sort_values("Date", ascending=False).head(last_n)
+
+    if matches.empty:
+        return {"tempo": 0, "percentile": 0, "rating": "N/A", "imbalance": 0.0, "imbalance_type": "N/A"}
+
+    shots = matches['HS'] if is_home else matches['AS']
+    corners = matches['HC'] if is_home else matches['AC']
+    fouls = matches['HF'] if is_home else matches['AF']
+    tempo_index = (shots + corners + fouls).mean()
+
+    all_tempos = []
+    all_teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
+    for t in all_teams:
+        home = df[df['HomeTeam'] == t]
+        away = df[df['AwayTeam'] == t]
+        if not home.empty and not away.empty:
+            s = pd.concat([home['HS'], away['AS']])
+            c = pd.concat([home['HC'], away['AC']])
+            f = pd.concat([home['HF'], away['AF']])
+            all_tempos.append((s + c + f).mean())
+
+    percentile = round(sum(t < tempo_index for t in all_tempos) / len(all_tempos) * 100, 1)
+
+    if percentile >= 80:
+        rating = "⚡ velmi rychlé"
+    elif percentile >= 40:
+        rating = "🎯 střední tempo"
+    elif percentile >= 10:
+        rating = "💤 pomalé"
+    else:
+        rating = "🪨 velmi pomalé"
+
+    if is_home:
+        goals_for = matches['FTHG']
+        goals_against = matches['FTAG']
+    else:
+        goals_for = matches['FTAG']
+        goals_against = matches['FTHG']
+
+    shots_for = matches['HS'] if is_home else matches['AS']
+    shots_against = matches['AS'] if is_home else matches['HS']
+
+    goal_diff = (goals_for - goals_against).mean()
+    shot_diff = (shots_for - shots_against).mean()
+    imbalance = (abs(goal_diff) + abs(shot_diff))
+
+    if goal_diff > 0 and shot_diff > 0:
+        imbalance_type = "📈 Dominantní"
+    elif goal_diff < 0 and shot_diff < 0:
+        imbalance_type = "📉 Trpící"
+    else:
+        imbalance_type = "⚖️ Neurčitá"
+
+    return {
+        "tempo": round(tempo_index, 1),
+        "percentile": percentile,
+        "rating": rating,
+        "imbalance": round(imbalance, 2),
+        "imbalance_type": imbalance_type
+    }
+    
+def classify_team_strength(df, team):
+    df = df.copy()
+    avg_goals = {}
+    for t in pd.concat([df['HomeTeam'], df['AwayTeam']]).unique():
+        home_avg = df[df['HomeTeam'] == t]['FTHG'].mean()
+        away_avg = df[df['AwayTeam'] == t]['FTAG'].mean()
+        avg_goals[t] = np.nanmean([home_avg, away_avg])
+
+    sorted_teams = sorted(avg_goals.items(), key=lambda x: x[1], reverse=True)
+    total = len(sorted_teams)
+    top = set(t for t, _ in sorted_teams[:int(total * 0.3)])
+    bottom = set(t for t, _ in sorted_teams[-int(total * 0.3):])
+
+    if team in top:
+        return "💪 Silný"
+    elif team in bottom:
+        return "🪶 Slabý"
+    else:
+        return "⚖️ Průměrný"
