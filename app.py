@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from flask import Flask, request, jsonify
+#from flask import Flask, request, jsonify
 from utils.poisson_utils import (
     load_data, validate_dataset, calculate_team_strengths,
     get_head_to_head_stats,classify_team_strength,
