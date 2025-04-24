@@ -319,21 +319,24 @@ merged_away = merged_home_away_opponent_form(df, away_team)
 display_merged_table(merged_home, home_team,strength_home)
 display_merged_table(merged_away, away_team,strength_away)
 
-# 🔁 Head-to-head
-st.markdown("## 🤜 Head-to-Head statistiky")
-h2h_stats = get_head_to_head_stats(df, home_team, away_team)
-if h2h_stats:
-    st.markdown(f"""
-    - Počet zápasů: **{h2h_stats['matches']}**
-    - Výhry {home_team}: **{h2h_stats['home_wins']}**
-    - Výhry {away_team}: **{h2h_stats['away_wins']}**
-    - Remízy: **{h2h_stats['draws']}**
-    - Průměr gólů: **{h2h_stats['avg_goals']}**
-    - BTTS: **{h2h_stats['btts_pct']}%**
-    - Over 2.5: **{h2h_stats['over25_pct']}%**
-    """)
+# 🤜 Head-to-Head statistiky
+st.markdown("## 💬 Head-to-Head statistiky")
+
+h2h = get_head_to_head_stats(df, home_team, away_team)
+if h2h:
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.metric("Počet zápasů", h2h['matches'])
+        st.metric(f"Výhry {home_team}", h2h['home_wins'])
+        st.metric("Remízy", h2h['draws'])
+        st.metric(f"Výhry {away_team}", h2h['away_wins'])
+    with col2:
+        st.metric("🎯 Průměr gólů", h2h['avg_goals'])
+        st.metric("🤝 BTTS", f"{h2h['btts_pct']} %")
+        st.metric("📈 Over 2.5", f"{h2h['over25_pct']} %")
 else:
-    st.info("⚠️ Nenašly se žádné vzájemné zápasy.")
+    st.warning("⚠️ Nenašly se žádné vzájemné zápasy.")
+
 
 
 # 🎮 Styl hry – Tempo & Nerovnováha
