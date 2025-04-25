@@ -118,7 +118,7 @@ if home_team == away_team:
         ),
         "Góly/zápas": ((team_stats["Góly doma"] + team_stats["Góly venku"]) / 2).round(2),
         "Intenzita": team_stats.index.map(lambda t: intensity_score_to_emoji(gii_dict.get(t, 0))),
-        "GII": team_stats.index.map(lambda t: gii_dict.get(t, 0)),
+        #"GII": team_stats.index.map(lambda t: gii_dict.get(t, 0)),
         "Čistá konta %": team_stats.index.map(lambda t: calculate_clean_sheets(t, season_df)),
         "Over 2.5 %": team_stats.index.map(over25).astype(str) + "%",
         "BTTS %": team_stats.index.map(btts).astype(str) + "%"
