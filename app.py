@@ -12,7 +12,8 @@ from utils.poisson_utils import (
     analyze_opponent_strength, calculate_expected_points,classify_team_strength,intensity_score_to_emoji,
     expected_goals_weighted_by_elo,expected_match_style_score,get_goal_probabilities,
     calculate_elo_ratings, calculate_recent_form, detect_current_season,expected_team_stats_weighted_by_elo,
-    calculate_team_pseudo_xg,calculate_expected_and_actual_points,merged_home_away_opponent_form
+    calculate_team_pseudo_xg,calculate_expected_and_actual_points,merged_home_away_opponent_form,detect_risk_factors,detect_positive_factors,
+    display_team_status_table
 )
 
 
@@ -290,7 +291,37 @@ if not multi_prediction_mode:
     cols2[0].metric("🏠 Výhra domácích", f"{outcomes['Home Win']}%", f"{prob_to_odds(outcomes['Home Win'])}")
     cols2[1].metric("🤝 Remíza", f"{outcomes['Draw']}%", f"{prob_to_odds(outcomes['Draw'])}")
     cols2[2].metric("🚶‍♂️ Výhra hostů", f"{outcomes['Away Win']}%", f"{prob_to_odds(outcomes['Away Win'])}")
+    #RIZIKA
+    warnings_home, risk_home = detect_risk_factors(df, home_team, elo_dict)
+    warnings_away, risk_away = detect_risk_factors(df, away_team, elo_dict)
 
+    if warnings_home:
+        st.warning(f"⚠️ Rizika pro {home_team}: " + " ".join(warnings_home))
+    if warnings_away:
+        st.warning(f"⚠️ Rizika pro {away_team}: " + " ".join(warnings_away))
+
+    # st.metric(f"Risk skóre {home_team}", f"{risk_home*100:.0f}%")
+    # st.metric(f"Risk skóre {away_team}", f"{risk_away*100:.0f}%")
+
+    #POZITIVA   
+    positives_home, pos_score_home = detect_positive_factors(df, home_team, elo_dict)
+    positives_away, pos_score_away = detect_positive_factors(df, away_team, elo_dict)
+
+    if positives_home:
+        st.success(f"✅ Pozitivní trendy u {home_team}: " + " ".join(positives_home))
+    if positives_away:
+        st.success(f"✅ Pozitivní trendy u {away_team}: " + " ".join(positives_away))
+
+    # st.metric(f"Form Boost {home_team}", f"{pos_score_home*100:.0f}%")
+    # st.metric(f"Form Boost {away_team}", f"{pos_score_away*100:.0f}%")
+
+    st.subheader(f"📋 Analýza týmů")
+    display_team_status_table(home_team, away_team, df, elo_dict)
+
+
+
+            
+    
     # 📌 Týmové statistiky
     st.markdown("## 🧠 Očekávané týmové statistiky")
 

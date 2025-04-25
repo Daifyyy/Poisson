@@ -4,6 +4,7 @@ import numpy as np
 from scipy.stats import poisson
 import matplotlib.pyplot as plt
 import seaborn as sns
+import streamlit as st
 
 def load_data(file_path):
     df = pd.read_csv(file_path)
@@ -1120,5 +1121,312 @@ def get_goal_probabilities(matrix):
     home_probs = matrix.sum(axis=1)  # řádky = domácí góly
     away_probs = matrix.sum(axis=0)  # sloupce = hostující góly
     return home_probs, away_probs
+
+def detect_risk_factors(df, team, elo_dict):
+    import numpy as np
+
+    warnings = []
+    risk_score = 0.0
+
+    # Připravíme data
+    df = df.copy()
+    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
+    df = df.dropna(subset=['Date'])
+    df = df.sort_values('Date')
+
+    latest_date = df['Date'].max()
+
+    # Recent form (posledních 5 zápasů)
+    last_matches = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)].sort_values('Date').tail(5)
+
+    points = []
+    goals_for = []
+    goals_against = []
+    shots_on_target = []
+
+    for _, row in last_matches.iterrows():
+        if row['HomeTeam'] == team:
+            gf, ga, hst = row['FTHG'], row['FTAG'], row['HST']
+            result = 3 if gf > ga else 1 if gf == ga else 0
+        else:
+            gf, ga, hst = row['FTAG'], row['FTHG'], row['AST']
+            result = 3 if gf > ga else 1 if gf == ga else 0
+        points.append(result)
+        goals_for.append(gf)
+        goals_against.append(ga)
+        shots_on_target.append(hst)
+
+    avg_points = np.mean(points) if points else 0
+    avg_goals_for = np.mean(goals_for) if goals_for else 0
+    avg_goals_against = np.mean(goals_against) if goals_against else 0
+    avg_sot = np.mean(shots_on_target) if shots_on_target else 0
+
+    # Sezónní statistiky
+    season_matches = df[(df['Date'] >= latest_date - pd.Timedelta(days=365))]
+    team_matches = season_matches[(season_matches['HomeTeam'] == team) | (season_matches['AwayTeam'] == team)]
+
+    season_goals_for = []
+    season_shots_on_target = []
+    season_goals_against = []
+
+    for _, row in team_matches.iterrows():
+        if row['HomeTeam'] == team:
+            season_goals_for.append(row['FTHG'])
+            season_goals_against.append(row['FTAG'])
+            season_shots_on_target.append(row['HST'])
+        else:
+            season_goals_for.append(row['FTAG'])
+            season_goals_against.append(row['FTHG'])
+            season_shots_on_target.append(row['AST'])
+
+    season_avg_goals_for = np.mean(season_goals_for) if season_goals_for else 0
+    season_avg_goals_against = np.mean(season_goals_against) if season_goals_against else 0
+    season_avg_sot = np.mean(season_shots_on_target) if season_shots_on_target else 0
+
+    # Výpočty poklesů/zhoršení
+
+    ## 1. Form decline
+    if avg_points < 1.0:
+        warnings.append("❗ Tým je ve špatné formě (méně než 1 bod na zápas).")
+        risk_score += 0.25
+
+    ## 2. ELO decline
+    current_elo = elo_dict.get(team, 1500)
+
+    one_month_ago = latest_date - pd.Timedelta(days=30)
+    df_past = df[df['Date'] <= one_month_ago]
+    past_elo_dict = calculate_elo_ratings(df_past)
+    past_elo = past_elo_dict.get(team, 1500)
+
+    if (past_elo - current_elo) > 20:
+        warnings.append("❗ Tým ztratil více než 20 ELO bodů za poslední měsíc.")
+        risk_score += 0.2
+
+    ## 3. xG decline
+    if season_avg_sot > 0:
+        season_xg = season_avg_sot * 0.1  # jednoduchý xG model
+    else:
+        season_xg = 0
+    if avg_sot > 0:
+        recent_xg = avg_sot * 0.1
+    else:
+        recent_xg = 0
+
+    if season_xg > 0 and recent_xg / season_xg < 0.8:
+        warnings.append("❗ Pokles xG o více než 20% oproti sezónnímu průměru.")
+        risk_score += 0.2
+
+    ## 4. Finishing problems (góly/střely na branku)
+    if avg_sot > 0:
+        recent_conversion = avg_goals_for / avg_sot
+    else:
+        recent_conversion = 0
+
+    if season_avg_sot > 0:
+        season_conversion = season_avg_goals_for / season_avg_sot
+    else:
+        season_conversion = 0
+
+    if season_conversion > 0 and recent_conversion / season_conversion < 0.8:
+        warnings.append("❗ Konverze střel se zhoršila o více než 20%.")
+        risk_score += 0.2
+
+    ## 5. Defensive collapse (více obdržených gólů)
+    if season_avg_goals_against > 0 and avg_goals_against / season_avg_goals_against > 1.2:
+        warnings.append("❗ Tým inkasuje o více než 20% více gólů než běžně.")
+        risk_score += 0.15
+
+    # Risk score nikdy nesmí být > 1
+    risk_score = min(risk_score, 1.0)
+
+    return warnings, risk_score
+
+
+def detect_positive_factors(df, team, elo_dict):
+    import numpy as np
+
+    positives = []
+    positive_score = 0.0
+
+    df = df.copy()
+    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
+    df = df.dropna(subset=['Date'])
+    df = df.sort_values('Date')
+
+    latest_date = df['Date'].max()
+
+    # Recent matches (last 5)
+    last_matches = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)].sort_values('Date').tail(5)
+
+    points = []
+    goals_for = []
+    goals_against = []
+    shots_on_target = []
+
+    for _, row in last_matches.iterrows():
+        if row['HomeTeam'] == team:
+            gf, ga, hst = row['FTHG'], row['FTAG'], row['HST']
+            result = 3 if gf > ga else 1 if gf == ga else 0
+        else:
+            gf, ga, hst = row['FTAG'], row['FTHG'], row['AST']
+            result = 3 if gf > ga else 1 if gf == ga else 0
+        points.append(result)
+        goals_for.append(gf)
+        goals_against.append(ga)
+        shots_on_target.append(hst)
+
+    avg_points = np.mean(points) if points else 0
+    avg_goals_for = np.mean(goals_for) if goals_for else 0
+    avg_goals_against = np.mean(goals_against) if goals_against else 0
+    avg_sot = np.mean(shots_on_target) if shots_on_target else 0
+
+    # Season averages
+    season_matches = df[(df['Date'] >= latest_date - pd.Timedelta(days=365))]
+    team_matches = season_matches[(season_matches['HomeTeam'] == team) | (season_matches['AwayTeam'] == team)]
+
+    season_goals_for = []
+    season_shots_on_target = []
+    season_goals_against = []
+
+    for _, row in team_matches.iterrows():
+        if row['HomeTeam'] == team:
+            season_goals_for.append(row['FTHG'])
+            season_goals_against.append(row['FTAG'])
+            season_shots_on_target.append(row['HST'])
+        else:
+            season_goals_for.append(row['FTAG'])
+            season_goals_against.append(row['FTHG'])
+            season_shots_on_target.append(row['AST'])
+
+    season_avg_goals_for = np.mean(season_goals_for) if season_goals_for else 0
+    season_avg_goals_against = np.mean(season_goals_against) if season_goals_against else 0
+    season_avg_sot = np.mean(season_shots_on_target) if season_shots_on_target else 0
+
+    # Výpočty růstů/zlepšení
+
+    ## 1. Form improvement
+    if avg_points > 2.0:
+        positives.append("🌟 Tým má skvělou formu (více než 2 body na zápas).")
+        positive_score += 0.25
+
+    ## 2. ELO improvement
+    current_elo = elo_dict.get(team, 1500)
+
+    one_month_ago = latest_date - pd.Timedelta(days=30)
+    df_past = df[df['Date'] <= one_month_ago]
+    past_elo_dict = calculate_elo_ratings(df_past)
+    past_elo = past_elo_dict.get(team, 1500)
+
+    if (current_elo - past_elo) > 20:
+        positives.append("🌟 ELO rating týmu vzrostl o více než 20 bodů.")
+        positive_score += 0.2
+
+    ## 3. xG growth
+    if season_avg_sot > 0:
+        season_xg = season_avg_sot * 0.1  # jednoduchý xG model
+    else:
+        season_xg = 0
+    if avg_sot > 0:
+        recent_xg = avg_sot * 0.1
+    else:
+        recent_xg = 0
+
+    if season_xg > 0 and recent_xg / season_xg > 1.2:
+        positives.append("🌟 xG týmu vzrostlo o více než 20% oproti sezónnímu průměru.")
+        positive_score += 0.2
+
+    ## 4. Finishing improvement
+    if avg_sot > 0:
+        recent_conversion = avg_goals_for / avg_sot
+    else:
+        recent_conversion = 0
+
+    if season_avg_sot > 0:
+        season_conversion = season_avg_goals_for / season_avg_sot
+    else:
+        season_conversion = 0
+
+    if season_conversion > 0 and recent_conversion / season_conversion > 1.2:
+        positives.append("🌟 Tým výrazně zlepšil konverzi střel.")
+        positive_score += 0.2
+
+    ## 5. Defensive improvement
+    if season_avg_goals_against > 0 and avg_goals_against / season_avg_goals_against < 0.8:
+        positives.append("🌟 Obrana se zlepšila (méně inkasovaných gólů).")
+        positive_score += 0.15
+
+    positive_score = min(positive_score, 1.0)
+
+    return positives, positive_score
+
+def display_team_status_table(home_team, away_team, df, elo_dict):
+    import streamlit as st
+    import pandas as pd
+
+    def status_label(risk, positive):
+        if risk > 0.6 and positive < 0.3:
+            return "❌ Krize"
+        elif risk < 0.3 and positive > 0.6:
+            return "✅ Nárůst formy"
+        else:
+            return "➖ Průměr"
+
+    # Výpočty
+    risk_home, pos_home = detect_risk_factors(df, home_team, elo_dict)[1], detect_positive_factors(df, home_team, elo_dict)[1]
+    risk_away, pos_away = detect_risk_factors(df, away_team, elo_dict)[1], detect_positive_factors(df, away_team, elo_dict)[1]
+
+    status_home = status_label(risk_home, pos_home)
+    status_away = status_label(risk_away, pos_away)
+
+    # Číselná data pro styler
+    df_data = pd.DataFrame({
+        "Tým": [home_team, away_team],
+        "Risk skóre": [risk_home, risk_away],
+        "Form Boost": [pos_home, pos_away],
+        "Status": [status_home, status_away]
+    })
+
+    # Styling
+    def highlight_risk(val):
+        if val > 0.6:
+            return 'background-color: #ffcccc'
+        elif val > 0.3:
+            return 'background-color: #fff5cc'
+        else:
+            return 'background-color: #ccffcc'
+
+    def highlight_boost(val):
+        if val > 0.6:
+            return 'background-color: #ccffcc'
+        elif val > 0.3:
+            return 'background-color: #fff5cc'
+        else:
+            return 'background-color: #ffcccc'
+
+    def style_status(val):
+        if "Krize" in val:
+            return 'color: red; font-weight: bold;'
+        elif "Nárůst" in val:
+            return 'color: green; font-weight: bold;'
+        else:
+            return 'color: gray;'
+
+    styled = (
+        df_data.style
+        .format({
+            "Risk skóre": lambda v: f"{int(v*100)} %",
+            "Form Boost": lambda v: f"{int(v*100)} %"
+        })
+        .applymap(highlight_risk, subset=["Risk skóre"])
+        .applymap(highlight_boost, subset=["Form Boost"])
+        .applymap(style_status, subset=["Status"])
+    )
+
+    st.markdown("### 📊 Porovnání týmů s podbarvením")
+    st.dataframe(styled, hide_index=True, use_container_width=True)
+
+
+
+
 
 
