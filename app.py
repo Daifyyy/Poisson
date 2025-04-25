@@ -47,8 +47,8 @@ gii_dict = get_team_average_gii(season_df)
 if "match_list" not in st.session_state:
     st.session_state.match_list = []
 
-print(season_df)
-print(season_start)
+# print(season_df)
+# print(season_start)
 # Výběr týmů
 st.sidebar.header("🏟️ Zápas")
 teams_in_season = sorted(set(season_df["HomeTeam"].unique()) | set(season_df["AwayTeam"].unique()))
