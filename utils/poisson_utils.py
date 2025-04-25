@@ -83,12 +83,24 @@ def prob_to_odds(prob_percent):
         return "∞"
     return round(100 / prob_percent, 2)
 
-def generate_score_heatmap(matrix, home_team, away_team):
-    fig, ax = plt.subplots(figsize=(8, 6))
-    sns.heatmap(matrix * 100, annot=True, fmt=".1f", cmap="YlOrRd", ax=ax, cbar_kws={'label': 'Pravděpodobnost (%)'})
-    ax.set_xlabel(f"{away_team} góly")
-    ax.set_ylabel(f"{home_team} góly")
-    return fig
+def generate_score_table_df(matrix, home_team, away_team):
+    import pandas as pd
+    import numpy as np
+
+    df = pd.DataFrame(matrix * 100)
+    df.index.name = f"{home_team} góly"
+    df.columns.name = f"{away_team} góly"
+
+    styled = df.style\
+        .format("{:.1f} %")\
+        .background_gradient(cmap="YlOrRd", axis=None)\
+        .set_properties(**{
+            "text-align": "center",
+            "font-size": "11px"
+        })
+
+    return styled
+
 
 def get_top_scorelines(matrix, top_n=5):
     score_probs = [((i, j), matrix[i][j]) for i in range(matrix.shape[0]) for j in range(matrix.shape[1])]
@@ -794,7 +806,7 @@ def merged_home_away_opponent_form(df, team):
 
     def summarize(matches, is_home):
         if matches.empty:
-            return {"Z": 0, "G": 0, "OG": 0, "S": 0, "SOT": 0, "xG": 0, "PTS": 0}
+            return {"Z": 0, "G": 0, "OG": 0, "S": 0, "SOT": 0, "xG": 0, "PTS": 0, "CS": 0}
         goals_for = matches["FTHG"] if is_home else matches["FTAG"]
         goals_against = matches["FTAG"] if is_home else matches["FTHG"]
         shots = matches["HS"] if is_home else matches["AS"]
@@ -805,6 +817,8 @@ def merged_home_away_opponent_form(df, team):
             lambda r: 3 if (r["FTHG"] > r["FTAG"] if is_home else r["FTAG"] > r["FTHG"]) else 1 if r["FTHG"] == r["FTAG"] else 0,
             axis=1
         ).mean()
+        clean_sheets = (goals_against == 0).sum()
+        cs_percent = round(100 * clean_sheets / len(matches), 1)
         return {
             "Z": len(matches),
             "G": round(goals_for.mean(), 2),
@@ -812,20 +826,8 @@ def merged_home_away_opponent_form(df, team):
             "S": round(shots.mean(), 1),
             "SOT": round(sot.mean(), 1),
             "xG": xg,
-            "PTS": round(points, 2)
-        }
-
-    def combine_metrics(strong, average, weak, label):
-        return {
-            label: {
-                "Zápasy": f"{strong['Z']} / {average['Z']}",
-                "Góly": f"{strong['G']} / {average['G']}",
-                "Obdržené": f"{strong['OG']} / {average['OG']}",
-                "Střely": f"{strong['S']} / {average['S']}",
-                "Na branku": f"{strong['SOT']} / {average['SOT']}",
-                "xG": f"{strong['xG']} / {average['xG']}",
-                "Body/zápas": f"{strong['PTS']} / {average['PTS']}"
-            }
+            "PTS": round(points, 2),
+            "CS": cs_percent
         }
 
     def generate_table():
@@ -842,11 +844,13 @@ def merged_home_away_opponent_form(df, team):
                 "Střely": f"{home_stats['S']} / {away_stats['S']}",
                 "Na branku": f"{home_stats['SOT']} / {away_stats['SOT']}",
                 "xG": f"{home_stats['xG']} / {away_stats['xG']}",
-                "Body/zápas": f"{home_stats['PTS']} / {away_stats['PTS']}"
+                "Body/zápas": f"{home_stats['PTS']} / {away_stats['PTS']}",
+                "Čistá konta %": f"{home_stats['CS']} / {away_stats['CS']}"
             }
         return result
 
     return generate_table()
+
 
 def get_head_to_head_stats(df, home_team, away_team, last_n=5):
     h2h = df[((df['HomeTeam'] == home_team) & (df['AwayTeam'] == away_team)) |
@@ -888,13 +892,28 @@ def calculate_match_tempo(df, team, opponent_elo, is_home, elo_dict, last_n=10):
         matches = df[df[team_col] == team].sort_values("Date", ascending=False).head(last_n)
 
     if matches.empty:
-        return {"tempo": 0, "percentile": 0, "rating": "N/A", "imbalance": 0.0, "imbalance_type": "N/A"}
+        return {
+            "tempo": 0,
+            "percentile": 0,
+            "rating": "N/A",
+            "imbalance": 0.0,
+            "imbalance_type": "N/A",
+            "aggressiveness_index": 0.0,
+            "aggressiveness_rating": "N/A"
+        }
 
+    # Základní složky pro tempo
     shots = matches['HS'] if is_home else matches['AS']
     corners = matches['HC'] if is_home else matches['AC']
     fouls = matches['HF'] if is_home else matches['AF']
     tempo_index = (shots + corners + fouls).mean()
 
+    # 💥 Výpočet Aggressiveness Indexu
+    yellow_cards = matches['HY'] if is_home else matches['AY']
+    red_cards = matches['HR'] if is_home else matches['AR']
+    aggressiveness_index = ((yellow_cards + 2 * red_cards + fouls).sum()) / len(matches)
+
+    # Percentil ligového tempa
     all_tempos = []
     all_teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
     for t in all_teams:
@@ -917,6 +936,7 @@ def calculate_match_tempo(df, team, opponent_elo, is_home, elo_dict, last_n=10):
     else:
         rating = "🪨 velmi pomalé"
 
+    # Dominance vs trpění
     if is_home:
         goals_for = matches['FTHG']
         goals_against = matches['FTAG']
@@ -938,13 +958,29 @@ def calculate_match_tempo(df, team, opponent_elo, is_home, elo_dict, last_n=10):
     else:
         imbalance_type = "⚖️ Neurčitá"
 
+    # 🎭 Emoji hodnocení tvrdosti
+    if aggressiveness_index < 14:
+        aggressiveness_rating = "🕊️ velmi klidné"
+    elif aggressiveness_index < 19:
+        aggressiveness_rating = "🟢 korektní"
+    elif aggressiveness_index < 24:
+        aggressiveness_rating = "🟡 tvrdší zápas"
+    elif aggressiveness_index < 30:
+        aggressiveness_rating = "🔴 velmi tvrdý"
+    else:
+        aggressiveness_rating = "🟥 extrémní zákroky"
+
     return {
         "tempo": round(tempo_index, 1),
         "percentile": percentile,
         "rating": rating,
         "imbalance": round(imbalance, 2),
-        "imbalance_type": imbalance_type
+        "imbalance_type": imbalance_type,
+        "aggressiveness_index": round(aggressiveness_index, 2),
+        "aggressiveness_rating": aggressiveness_rating
     }
+
+
     
 def classify_team_strength(df, team):
     df = df.copy()
@@ -965,3 +1001,124 @@ def classify_team_strength(df, team):
         return "🪶 Slabý"
     else:
         return "⚖️ Průměrný"
+    
+def calculate_match_style_score_per_match(df):
+    df = df.copy()
+    
+    # Výpočty
+    df["Tempo"] = df["HS"] + df["AS"] + df["HC"] + df["AC"] + df["HF"] + df["AF"]
+    df["Goly"] = df["FTHG"] + df["FTAG"]
+    df["Konverze"] = (df["FTHG"] + df["FTAG"]) / (df["HST"] + df["AST"]).replace(0, 0.1)
+    df["Agrese"] = df["HY"] + df["AY"] + 2 * (df["HR"] + df["AR"]) + df["HF"] + df["AF"]
+
+    # Normalizace
+    for col in ["Tempo", "Goly", "Konverze", "Agrese"]:
+        col_min = df[col].min()
+        col_max = df[col].max()
+        df[col + "_norm"] = (df[col] - col_min) / (col_max - col_min + 1e-5)
+
+    # Výpočet skóre
+    df["MatchStyleScore"] = (
+        0.55 * df["Tempo_norm"] +
+        0.35 * df["Goly_norm"] +
+        0.10 * df["Konverze_norm"] +
+        0.20 * df["Agrese_norm"]
+    ) * 100  # škála 0–100
+
+    return df
+
+def expected_match_style_score(df, home_team, away_team, elo_dict, last_n=10):
+    df = calculate_match_style_score_per_match(df)
+    df = df.copy()
+    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
+    df = df.sort_values('Date')
+
+    elo_home = elo_dict.get(home_team, 1500)
+    elo_away = elo_dict.get(away_team, 1500)
+
+    def get_similar_matches(team, is_home, opponent_elo):
+        team_col = "HomeTeam" if is_home else "AwayTeam"
+        opp_col = "AwayTeam" if is_home else "HomeTeam"
+        matches = df[df[team_col] == team].copy()
+        matches["OppELO"] = matches[opp_col].map(elo_dict)
+        matches["EloDiff"] = abs(matches["OppELO"] - opponent_elo)
+        return matches.nsmallest(last_n, "EloDiff")
+
+    home_matches = get_similar_matches(home_team, is_home=True, opponent_elo=elo_away)
+    away_matches = get_similar_matches(away_team, is_home=False, opponent_elo=elo_home)
+
+    home_mss = home_matches["MatchStyleScore"].mean()
+    away_mss = away_matches["MatchStyleScore"].mean()
+    expected_mss = round((home_mss + away_mss) / 2, 1)
+
+    # 🎭 Emoji škála
+    if expected_mss < 25:
+        rating = "🪨 velmi nudné"
+    elif expected_mss < 45:
+        rating = "😴 nudné"
+    elif expected_mss < 65:
+        rating = "🎯 středně zajímavé"
+    elif expected_mss < 80:
+        rating = "⚡ svižné"
+    else:
+        rating = "🎆 přestřelka"
+
+    return {
+        "Expected Match Style Score": expected_mss,
+        "Home avg": round(home_mss, 1),
+        "Away avg": round(away_mss, 1),
+        "rating": rating
+    }
+
+
+def calculate_gii_zscore(df):
+    df = df.copy()
+
+    # Výpočet GII komponent
+    df["GII_raw"] = (
+        df["HS"] + df["AS"] +
+        df["HST"] + df["AST"] +
+        df["HC"] + df["AC"] +
+        df["HF"] + df["AF"] +
+        df["HY"] + df["AY"] +
+        2 * (df["HR"] + df["AR"])
+    )
+
+    # Výpočet Z-skóre v rámci sezóny
+    mean = df["GII_raw"].mean()
+    std = df["GII_raw"].std()
+    df["GII"] = (df["GII_raw"] - mean) / (std + 1e-5)
+
+    return df
+
+def intensity_score_to_emoji(score):
+    if score < -1.0:
+        return "🪨 extrémně klidné"
+    elif score < -0.3:
+        return "😴 podprůměrné"
+    elif score < 0.3:
+        return "🎯 průměr"
+    elif score < 1.0:
+        return "⚡ svižné"
+    else:
+        return "🔥 intenzivní show"
+
+def get_team_average_gii(df):
+    df = calculate_gii_zscore(df)
+    teams = pd.concat([df["HomeTeam"], df["AwayTeam"]]).unique()
+    team_scores = {}
+
+    for team in teams:
+        home_scores = df[df["HomeTeam"] == team]["GII"]
+        away_scores = df[df["AwayTeam"] == team]["GII"]
+        all_scores = pd.concat([home_scores, away_scores])
+        team_scores[team] = round(all_scores.mean(), 2) if not all_scores.empty else 0.0
+
+    return team_scores
+
+def get_goal_probabilities(matrix):
+    home_probs = matrix.sum(axis=1)  # řádky = domácí góly
+    away_probs = matrix.sum(axis=0)  # sloupce = hostující góly
+    return home_probs, away_probs
+
+
