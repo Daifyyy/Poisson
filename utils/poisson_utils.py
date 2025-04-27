@@ -1381,28 +1381,12 @@ def display_team_status_table(home_team, away_team, df, elo_dict):
     # Číselná data pro styler
     df_data = pd.DataFrame({
         "Tým": [home_team, away_team],
-        "Risk skóre": [risk_home, risk_away],
-        "Form Boost": [pos_home, pos_away],
+        # "Risk skóre": [risk_home, risk_away],
+        # "Form Boost": [pos_home, pos_away],
         "Status": [status_home, status_away]
     })
 
     # Styling
-    def highlight_risk(val):
-        if val > 0.6:
-            return 'background-color: #ffcccc'
-        elif val > 0.3:
-            return 'background-color: #fff5cc'
-        else:
-            return 'background-color: #ccffcc'
-
-    def highlight_boost(val):
-        if val > 0.6:
-            return 'background-color: #ccffcc'
-        elif val > 0.3:
-            return 'background-color: #fff5cc'
-        else:
-            return 'background-color: #ffcccc'
-
     def style_status(val):
         if "Krize" in val:
             return 'color: red; font-weight: bold;'
@@ -1417,13 +1401,226 @@ def display_team_status_table(home_team, away_team, df, elo_dict):
             "Risk skóre": lambda v: f"{int(v*100)} %",
             "Form Boost": lambda v: f"{int(v*100)} %"
         })
-        .applymap(highlight_risk, subset=["Risk skóre"])
-        .applymap(highlight_boost, subset=["Form Boost"])
         .applymap(style_status, subset=["Status"])
     )
 
-    st.markdown("### 📊 Porovnání týmů s podbarvením")
+    st.markdown("### 📊 Porovnání týmů")
     st.dataframe(styled, hide_index=True, use_container_width=True)
+
+
+def calculate_warning_index(df, team, elo_dict):
+    warnings = []
+    warning_score = 0.0
+
+    df = df.copy()
+    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
+    df = df.dropna(subset=['Date']).sort_values('Date')
+
+    latest_date = df['Date'].max()
+
+    last_matches = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)].sort_values('Date').tail(5)
+    season_matches = df[(df['Date'] >= latest_date - pd.Timedelta(days=365))]
+    season_matches = season_matches[(season_matches['HomeTeam'] == team) | (season_matches['AwayTeam'] == team)]
+
+    def get_stats(matches):
+        goals_for = []
+        shots_on_target = []
+        goals_against = []
+
+        for _, row in matches.iterrows():
+            if row['HomeTeam'] == team:
+                goals_for.append(row['FTHG'])
+                goals_against.append(row['FTAG'])
+                shots_on_target.append(row['HST'])
+            else:
+                goals_for.append(row['FTAG'])
+                goals_against.append(row['FTHG'])
+                shots_on_target.append(row['AST'])
+
+        return {
+            "avg_goals_for": np.mean(goals_for) if goals_for else 0,
+            "avg_goals_against": np.mean(goals_against) if goals_against else 0,
+            "avg_sot": np.mean(shots_on_target) if shots_on_target else 0
+        }
+
+    season_stats = get_stats(season_matches)
+    recent_stats = get_stats(last_matches)
+
+    # 1. Pokles xG (proxy přes střely na bránu)
+    if season_stats['avg_sot'] > 0 and recent_stats['avg_sot'] / season_stats['avg_sot'] < 0.8:
+        warnings.append("Pokles xG >20%")
+        warning_score += 0.2
+
+    # 2. Pokles konverze střel
+    season_conversion = season_stats['avg_goals_for'] / season_stats['avg_sot'] if season_stats['avg_sot'] > 0 else 0
+    recent_conversion = recent_stats['avg_goals_for'] / recent_stats['avg_sot'] if recent_stats['avg_sot'] > 0 else 0
+
+    if season_conversion > 0 and recent_conversion / season_conversion < 0.8:
+        warnings.append("Pokles konverze střel >20%")
+        warning_score += 0.2
+
+    # 3. Zhoršená obrana
+    if season_stats['avg_goals_against'] > 0 and recent_stats['avg_goals_against'] / season_stats['avg_goals_against'] > 1.2:
+        warnings.append("Zhoršená obrana (více inkasovaných)")
+        warning_score += 0.2
+
+    # 4. ELO pokles
+    one_month_ago = latest_date - pd.Timedelta(days=30)
+    past_df = df[df['Date'] <= one_month_ago]
+    past_elo_dict = calculate_elo_ratings(past_df)
+    current_elo = elo_dict.get(team, 1500)
+    past_elo = past_elo_dict.get(team, 1500)
+
+    if (past_elo - current_elo) > 20:
+        warnings.append("ELO pokles >20 bodů")
+        warning_score += 0.2
+
+    # 5. Pokles bodů
+    points_last5 = []
+    for _, row in last_matches.iterrows():
+        if row['HomeTeam'] == team:
+            points = 3 if row['FTHG'] > row['FTAG'] else 1 if row['FTHG'] == row['FTAG'] else 0
+        else:
+            points = 3 if row['FTAG'] > row['FTHG'] else 1 if row['FTAG'] == row['FTHG'] else 0
+        points_last5.append(points)
+    avg_points = np.mean(points_last5) if points_last5 else 0
+    if avg_points < 1.0:
+        warnings.append("Nízký bodový průměr (<1 bod/zápas)")
+        warning_score += 0.2
+
+    warning_score = min(warning_score, 1.0)
+
+    return warnings, warning_score
+
+def detect_overperformance_and_momentum(df, team):
+    import numpy as np
+
+    df = df.copy()
+    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
+    df = df.dropna(subset=['Date']).sort_values('Date')
+
+    latest_date = df['Date'].max()
+    team_matches = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)]
+
+    if team_matches.empty:
+        return "N/A", "N/A"
+
+    # Sezónní statistiky
+    total_goals = 0
+    total_xg = 0
+    total_shots = 0
+    total_tempo = 0
+    total_xg_against = 0
+    matches_count = 0
+
+    for _, row in team_matches.iterrows():
+        if row['HomeTeam'] == team:
+            goals = row['FTHG']
+            shots = row['HS']
+            shots_on_target = row['HST']
+            shots_conceded = row['AS']
+            shots_on_target_conceded = row['AST']
+        else:
+            goals = row['FTAG']
+            shots = row['AS']
+            shots_on_target = row['AST']
+            shots_conceded = row['HS']
+            shots_on_target_conceded = row['HST']
+
+        xg = shots_on_target * 0.1  # jednoduchý pseudo-xG model
+        xg_conceded = shots_on_target_conceded * 0.1
+        tempo = shots + shots_conceded + row['HC'] + row['AC'] + row['HF'] + row['AF']
+
+        total_goals += goals
+        total_xg += xg
+        total_shots += shots
+        total_tempo += tempo
+        total_xg_against += xg_conceded
+        matches_count += 1
+
+    if matches_count == 0:
+        return "N/A", "N/A"
+
+    avg_xg = total_xg / matches_count
+    avg_shots = total_shots / matches_count
+    avg_tempo = total_tempo / matches_count
+    avg_xg_against = total_xg_against / matches_count
+
+    # Posledních 5 zápasů
+    last5_matches = team_matches.tail(5)
+
+    last5_goals = 0
+    last5_xg = 0
+    last5_shots = 0
+    last5_tempo = 0
+    last5_xg_against = 0
+    last5_count = 0
+
+    for _, row in last5_matches.iterrows():
+        if row['HomeTeam'] == team:
+            goals = row['FTHG']
+            shots = row['HS']
+            shots_on_target = row['HST']
+            shots_conceded = row['AS']
+            shots_on_target_conceded = row['AST']
+        else:
+            goals = row['FTAG']
+            shots = row['AS']
+            shots_on_target = row['AST']
+            shots_conceded = row['HS']
+            shots_on_target_conceded = row['HST']
+
+        xg = shots_on_target * 0.1
+        xg_conceded = shots_on_target_conceded * 0.1
+        tempo = shots + shots_conceded + row['HC'] + row['AC'] + row['HF'] + row['AF']
+
+        last5_goals += goals
+        last5_xg += xg
+        last5_shots += shots
+        last5_tempo += tempo
+        last5_xg_against += xg_conceded
+        last5_count += 1
+
+    if last5_count == 0:
+        return "N/A", "N/A"
+
+    avg_last5_xg = last5_xg / last5_count
+    avg_last5_shots = last5_shots / last5_count
+    avg_last5_tempo = last5_tempo / last5_count
+    avg_last5_xg_against = last5_xg_against / last5_count
+
+    # Výpočty
+    overperformance = total_goals / total_xg if total_xg > 0 else np.nan
+
+    xg_momentum = avg_last5_xg / avg_xg if avg_xg > 0 else 1
+    shots_momentum = avg_last5_shots / avg_shots if avg_shots > 0 else 1
+    tempo_momentum = avg_last5_tempo / avg_tempo if avg_tempo > 0 else 1
+    defense_momentum = avg_xg_against / avg_last5_xg_against if avg_last5_xg_against > 0 else 1  # pozor, menší xG proti = lepší
+
+    # Vážený průměr momenta
+    final_momentum = (
+        0.4 * xg_momentum +
+        0.3 * shots_momentum +
+        0.2 * tempo_momentum +
+        0.1 * defense_momentum
+    )
+
+    # Interpretace
+    if overperformance > 1.2:
+        overperf_status = "🚀 Přestřeluje"
+    elif overperformance < 0.8:
+        overperf_status = "🛑 Podstřeluje"
+    else:
+        overperf_status = "⚖️ Normální"
+
+    if final_momentum > 1.1:
+        momentum_status = "📈 Zlepšuje se"
+    elif final_momentum < 0.9:
+        momentum_status = "📉 Zhoršuje se"
+    else:
+        momentum_status = "➖ Stabilní"
+
+    return overperf_status, momentum_status
 
 
 

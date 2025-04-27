@@ -13,7 +13,7 @@ from utils.poisson_utils import (
     expected_goals_weighted_by_elo,expected_match_style_score,get_goal_probabilities,
     calculate_elo_ratings, calculate_recent_form, detect_current_season,expected_team_stats_weighted_by_elo,
     calculate_team_pseudo_xg,calculate_expected_and_actual_points,merged_home_away_opponent_form,detect_risk_factors,detect_positive_factors,
-    display_team_status_table
+    display_team_status_table,calculate_warning_index,detect_overperformance_and_momentum
 )
 
 
@@ -315,9 +315,35 @@ if not multi_prediction_mode:
     # st.metric(f"Form Boost {home_team}", f"{pos_score_home*100:.0f}%")
     # st.metric(f"Form Boost {away_team}", f"{pos_score_away*100:.0f}%")
 
-    st.subheader(f"📋 Analýza týmů")
+    warnings_home, warning_score_home = calculate_warning_index(df, home_team, elo_dict)
+    warnings_away, warning_score_away = calculate_warning_index(df, away_team, elo_dict)
+
+    if warnings_home:
+        st.error(f"⚠️ {home_team} Warning Index: {int(warning_score_home * 100)}% - " + ", ".join(warnings_home))
+    if warnings_away:
+        st.error(f"⚠️ {away_team} Warning Index: {int(warning_score_away * 100)}% - " + ", ".join(warnings_away))
+
+
+    
+
+
+
     display_team_status_table(home_team, away_team, df, elo_dict)
 
+    overperf_home, momentum_home = detect_overperformance_and_momentum(df, home_team)
+    overperf_away, momentum_away = detect_overperformance_and_momentum(df, away_team)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown(f"🏠 **{home_team}**")
+        st.markdown(f"- Overperformance: {overperf_home}")
+        st.markdown(f"- Momentum: {momentum_home}")
+
+    with col2:
+        st.markdown(f"🚶‍♂️ **{away_team}**")
+        st.markdown(f"- Overperformance: {overperf_away}")
+        st.markdown(f"- Momentum: {momentum_away}")
 
 
             
