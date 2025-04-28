@@ -4,18 +4,22 @@ import numpy as np
 from io import BytesIO
 from datetime import date
 #from flask import Flask, request, jsonify
+
 from utils.poisson_utils import (
-    load_data, validate_dataset, calculate_team_strengths,get_team_average_gii,
+    load_data,calculate_team_strengths,get_team_average_gii,
     get_head_to_head_stats,classify_team_strength,get_team_average_gii,get_top_scorelines,
     poisson_prediction, match_outcomes_prob, over_under_prob,
-    btts_prob, prob_to_odds,calculate_pseudo_xg,calculate_match_tempo,calculate_gii_zscore,
+    btts_prob, prob_to_odds,calculate_pseudo_xg_for_team,calculate_match_tempo,calculate_gii_zscore,
     analyze_opponent_strength, calculate_expected_points,classify_team_strength,intensity_score_to_emoji,
     expected_goals_weighted_by_elo,expected_match_style_score,get_goal_probabilities,
-    calculate_elo_ratings, calculate_recent_form, detect_current_season,expected_team_stats_weighted_by_elo,
+    calculate_elo_ratings, detect_current_season,expected_team_stats_weighted_by_elo,
     calculate_team_pseudo_xg,calculate_expected_and_actual_points,merged_home_away_opponent_form,detect_risk_factors,detect_positive_factors,
-    display_team_status_table,calculate_warning_index,detect_overperformance_and_momentum
+    calculate_warning_index,detect_overperformance_and_momentum,calculate_clean_sheets,form_points_to_emoji,calculate_elo_changes,calculate_team_styles,add_btts_column,aggregate_team_stats,
+    calculate_form_emojis,calculate_conceded_goals,calculate_recent_team_form,expected_match_tempo,tempo_to_emoji
 )
-
+from utils.frontend_utils import (
+    validate_dataset,display_team_status_table
+)
 
 
 st.set_page_config(page_title="⚽ Poisson Predictor", layout="wide")
@@ -66,156 +70,66 @@ if home_team == away_team:
     # Základní metriky
     num_matches = len(season_df)
     avg_goals = round((season_df['FTHG'] + season_df['FTAG']).mean(), 1)
-    season_df['BTTS'] = season_df.apply(lambda row: int(row['FTHG'] > 0 and row['FTAG'] > 0), axis=1)
+    season_df = add_btts_column(season_df)
+
     btts_pct = round(100 * season_df['BTTS'].mean(), 1)
     over_25 = round(100 * season_df[(season_df['FTHG'] + season_df['FTAG']) > 2.5].shape[0] / num_matches, 1)
+
     st.markdown(f"📅 Zápasů: {num_matches} ⚽ Průměr gólů: {avg_goals} 🥅 BTTS: {btts_pct}% 📈 Over 2.5: {over_25}%")
 
     # ELO, forma, body
     elo_dict = calculate_elo_ratings(season_df)
-    form_dict = calculate_recent_form(season_df, days=31)
+    form_emojis = calculate_form_emojis(season_df)
     points_data = calculate_expected_and_actual_points(season_df)
 
-    # Přehled tabulky
-    team_stats = season_df.groupby("HomeTeam").agg({
-        "FTHG": "mean", "FTAG": "mean", "HS": "mean", "HST": "mean", "HC": "mean", "HY": "mean"
-    }).rename(columns={
-        "FTHG": "Góly doma", "FTAG": "Góly venku", "HS": "Střely", "HST": "Na branku", "HC": "Rohy", "HY": "Žluté"
-    })
-
-    shots_on_target = season_df.groupby("HomeTeam")["HST"].mean()
-    shots_on_target_away = season_df.groupby("AwayTeam")["AST"].mean()
-
-    combined_sot = pd.DataFrame({
-        "Na branku doma": shots_on_target,
-        "Na branku venku": shots_on_target_away
-    })
-    combined_sot["Celkem na branku"] = combined_sot["Na branku doma"] + combined_sot["Na branku venku"]
-
-    
+    # Přehled týmových statistik
+    team_stats = aggregate_team_stats(season_df)
     over25 = season_df.groupby("HomeTeam").apply(lambda x: (x['FTHG'] + x['FTAG'] > 2.5).mean() * 100).round(0)
     btts = season_df.groupby("HomeTeam")["BTTS"].mean().mul(100).round(0)
     xg_stats = calculate_team_pseudo_xg(season_df)
 
-    # Pomocná funkce pro čistá konta
-    def calculate_clean_sheets(team, df):
-        team_matches = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)]
-        cs = 0
-        for _, row in team_matches.iterrows():
-            if row['HomeTeam'] == team and row['FTAG'] == 0:
-                cs += 1
-            elif row['AwayTeam'] == team and row['FTHG'] == 0:
-                cs += 1
-        return round(100 * cs / len(team_matches), 1) if len(team_matches) > 0 else 0
-
-
-    # Upravený summary_table s novými metrikami
     summary_table = pd.DataFrame({
         "Tým": team_stats.index,
-        "Elo": team_stats.index.map(lambda t: elo_dict.get(t, 1500)),
+        "Elo": team_stats.index.map(lambda t: elo_dict.get(t, 1500)).round(0),
         "Body": team_stats.index.map(lambda t: points_data.get(t, {}).get("points", 0)),
-        "Form": team_stats.index.map(lambda t: 
-            "🔥🔥🔥" if form_dict.get(t, 0) > 2.5 else
-            "🔥🔥" if form_dict.get(t, 0) > 2.0 else
-            "🔥" if form_dict.get(t, 0) > 1.5 else
-            "💤" if form_dict.get(t, 0) > 1.2 else
-            "❄️" if form_dict.get(t, 0) > 0.7 else
-            "❄️❄️" if form_dict.get(t, 0) > 0.5 else
-            "❄️❄️❄️"
-        ),
+        "Form": team_stats.index.map(lambda t: form_emojis.get(t, "❄️❄️❄️")),
         "Góly/zápas": ((team_stats["Góly doma"] + team_stats["Góly venku"]) / 2).round(2),
         "Intenzita": team_stats.index.map(lambda t: intensity_score_to_emoji(gii_dict.get(t, 0))),
-        #"GII": team_stats.index.map(lambda t: gii_dict.get(t, 0)),
-        "Čistá konta %": team_stats.index.map(lambda t: calculate_clean_sheets(t, season_df)),
+        "Čistá konta %": team_stats.index.map(lambda t: calculate_clean_sheets(season_df, t)),
         "Over 2.5 %": team_stats.index.map(over25).astype(str) + "%",
         "BTTS %": team_stats.index.map(btts).astype(str) + "%"
     }).sort_values("Elo", ascending=False).reset_index(drop=True)
 
     st.dataframe(summary_table, hide_index=True)
 
-    # Top 5 přehled – různé kategorie
+    # 🌟 Top 5 sekce
     st.markdown("### 🌟 Top 5 týmy")
     cols = st.columns(4)
+
+    # Nejvíc gólů
     cols[0].markdown("🔮 **Nejvíc gólů**")
     cols[0].dataframe(summary_table.sort_values("Góly/zápas", ascending=False).head(5)[["Tým", "Góly/zápas"]], hide_index=True)
 
-    # Nová sekce: Nejvíce obdržených gólů
-    conceded_stats = []
-    for team in season_df['HomeTeam'].unique():
-        home = season_df[season_df['AwayTeam'] == team]
-        away = season_df[season_df['HomeTeam'] == team]
-        goals_against = pd.concat([home['FTHG'], away['FTAG']]).mean()
-        conceded_stats.append({"Tým": team, "Obdržené góly": round(goals_against, 2)})
-    conceded_df = pd.DataFrame(conceded_stats).sort_values("Obdržené góly", ascending=False).reset_index(drop=True)
+    # Nejvíc obdržených gólů
+    conceded_df = calculate_conceded_goals(season_df)
     cols[1].markdown("🔴 **Nejvíce obdržených gólů**")
     cols[1].dataframe(conceded_df.head(5), hide_index=True)
 
-    # 📉 Nejhorší forma (správně seřazená + emoji)
-    form_stats = []
-    for team in season_df['HomeTeam'].unique():
-        recent_matches = season_df[(season_df['HomeTeam'] == team) | (season_df['AwayTeam'] == team)].sort_values("Date").tail(5)
-        total_points = 0
-        for _, row in recent_matches.iterrows():
-            if row['HomeTeam'] == team:
-                total_points += 3 if row['FTHG'] > row['FTAG'] else 1 if row['FTHG'] == row['FTAG'] else 0
-            elif row['AwayTeam'] == team:
-                total_points += 3 if row['FTAG'] > row['FTHG'] else 1 if row['FTAG'] == row['FTHG'] else 0
-        avg_points = total_points / 5
-        form_stats.append({"Tým": team, "Body/zápas": avg_points})
-
-    form_df = pd.DataFrame(form_stats).sort_values("Body/zápas").reset_index(drop=True)
-
-    def form_to_emoji(avg_points):
-        if avg_points > 2.5:
-            return "🔥🔥🔥"
-        elif avg_points > 2.0:
-            return "🔥🔥"
-        elif avg_points > 1.5:
-            return "🔥"
-        elif avg_points > 1.2:
-            return "💤"
-        elif avg_points > 0.7:
-            return "❄️"
-        elif avg_points > 0.5:
-            return "❄️❄️"
-        else:
-            return "❄️❄️❄️"
-
-    form_df["Form"] = form_df["Body/zápas"].apply(form_to_emoji)
+    # 📉 Nejhorší forma
+    form_df = calculate_recent_team_form(season_df)
     cols[2].markdown("📉 **Nejhorší forma**")
-    cols[2].dataframe(form_df[["Tým", "Form"]].head(5), hide_index=True)
+    cols[2].dataframe(form_df.head(5)[["Tým", "Form"]], hide_index=True)
 
-
+    # 📈 Nejlepší forma
     cols[3].markdown("📈 **Nejlepší forma**")
     cols[3].dataframe(summary_table.sort_values("Form", ascending=False).head(5)[["Tým", "Form"]], hide_index=True)
 
-    # Další 4-sloupcový blok – ELO + styl
+    # 🔧 Styl a vývoj týmů
     st.markdown("### 🔧 Styl a vývoj týmů")
-    elo_start = calculate_elo_ratings(season_df[season_df['Date'] <= season_df['Date'].min() + pd.Timedelta(days=5)])
-    elo_end = calculate_elo_ratings(season_df)
-    elo_change = [{"Tým": t, "Změna": round(elo_end.get(t, 1500) - elo_start.get(t, 1500), 1)} for t in elo_end]
-    elo_df = pd.DataFrame(elo_change).sort_values("Změna", ascending=False).reset_index(drop=True)
+    elo_df = calculate_elo_changes(season_df)
     elo_drop_df = elo_df.sort_values("Změna").head(5).reset_index(drop=True)
 
-    
-        
-    # Styl hry (ofenzivní/defenzivní)
-    offensive_style = []
-    defensive_style = []
-    for team in season_df['HomeTeam'].unique():
-        home = season_df[season_df['HomeTeam'] == team]
-        away = season_df[season_df['AwayTeam'] == team]
-        shots = pd.concat([home['HS'], away['AS']]).mean()
-        sot = pd.concat([home['HST'], away['AST']]).mean()
-        corners = pd.concat([home['HC'], away['AC']]).mean()
-        xg = (sot * (pd.concat([home['FTHG'], away['FTAG']]).sum() / sot)) if sot > 0 else 0
-        fouls = pd.concat([home['HF'], away['AF']]).mean()
-        offensive_index = shots * 0.25 + sot * 0.25 + corners * 0.2 + xg * 0.2 + fouls * 0.1
-        defensive_index = (1 / (shots + 1)) * 0.3 + (1 / (sot + 1)) * 0.25 + (1 / (corners + 1)) * 0.2 + (1 / (xg + 0.1)) * 0.15 + (1 / (fouls + 1)) * 0.1
-        offensive_style.append({"Tým": team, "Ofenzivní styl index": round(offensive_index, 2)})
-        defensive_style.append({"Tým": team, "Defenzivní styl index": round(defensive_index, 2)})
-    off_df = pd.DataFrame(offensive_style).sort_values("Ofenzivní styl index", ascending=False).reset_index(drop=True)
-    def_df = pd.DataFrame(defensive_style).sort_values("Defenzivní styl index", ascending=False).reset_index(drop=True)
+    off_df, def_df = calculate_team_styles(season_df)
 
     cols2 = st.columns(4)
     cols2[0].markdown("📈 **ELO zlepšení**")
@@ -228,6 +142,7 @@ if home_team == away_team:
     cols2[3].dataframe(def_df.head(5)[["Tým", "Defenzivní styl index"]], hide_index=True)
 
     st.stop()
+
 
 if not multi_prediction_mode:
 
@@ -246,8 +161,8 @@ if not multi_prediction_mode:
     btts = btts_prob(matrix)
     xpoints = calculate_expected_points(outcomes)
 
-    xg_home = calculate_pseudo_xg(season_df, home_team)
-    xg_away = calculate_pseudo_xg(season_df, away_team)
+    xg_home = calculate_pseudo_xg_for_team(season_df, home_team)
+    xg_away = calculate_pseudo_xg_for_team(season_df, away_team)
 
     strength_home = analyze_opponent_strength(season_df, home_team, is_home=True)
     strength_away = analyze_opponent_strength(season_df, away_team, is_home=False)
@@ -257,7 +172,8 @@ if not multi_prediction_mode:
     mss_prediction = expected_match_style_score(season_df, home_team, away_team, elo_dict)
     col1, col2 = st.columns(2)
     expected_gii_emoji = intensity_score_to_emoji(expected_gii)
-
+    expected_tempo = expected_match_tempo(season_df, home_team, away_team, elo_dict)
+    tempo_emoji = tempo_to_emoji(expected_tempo)
     with col1:
         st.markdown("### ⚽ Očekávané skóre")
         st.markdown(
@@ -270,8 +186,8 @@ if not multi_prediction_mode:
 
     with col2:
         st.markdown("### 🎭 Očekávaný styl zápasu")
-        col2.markdown(f"### {expected_gii_emoji}")
-        col2.caption(f"Založeno na GII skóre {home_team} ({gii_home}) a {away_team} ({gii_away})")
+        col2.markdown(f"### {tempo_emoji} ({expected_tempo})")
+        
 
 
 
@@ -323,29 +239,7 @@ if not multi_prediction_mode:
     if warnings_away:
         st.error(f"⚠️ {away_team} Warning Index: {int(warning_score_away * 100)}% - " + ", ".join(warnings_away))
 
-
-    
-
-
-
     display_team_status_table(home_team, away_team, df, elo_dict)
-
-    overperf_home, momentum_home = detect_overperformance_and_momentum(df, home_team)
-    overperf_away, momentum_away = detect_overperformance_and_momentum(df, away_team)
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown(f"🏠 **{home_team}**")
-        st.markdown(f"- Overperformance: {overperf_home}")
-        st.markdown(f"- Momentum: {momentum_home}")
-
-    with col2:
-        st.markdown(f"🚶‍♂️ **{away_team}**")
-        st.markdown(f"- Overperformance: {overperf_away}")
-        st.markdown(f"- Momentum: {momentum_away}")
-
-
             
     
     # 📌 Týmové statistiky
@@ -368,35 +262,7 @@ if not multi_prediction_mode:
     # Zobrazení v rozhraní
     for stat, values in elo_stats.items():
         st.markdown(f"- **{stat}**: `{home_team}` {values['Home']} – {values['Away']} `{away_team}`")
-
-
-    # 📊 Výkon vůči soupeřům (detailní přehled)
-    # st.markdown("## ⚖️ Výkon proti typům soupeřů")
-    # perf_home = analyze_opponent_strength(df, home_team, is_home=True)
-    # perf_away = analyze_opponent_strength(df, away_team, is_home=False)
-
-    # st.markdown(f"### 🏠 Výkon domácího týmu – {home_team}")
-    # home_cols = st.columns(3)
-    # with st.container():
-    #     for i, cat in enumerate(['vs_strong', 'vs_average', 'vs_weak']):
-    #         with home_cols[i]:
-    #             st.metric("Zápasy", perf_home[cat]['matches'])
-    #             st.metric("Góly", perf_home[cat]['goals'])
-    #             st.metric("Konverze", f"{perf_home[cat]['con_rate']*100:.1f}%")
-    #             st.metric("Body/zápas", perf_home[cat]['xP'])
-    #             st.caption(["💪 Silní", "⚖️ Průměrní", "🪶 Slabí"][i])
-
-    # st.markdown(f"### 🚶‍♂️ Výkon hostujícího týmu – {away_team}")
-    # away_cols = st.columns(3)
-    # with st.container():
-    #     for i, cat in enumerate(['vs_strong', 'vs_average', 'vs_weak']):
-    #         with away_cols[i]:
-    #             st.metric("Zápasy", perf_away[cat]['matches'])
-    #             st.metric("Góly", perf_away[cat]['goals'])
-    #             st.metric("Konverze", f"{perf_away[cat]['con_rate']*100:.1f}%")
-    #             st.metric("Body/zápas", perf_away[cat]['xP'])
-    #             st.caption(["💪 Silní", "⚖️ Průměrní", "🪶 Slabí"][i])
-                
+        
     st.markdown("## 🏟️ Výkon dle typu soupeřů (Doma / Venku)")
     strength_home = classify_team_strength(df, home_team)
     strength_away = classify_team_strength(df, away_team)
@@ -437,32 +303,6 @@ if not multi_prediction_mode:
     # Výpočet metriky tempa a tvrdosti
     tempo_stats_home = calculate_match_tempo(df, home_team, elo_dict.get(away_team, 1500), is_home=True, elo_dict=elo_dict)
     tempo_stats_away = calculate_match_tempo(df, away_team, elo_dict.get(home_team, 1500), is_home=False, elo_dict=elo_dict)
-
-    # 🧱 Sekce pro tempo + tvrdost zápasů
-    cols = st.columns(2)
-
-    # with cols[0]:
-    #     st.markdown(f"### 🏠 {home_team}")
-    #     st.metric("Tempo zápasu", f"{tempo_stats_home['rating']}")
-    #     #st.markdown(f"{tempo_stats_home['rating']} ({tempo_stats_home['percentile']} percentil)")
-
-    #     st.metric("Tvrdost zápasu", f"{tempo_stats_home['aggressiveness_rating']}")
-    #     #st.markdown(f"{tempo_stats_home['aggressiveness_rating']}")
-
-    #     st.metric("Dominance v zápase", f"{tempo_stats_home['imbalance_type']}")
-    #     #st.caption(f"{tempo_stats_home['imbalance_type']} ({tempo_stats_home['imbalance']})")
-
-    # with cols[1]:
-    #     st.markdown(f"### 🚶‍♂️ {away_team}")
-    #     st.metric("Tempo zápasu", f"{tempo_stats_away['rating']} ")
-    #     #t.markdown(f"({tempo_stats_away['percentile']} percentil)")
-
-    #     st.metric("Tvrdost zápasu", f"{tempo_stats_away['aggressiveness_rating']}")
-    #     #st.markdown(f"{tempo_stats_away['aggressiveness_rating']}")
-
-    #     st.metric("Dominance v zápase", f"{tempo_stats_away['imbalance_type']}")
-    #     #st.markdown(f"{tempo_stats_away['aggressiveness_rating']}")
-    #     #st.caption(f"{tempo_stats_away['imbalance_type']} ({tempo_stats_away['imbalance']})")
 
 
     # Sekce pro tempo + tvrdost zápasů
@@ -585,7 +425,7 @@ else:
                     # --- Možnost odebrat tento zápas ---
                     if st.button(f"🗑️ Smazat zápas {match['home_team']} vs {match['away_team']}", key=f"del_{idx}"):
                         st.session_state.match_list.pop(idx)
-                        st.st.rerun()
+                        st.rerun()
                         
                     # --- Přidání do exportu ---
                     top_scores = get_top_scorelines(matrix, top_n=1)
