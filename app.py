@@ -4,6 +4,7 @@ from sections.match_prediction_section import render_single_match_prediction
 from sections.multi_prediction_section import render_multi_match_predictions
 from utils.poisson_utils import load_data, detect_current_season, calculate_team_strengths, calculate_gii_zscore, get_team_average_gii
 from utils.frontend_utils import validate_dataset
+from utils.update_data import update_all_leagues
 
 st.set_page_config(page_title="⚽ Poisson Predictor", layout="wide")
 
@@ -22,17 +23,41 @@ league_files = {
     "T1 (Super League)": "data/T1_combined_full_updated.csv",
 }
 
-# Výběr ligy
+# --- Sidebar: Správa dat ---
+with st.sidebar.expander("🔧 Správa dat"):
+    if st.button("🔄 Aktualizovat ligy"):
+        with st.spinner("Stahuji data..."):
+            logs = update_all_leagues()
+            if "reload_flag" in st.session_state:
+                del st.session_state["reload_flag"]
+            st.session_state.reload_flag = True
+        for log in logs:
+            if "✅" in log:
+                st.sidebar.success(log)
+            else:
+                st.sidebar.info(str(log))
+
+# --- Sidebar: Výběr ligy ---
 league_name = st.sidebar.selectbox("🌍 Vyber ligu", list(league_files.keys()))
 league_file = league_files[league_name]
 
-# Načtení dat
-df = load_data(league_file)
-validate_dataset(df)
-season_df, season_start = detect_current_season(df)
-team_strengths, _, _ = calculate_team_strengths(df)
-season_df = calculate_gii_zscore(season_df)
-gii_dict = get_team_average_gii(season_df)
+# --- Načtení a příprava dat ---
+@st.cache_data(show_spinner=False)
+def load_and_prepare(file_path):
+    df = load_data(file_path)
+    validate_dataset(df)
+    season_df, _ = detect_current_season(df)
+    team_strengths, _, _ = calculate_team_strengths(df)
+    season_df = calculate_gii_zscore(season_df)
+    gii_dict = get_team_average_gii(season_df)
+    return df, season_df, gii_dict
+
+# --- Načtení s podmínkou opětovného načtení po aktualizaci ---
+if st.session_state.get("reload_flag"):
+    st.cache_data.clear()
+    del st.session_state["reload_flag"]
+
+df, season_df, gii_dict = load_and_prepare(league_file)
 
 if "match_list" not in st.session_state:
     st.session_state.match_list = []

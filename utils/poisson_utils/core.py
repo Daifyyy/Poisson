@@ -6,7 +6,7 @@ def prepare_df(df: pd.DataFrame) -> pd.DataFrame:
     """Základní úprava dat: kopírování, převod datumu, odstranění nevalidních řádků, seřazení podle data."""
     df = df.copy()
     df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
-    df = df.dropna(subset=['Date'])
+    #df = df.dropna(subset=['Date'])
     df = df.sort_values('Date')
     return df
 
