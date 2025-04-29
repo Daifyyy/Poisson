@@ -32,14 +32,16 @@ with st.sidebar.expander("🔧 Správa dat"):
             if "reload_flag" in st.session_state:
                 del st.session_state["reload_flag"]
             st.session_state.reload_flag = True
+
+        placeholder = st.sidebar.empty()  # 💎 sidebar placeholder
         for log in logs:
-            placeholder = st.empty()
             if "✅" in log:
                 placeholder.success(log)
             else:
                 placeholder.info(str(log))
             time.sleep(3)
             placeholder.empty()
+
 
 # --- Sidebar: Výběr ligy ---
 league_name = st.sidebar.selectbox("🌍 Vyber ligu", list(league_files.keys()))
