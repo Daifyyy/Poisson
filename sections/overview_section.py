@@ -1,0 +1,76 @@
+import streamlit as st
+import pandas as pd
+from utils.poisson_utils import (
+    calculate_elo_ratings, calculate_form_emojis, calculate_expected_and_actual_points,
+    aggregate_team_stats, calculate_team_pseudo_xg, add_btts_column,
+    calculate_conceded_goals, calculate_recent_team_form,
+    calculate_elo_changes, calculate_team_styles,
+    calculate_clean_sheets, intensity_score_to_emoji
+)
+
+def render_league_overview(season_df, league_name, gii_dict):
+    st.header(f"🏆 {league_name}")
+
+    num_matches = len(season_df)
+    avg_goals = round((season_df['FTHG'] + season_df['FTAG']).mean(), 1)
+    season_df = add_btts_column(season_df)
+    btts_pct = round(100 * season_df['BTTS'].mean(), 1)
+    over_25 = round(100 * season_df[(season_df['FTHG'] + season_df['FTAG']) > 2.5].shape[0] / num_matches, 1)
+
+    st.markdown(f"📅 Zápasů: {num_matches} ⚽ Průměr gólů: {avg_goals} 🥅 BTTS: {btts_pct}% 📈 Over 2.5: {over_25}%")
+
+    elo_dict = calculate_elo_ratings(season_df)
+    form_emojis = calculate_form_emojis(season_df)
+    points_data = calculate_expected_and_actual_points(season_df)
+    team_stats = aggregate_team_stats(season_df)
+    over25 = season_df.groupby("HomeTeam").apply(lambda x: (x['FTHG'] + x['FTAG'] > 2.5).mean() * 100).round(0)
+    btts = season_df.groupby("HomeTeam")["BTTS"].mean().mul(100).round(0)
+    xg_stats = calculate_team_pseudo_xg(season_df)
+
+    summary_table = pd.DataFrame({
+        "Tým": team_stats.index,
+        "Elo": team_stats.index.map(lambda t: elo_dict.get(t, 1500)).round(0),
+        "Body": team_stats.index.map(lambda t: points_data.get(t, {}).get("points", 0)),
+        "Form": team_stats.index.map(lambda t: form_emojis.get(t, "❄️❄️❄️")),
+        "Góly/zápas": ((team_stats["Góly doma"] + team_stats["Góly venku"]) / 2).round(2),
+        "Intenzita": team_stats.index.map(lambda t: intensity_score_to_emoji(gii_dict.get(t, 0))),
+        "Čistá konta %": team_stats.index.map(lambda t: calculate_clean_sheets(season_df, t)),
+        "Over 2.5 %": team_stats.index.map(over25).astype(str) + "%",
+        "BTTS %": team_stats.index.map(btts).astype(str) + "%"
+    }).sort_values("Elo", ascending=False).reset_index(drop=True)
+
+    st.dataframe(summary_table, hide_index=True)
+
+    # Top 5 sekce
+    st.markdown("### 🌟 Top 5 týmy")
+    cols = st.columns(4)
+    cols[0].markdown("🔮 **Nejvíc gólů**")
+    cols[0].dataframe(summary_table.sort_values("Góly/zápas", ascending=False).head(5)[["Tým", "Góly/zápas"]], hide_index=True)
+
+    conceded_df = calculate_conceded_goals(season_df)
+    cols[1].markdown("🔴 **Nejvíce obdržených gólů**")
+    cols[1].dataframe(conceded_df.head(5), hide_index=True)
+
+    form_df = calculate_recent_team_form(season_df)
+    cols[2].markdown("📉 **Nejhorší forma**")
+    cols[2].dataframe(form_df.head(5)[["Tým", "Form"]], hide_index=True)
+
+    cols[3].markdown("📈 **Nejlepší forma**")
+    cols[3].dataframe(summary_table.sort_values("Form", ascending=False).head(5)[["Tým", "Form"]], hide_index=True)
+
+    st.markdown("### 🔧 Styl a vývoj týmů")
+    elo_df = calculate_elo_changes(season_df)
+    elo_drop_df = elo_df.sort_values("Změna").head(5).reset_index(drop=True)
+    off_df, def_df = calculate_team_styles(season_df)
+
+    cols2 = st.columns(4)
+    cols2[0].markdown("📈 **ELO zlepšení**")
+    cols2[0].dataframe(elo_df.head(5), hide_index=True)
+    cols2[1].markdown("📉 **ELO poklesy**")
+    cols2[1].dataframe(elo_drop_df, hide_index=True)
+    cols2[2].markdown("⚡ **Ofenzivní styl**")
+    cols2[2].dataframe(off_df.head(5)[["Tým", "Ofenzivní styl index"]], hide_index=True)
+    cols2[3].markdown("🧱 **Defenzivní styl**")
+    cols2[3].dataframe(def_df.head(5)[["Tým", "Defenzivní styl index"]], hide_index=True)
+
+    st.stop()
