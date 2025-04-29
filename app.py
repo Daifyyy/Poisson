@@ -38,7 +38,7 @@ with st.sidebar.expander("🔧 Správa dat"):
             else:
                 placeholder.info(str(log))
             st.sleep(3)
-            placeholder.empty())
+            placeholder.empty()
 
 # --- Sidebar: Výběr ligy ---
 league_name = st.sidebar.selectbox("🌍 Vyber ligu", list(league_files.keys()))
