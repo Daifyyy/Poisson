@@ -25,17 +25,20 @@ league_files = {
 
 # --- Sidebar: Správa dat ---
 with st.sidebar.expander("🔧 Správa dat"):
-    if st.button("🔄 Aktualizovat ligy"):
-        with st.spinner("Stahuji data..."):
+    if st.button("🔄 Aktualizovat data z webu"):
+        with st.spinner("Stahuji a porovnávám data..."):
             logs = update_all_leagues()
             if "reload_flag" in st.session_state:
                 del st.session_state["reload_flag"]
             st.session_state.reload_flag = True
         for log in logs:
+            placeholder = st.sidebar.empty()
             if "✅" in log:
-                st.sidebar.success(log)
+                placeholder.success(log)
             else:
-                st.sidebar.info(str(log))
+                placeholder.info(str(log))
+            st.sleep(3)
+            placeholder.empty())
 
 # --- Sidebar: Výběr ligy ---
 league_name = st.sidebar.selectbox("🌍 Vyber ligu", list(league_files.keys()))
