@@ -33,7 +33,7 @@ with st.sidebar.expander("🔧 Správa dat"):
                 del st.session_state["reload_flag"]
             st.session_state.reload_flag = True
         for log in logs:
-            placeholder = st.sidebar.empty()
+            placeholder = st.empty()
             if "✅" in log:
                 placeholder.success(log)
             else:
