@@ -1,3 +1,4 @@
+import time
 import streamlit as st
 from sections.overview_section import render_league_overview
 from sections.match_prediction_section import render_single_match_prediction
@@ -37,7 +38,7 @@ with st.sidebar.expander("🔧 Správa dat"):
                 placeholder.success(log)
             else:
                 placeholder.info(str(log))
-            st.sleep(3)
+            time.sleep(3)
             placeholder.empty()
 
 # --- Sidebar: Výběr ligy ---
