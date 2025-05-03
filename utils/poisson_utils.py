@@ -135,26 +135,38 @@ def add_btts_column(df):
     df['BTTS'] = df.apply(lambda row: int(row['FTHG'] > 0 and row['FTAG'] > 0), axis=1)
     return df
 
-def aggregate_team_stats(df):
-    """Vrací agregované týmové statistiky."""
-    df = df.copy()
-    team_stats = df.groupby("HomeTeam").agg({
-        "FTHG": "mean",
-        "FTAG": "mean",
-        "HS": "mean",
-        "HST": "mean",
-        "HC": "mean",
-        "HY": "mean"
-    }).rename(columns={
-        "FTHG": "Góly doma",
-        "FTAG": "Góly venku",
-        "HS": "Střely",
-        "HST": "Na branku",
-        "HC": "Rohy",
-        "HY": "Žluté"
-    })
+# def aggregate_team_stats(df):
+#     """Agreguje statistiky za všechny zápasy (doma i venku) pro každý tým."""
+#     teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
+#     records = []
 
-    return team_stats
+#     for team in teams:
+#         home = df[df['HomeTeam'] == team]
+#         away = df[df['AwayTeam'] == team]
+
+#         goals = pd.concat([home['FTHG'], away['FTAG']])
+#         conceded = pd.concat([home['FTAG'], away['FTHG']])
+#         shots = pd.concat([home['HS'], away['AS']])
+#         shots_on_target = pd.concat([home['HST'], away['AST']])
+#         corners = pd.concat([home['HC'], away['AC']])
+#         yellows = pd.concat([home['HY'], away['AY']])
+
+#         records.append({
+#             "Tým": team,
+#             "Góly": goals.mean(),
+#             "Obdržené góly": conceded.mean(),
+#             "Střely": shots.mean(),
+#             "Na branku": shots_on_target.mean(),
+#             "Rohy": corners.mean(),
+#             "Žluté": yellows.mean()
+#         })
+
+#     df_stats = pd.DataFrame(records).set_index("Tým")
+
+#     print(df_stats.columns)
+#     return df_stats
+
+
 
 def calculate_conceded_goals(df):
     """Vrací DataFrame s průměrným počtem obdržených gólů pro každý tým."""
@@ -876,11 +888,11 @@ def classify_team_strength(df, team):
     bottom = set(t for t, _ in sorted_teams[-int(total * 0.3):])
 
     if team in top:
-        return "💪 Silný"
+        return "💪"
     elif team in bottom:
-        return "🪶 Slabý"
+        return "🪶"
     else:
-        return "⚖️ Průměrný"
+        return "⚖️"
     
 def calculate_match_style_score_per_match(df):
     df = prepare_df(df)
@@ -1473,6 +1485,8 @@ def detect_overperformance_and_momentum(df, team):
         momentum_status = "➖ Stabilní"
 
     return overperf_status, momentum_status
+
+
 
 
 

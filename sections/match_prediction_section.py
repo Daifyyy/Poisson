@@ -10,6 +10,10 @@ from utils.poisson_utils import (
     get_head_to_head_stats, calculate_match_tempo
 )
 from utils.frontend_utils import display_team_status_table
+from utils.poisson_utils.match_style import tempo_tag
+
+
+
 
 def render_single_match_prediction(df, season_df, home_team, away_team, league_name, gii_dict):
     st.header(f"🔮 {home_team} vs {away_team}")
@@ -33,7 +37,17 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
     col1, col2 = st.columns(2)
     expected_gii = round((gii_dict.get(home_team, 0) + gii_dict.get(away_team, 0)) / 2, 2)
     expected_gii_emoji = intensity_score_to_emoji(expected_gii)
-    expected_tempo = expected_match_tempo(season_df, home_team, away_team, elo_dict)
+    expected_tempo = expected_match_tempo(
+        df,            # DataFrame se zápasy
+        home_team,     # Domácí tým
+        away_team,     # Hostující tým
+        elo_dict,      # Slovník s ELO hodnotami
+        home_exp,      # Očekávané góly domácích (např. z Poissona)
+        away_exp,      # Očekávané góly hostů
+        xg_home["xG_home"],      # Pseudo-xG domácích
+        xg_away["xG_away"]       # Pseudo-xG hostů
+    )
+
     tempo_emoji = tempo_to_emoji(expected_tempo)
 
     with col1:
@@ -48,7 +62,9 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
 
     with col2:
         st.markdown("### 🎭 Očekávaný styl zápasu")
-        col2.markdown(f"### {tempo_emoji} ({expected_tempo})")
+        # col2.markdown(f"### {tempo_emoji} ({expected_tempo})")
+        col2.markdown(tempo_tag(expected_tempo), unsafe_allow_html=True)
+
 
     # Klíčové metriky
     st.markdown("## 📊 Klíčové metriky")
@@ -65,10 +81,10 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
     cols2[1].metric("🤝 Remíza", f"{outcomes['Draw']}%", f"{1 / (outcomes['Draw'] / 100):.2f}")
     cols2[2].metric("🚶‍♂️ Výhra hostů", f"{outcomes['Away Win']}%", f"{1 / (outcomes['Away Win'] / 100):.2f}")
 
-    for team in [home_team, away_team]:
-        warnings, _ = detect_risk_factors(df, team, elo_dict)
-        if warnings:
-            st.warning(f"⚠️ Rizika pro {team}: " + " ".join(warnings))
+    # for team in [home_team, away_team]:
+    #     warnings, _ = detect_risk_factors(df, team, elo_dict)
+    #     if warnings:
+    #         st.warning(f"⚠️ Rizika pro {team}: " + " ".join(warnings))
 
     for team in [home_team, away_team]:
         positives, _ = detect_positive_factors(df, team, elo_dict)
@@ -80,7 +96,11 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
         if warnings:
             st.error(f"⚠️ {team} Warning Index: {int(warning_score * 100)}% - " + ", ".join(warnings))
 
-    display_team_status_table(home_team, away_team, df, elo_dict)
+    #df_team_status = display_team_status_table(home_team, away_team, df, elo_dict)
+    st.markdown("## 📊 Porovnání týmů")
+    st.write(display_team_status_table(home_team, away_team, df, elo_dict), use_container_width=True, hide_index=True)
+
+
 
     # Týmové statistiky
     st.markdown("## 🧠 Očekávané týmové statistiky")
@@ -100,30 +120,50 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
     strength_away = classify_team_strength(df, away_team)
 
     def display_merged_table(data, team_name, teamstrength):
-        st.markdown(f"### {team_name} ({teamstrength})")
+        emoji_map = {"Silní": "💪", "Průměrní": "⚖️", "Slabí": "🪶"}
+        icon = emoji_map.get(teamstrength, "")
+        st.markdown(f"### {team_name} {icon} ")
+        
         df_disp = pd.DataFrame(data).T
         df_disp = df_disp[["Zápasy", "Góly", "Obdržené", "Střely", "Na branku", "xG", "Body/zápas", "Čistá konta %"]]
         st.dataframe(df_disp)
+
+    
+
+
+
 
     display_merged_table(merged_home_away_opponent_form(df, home_team), home_team, strength_home)
     display_merged_table(merged_home_away_opponent_form(df, away_team), away_team, strength_away)
 
     # Head-to-head statistiky
-    st.markdown("## 💬 Head-to-Head statistiky")
+    # Head-to-Head – kompaktní přehled
+    st.markdown("## 💬 Head-to-Head")
     h2h = get_head_to_head_stats(df, home_team, away_team)
+
     if h2h:
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            st.metric("Počet zápasů", h2h['matches'])
-            st.metric(f"Výhry {home_team}", h2h['home_wins'])
-            st.metric("Remízy", h2h['draws'])
-            st.metric(f"Výhry {away_team}", h2h['away_wins'])
-        with col2:
-            st.metric("🎯 Průměr gólů", h2h['avg_goals'])
-            st.metric("🤝 BTTS", f"{h2h['btts_pct']} %")
-            st.metric("📈 Over 2.5", f"{h2h['over25_pct']} %")
+        h2h_cols = st.columns(6)
+
+        h2h_cols[0].markdown("🆚 **Zápasy**")
+        h2h_cols[0].markdown(f"<h3 style='margin-top:-5px'>{h2h['matches']}</h3>", unsafe_allow_html=True)
+
+        h2h_cols[1].markdown(f"✅ **{home_team} výher**")
+        h2h_cols[1].markdown(f"<h3 style='margin-top:-5px'>{h2h['home_wins']}</h3>", unsafe_allow_html=True)
+
+        h2h_cols[2].markdown("🤝 **Remízy**")
+        h2h_cols[2].markdown(f"<h3 style='margin-top:-5px'>{h2h['draws']}</h3>", unsafe_allow_html=True)
+
+        h2h_cols[3].markdown(f"✅ **{away_team} výher**")
+        h2h_cols[3].markdown(f"<h3 style='margin-top:-5px'>{h2h['away_wins']}</h3>", unsafe_allow_html=True)
+
+        h2h_cols[4].markdown("🎯 **Průměr gólů**")
+        h2h_cols[4].markdown(f"<h3 style='margin-top:-5px'>{h2h['avg_goals']}</h3>", unsafe_allow_html=True)
+
+        h2h_cols[5].markdown("🤝 **BTTS / Over 2.5**")
+        h2h_cols[5].markdown(f"<h3 style='margin-top:-5px'>{h2h['btts_pct']}% / {h2h['over25_pct']}%</h3>", unsafe_allow_html=True)
     else:
         st.warning("⚠️ Nenašly se žádné vzájemné zápasy.")
+
 
     # Styl hry
     st.markdown("## 🎮 Styl hry")

@@ -270,8 +270,9 @@ def calculate_warning_index(df: pd.DataFrame, team: str, elo_dict: dict) -> tupl
     return warnings, warning_score
 
 def detect_overperformance_and_momentum(df: pd.DataFrame, team: str) -> tuple:
-    """Detekuje, zda tým aktuálně overperformuje a jeho momentum."""
+    """Detekuje, zda tým aktuálně overperformuje a jeho momentum (s emoji a CZ výstupem)."""
     from .core import prepare_df, calculate_points
+    import numpy as np
 
     df = prepare_df(df)
 
@@ -292,7 +293,6 @@ def detect_overperformance_and_momentum(df: pd.DataFrame, team: str) -> tuple:
 
         conv = goals / shots_on_target if shots_on_target > 0 else 0
         pseudo_xg = shots_on_target * conv
-
         diff = goals - pseudo_xg
         xG_diff.append(diff)
 
@@ -303,17 +303,21 @@ def detect_overperformance_and_momentum(df: pd.DataFrame, team: str) -> tuple:
     avg_xg_diff = np.mean(xG_diff) if xG_diff else 0
     avg_points = np.mean(points_list) if points_list else 0
 
-    overperformance = "Normální"  # default
+    # 🎯 Overperformance
     if avg_xg_diff > 0.5:
-        overperformance = "Overperforming"
+        overperformance = "🚀"
     elif avg_xg_diff < -0.5:
-        overperformance = "Underperforming"
+        overperformance = "🐌"
+    else:
+        overperformance = "⚖️"
 
-    momentum = "Neutrální"  # default
+    # 🔄 Momentum
     if avg_points > 2.0:
-        momentum = "Positive momentum"
+        momentum = "📈"
     elif avg_points < 1.0:
-        momentum = "Negative momentum"
+        momentum = "📉"
+    else:
+        momentum = "⚪"
 
     return overperformance, momentum
 

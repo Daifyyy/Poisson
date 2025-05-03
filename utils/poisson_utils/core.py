@@ -7,6 +7,10 @@ def prepare_df(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
     #df = df.dropna(subset=['Date'])
+    # Odstraň řádky bez datumu nebo týmů
+    df = df.dropna(subset=["Date", "HomeTeam", "AwayTeam"])
+    df = df[df["HomeTeam"].astype(str).str.strip() != ""]
+    df = df[df["AwayTeam"].astype(str).str.strip() != ""]
     df = df.sort_values('Date')
     return df
 
@@ -20,25 +24,56 @@ def load_data(file_path: str) -> pd.DataFrame:
             raise ValueError(f"Missing column: {col}")
     return df
 
-def aggregate_team_stats(df: pd.DataFrame) -> pd.DataFrame:
-    """Vrací agregované týmové statistiky podle domácích zápasů."""
-    df = df.copy()
-    team_stats = df.groupby("HomeTeam").agg({
-        "FTHG": "mean",
-        "FTAG": "mean",
-        "HS": "mean",
-        "HST": "mean",
-        "HC": "mean",
-        "HY": "mean"
-    }).rename(columns={
-        "FTHG": "Góly doma",
-        "FTAG": "Góly venku",
-        "HS": "Střely",
-        "HST": "Na branku",
-        "HC": "Rohy",
-        "HY": "Žluté"
-    })
-    return team_stats
+# def aggregate_team_stats(df: pd.DataFrame) -> pd.DataFrame:
+#     """Vrací agregované týmové statistiky podle domácích zápasů."""
+#     df = df.copy()
+#     team_stats = df.groupby("HomeTeam").agg({
+#         "FTHG": "mean",
+#         "FTAG": "mean",
+#         "HS": "mean",
+#         "HST": "mean",
+#         "HC": "mean",
+#         "HY": "mean"
+#     }).rename(columns={
+#         "FTHG": "Góly doma",
+#         "FTAG": "Góly venku",
+#         "HS": "Střely",
+#         "HST": "Na branku",
+#         "HC": "Rohy",
+#         "HY": "Žluté"
+#     })
+#     return team_stats
+
+def aggregate_team_stats(df):
+    """Agreguje statistiky za všechny zápasy (doma i venku) pro každý tým."""
+    teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
+    records = []
+
+    for team in teams:
+        home = df[df['HomeTeam'] == team]
+        away = df[df['AwayTeam'] == team]
+
+        goals = pd.concat([home['FTHG'], away['FTAG']])
+        conceded = pd.concat([home['FTAG'], away['FTHG']])
+        shots = pd.concat([home['HS'], away['AS']])
+        shots_on_target = pd.concat([home['HST'], away['AST']])
+        corners = pd.concat([home['HC'], away['AC']])
+        yellows = pd.concat([home['HY'], away['AY']])
+
+        records.append({
+            "Tým": team,
+            "Góly": goals.mean(),
+            "Obdržené góly": conceded.mean(),
+            "Střely": shots.mean(),
+            "Na branku": shots_on_target.mean(),
+            "Rohy": corners.mean(),
+            "Žluté": yellows.mean()
+        })
+
+    df_stats = pd.DataFrame(records).set_index("Tým")
+
+    print(df_stats.columns)
+    return df_stats
 
 
 def detect_current_season(df: pd.DataFrame) -> tuple:
@@ -143,7 +178,62 @@ def classify_team_strength(df: pd.DataFrame, team: str) -> str:
         return "Průměrní"
     
 
+def compute_form_trend(score_list):
+    """
+    Vrací emoji podle vývoje formy (rozdíl bodů mezi posledními 3 a předchozími 6 zápasy).
+    """
+    if len(score_list) < 9:
+        return "❓"
 
+    recent = score_list[-3:]        # poslední 3 zápasy
+    earlier = score_list[-9:-3]     # předchozích 6 zápasů
+
+    def calc_points(results):
+        return sum([3 if gf > ga else 1 if gf == ga else 0 for gf, ga in results])
+
+    recent_points = calc_points(recent)
+    earlier_points = calc_points(earlier)
+
+    avg_recent = recent_points / 3
+    avg_earlier = earlier_points / 6
+
+    delta = avg_recent - avg_earlier
+
+    if delta >= 1:
+        return "📈"
+    elif delta <= -1:
+        return "📉"
+    else:
+        return "➖"
+
+
+
+def compute_score_stats(df: pd.DataFrame, team: str):
+    """
+    Vrací tuple: (list výsledků), průměr gólů na zápas, rozptyl skóre
+    """
+    team_matches = df[(df["HomeTeam"] == team) | (df["AwayTeam"] == team)].sort_values("Date").tail(10)
+
+    score_list = []
+    total_scored = 0
+    total_conceded = 0
+
+    for _, row in team_matches.iterrows():
+        if row["HomeTeam"] == team:
+            gf = row["FTHG"]
+            ga = row["FTAG"]
+        else:
+            gf = row["FTAG"]
+            ga = row["FTHG"]
+
+        score_list.append((gf, ga))
+        total_scored += gf
+        total_conceded += ga
+
+    avg_goals_per_match = (total_scored + total_conceded) / len(score_list) if score_list else 0
+    score_variance = np.var([gf + ga for gf, ga in score_list]) if score_list else 0
+
+    return score_list, avg_goals_per_match, score_variance
 
 
 

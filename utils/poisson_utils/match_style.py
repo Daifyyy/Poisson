@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 
+
 from .core import prepare_df
 
 def calculate_match_tempo(df: pd.DataFrame, team: str, opponent_elo: float, is_home: bool, elo_dict: dict, last_n: int = 10) -> dict:
@@ -108,6 +109,31 @@ def calculate_match_tempo(df: pd.DataFrame, team: str, opponent_elo: float, is_h
         "aggressiveness_rating": aggressiveness_rating,
         "similar_opponents_tempo": round(similar_opponents_tempo, 1)   # <-- tady vracíme nový výstup
     }
+
+def style_team_table(df):
+    def style_status(val):
+        emoji = "🟢" if val == "Forma" else "🟡" if val == "Průměr" else "🔴"
+        return f"{emoji} {val}"
+
+    def color_performance(val):
+        if "Nadprůměr" in val:
+            return "color: green"
+        elif "Nízký" in val or "Slabý" in val:
+            return "color: red"
+        return "color: black"
+
+    def color_momentum(val):
+        if "Pozitivní" in val:
+            return "background-color: #d1fae5"
+        elif "Negativní" in val:
+            return "background-color: #fee2e2"
+        return ""
+
+    styled_df = df.copy()
+    styled_df["Status"] = styled_df["Status"].apply(style_status)
+
+    return styled_df.style.applymap(color_performance, subset=["Overperformance"])\
+                          .applymap(color_momentum, subset=["Momentum"])
 
 
 
@@ -282,6 +308,40 @@ def form_points_to_emoji(avg_points: float) -> str:
         return "❄️❄️"
     else:
         return "❄️❄️❄️"
+    
+def tempo_tag(tempo_value: float) -> str:
+    """
+    Vygeneruje barevný HTML badge podle hodnoty tempa.
+    """
+    if tempo_value >= 65:
+        color = "#FF4B4B"  # červená – extrémní tempo
+        label = "🚀 Extrémní tempo"
+    elif tempo_value >= 50:
+        color = "#FF8800"  # oranžová – vysoké tempo
+        label = "🔥 Vysoké tempo"
+    elif tempo_value >= 35:
+        color = "#FACC15"  # žlutá – vyrovnané tempo
+        label = "⚖️ Vyrovnané tempo"
+    elif tempo_value >= 20:
+        color = "#3B82F6"  # modrá – pomalé tempo
+        label = "😴 Pomalé tempo"
+    else:
+        color = "#6B7280"  # šedá – totální nuda
+        label = "💤 Totální nuda"
+
+    return f"""
+    <div style='
+        display: inline-block;
+        background-color: {color};
+        color: white;
+        padding: 6px 10px;
+        border-radius: 12px;
+        font-weight: bold;
+        font-size: 14px;
+        margin-bottom: 10px;
+    '>{label} ({tempo_value})</div>
+    """
+
 
 def expected_match_style_score(df: pd.DataFrame, home_team: str, away_team: str, elo_dict: dict) -> float:
     """Spočítá očekávaný styl zápasu (průměr temp domácích a hostů)."""
@@ -294,22 +354,48 @@ def expected_match_style_score(df: pd.DataFrame, home_team: str, away_team: str,
 
     return round((home_tempo_value  + away_tempo_value) / 2, 1)
 
-def expected_match_tempo(df: pd.DataFrame, home_team: str, away_team: str, elo_dict: dict, last_n: int = 10) -> float:
-    """Spočítá očekávané tempo zápasu mezi dvěma týmy na základě posledních zápasů proti podobným soupeřům."""
+def expected_match_tempo(
+    df: pd.DataFrame,
+    home_team: str,
+    away_team: str,
+    elo_dict: dict,
+    home_exp: float,
+    away_exp: float,
+    xg_home: float,
+    xg_away: float,
+    last_n: int = 10
+) -> float:
+    """
+    Vylepšené očekávané tempo zápasu, bere v úvahu i sílu útočných fází.
+    """
     df = prepare_df(df)
 
     elo_away = elo_dict.get(away_team, 1500)
     elo_home = elo_dict.get(home_team, 1500)
 
-    # Tempo domácího týmu proti soupeřům podobným hostujícímu týmu
     home_tempo_dict = calculate_match_tempo(df, home_team, opponent_elo=elo_away, is_home=True, elo_dict=elo_dict, last_n=last_n)
-
-    # Tempo hostujícího týmu proti soupeřům podobným domácímu týmu
     away_tempo_dict = calculate_match_tempo(df, away_team, opponent_elo=elo_home, is_home=False, elo_dict=elo_dict, last_n=last_n)
 
-    expected_tempo = (home_tempo_dict["tempo"] + away_tempo_dict["tempo"]) / 2
+    base_tempo = (home_tempo_dict["tempo"] + away_tempo_dict["tempo"]) / 2
 
-    return round(expected_tempo, 1)
+    # Gólové ukazatele
+    goal_potential = home_exp + away_exp
+    xg_potential = xg_home + xg_away
+
+    # Bonus za extrémní gólový potenciál
+    high_scoring_bonus = 5 if goal_potential >= 3.0 else 0
+
+    # Kombinace složek (násobení pro větší rozptyl)
+    combined_score = (
+        base_tempo * 0.3 +
+        goal_potential * 20 * 0.35 +
+        xg_potential * 20 * 0.35 +
+        high_scoring_bonus
+    )
+
+    return round(combined_score, 1)
+
+
 
 def team_vs_similar_opponents_tempo(df: pd.DataFrame, team: str, opponent_elo: float, is_home: bool, elo_dict: dict, last_n: int = 10) -> float:
     """Spočítá průměrné tempo týmu proti soupeřům s podobným ELO."""
@@ -320,13 +406,18 @@ def team_vs_similar_opponents_tempo(df: pd.DataFrame, team: str, opponent_elo: f
     return tempo_dict["tempo"]
 
 def tempo_to_emoji(tempo_value: float) -> str:
-    """Přiřadí emoji a slovní hodnocení k dané hodnotě tempa."""
-    if tempo_value >= 50:
-        return "⚡ velmi rychlé"
+    """
+    Vrací emoji podle tempa zápasu.
+    """
+    if tempo_value >= 65:
+        return "🚀 Extrémní tempo"
+    elif tempo_value >= 50:
+        return "🔥 Vysoké tempo"
     elif tempo_value >= 35:
-        return "🎯 střední tempo"
+        return "⚖️ Vyrovnané tempo"
     elif tempo_value >= 20:
-        return "💤 pomalé"
+        return "😴 Pomalý zápas"
     else:
-        return "🪨 velmi pomalé"
+        return "💤 Totální nuda"
+
 

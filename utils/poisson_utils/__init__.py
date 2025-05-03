@@ -10,7 +10,9 @@ from .core import (
     detect_current_season,
     calculate_expected_points,
     prob_to_odds,
-    aggregate_team_stats
+    aggregate_team_stats,
+    compute_form_trend, 
+    compute_score_stats
 )
 
 from .elo import (
@@ -60,3 +62,4 @@ from .match_style import (
     expected_match_tempo,
     tempo_to_emoji,
 )
+

@@ -5,8 +5,9 @@ from utils.poisson_utils import (
     aggregate_team_stats, calculate_team_pseudo_xg, add_btts_column,
     calculate_conceded_goals, calculate_recent_team_form,
     calculate_elo_changes, calculate_team_styles,
-    calculate_clean_sheets, intensity_score_to_emoji
+    calculate_clean_sheets, intensity_score_to_emoji,compute_score_stats,compute_form_trend
 )
+
 
 def render_league_overview(season_df, league_name, gii_dict):
     st.header(f"🏆 {league_name}")
@@ -27,25 +28,43 @@ def render_league_overview(season_df, league_name, gii_dict):
     btts = season_df.groupby("HomeTeam")["BTTS"].mean().mul(100).round(0)
     xg_stats = calculate_team_pseudo_xg(season_df)
 
+    trends = []
+    avg_goals_all = []
+    score_var = []
+
+    for team in team_stats.index:
+        score_list, avg_goals_per_match, score_variance = compute_score_stats(season_df, team)
+        trends.append(compute_form_trend(score_list))
+        avg_goals_all.append(round(avg_goals_per_match, 2))
+        score_var.append(round(score_variance, 2))
+    print(team_stats.head())
+    print(team_stats.columns)
+
     summary_table = pd.DataFrame({
         "Tým": team_stats.index,
         "Elo": team_stats.index.map(lambda t: elo_dict.get(t, 1500)).round(0),
         "Body": team_stats.index.map(lambda t: points_data.get(t, {}).get("points", 0)),
         "Form": team_stats.index.map(lambda t: form_emojis.get(t, "❄️❄️❄️")),
-        "Góly/zápas": ((team_stats["Góly doma"] + team_stats["Góly venku"]) / 2).round(2),
-        "Intenzita": team_stats.index.map(lambda t: intensity_score_to_emoji(gii_dict.get(t, 0))),
-        "Čistá konta %": team_stats.index.map(lambda t: calculate_clean_sheets(season_df, t)),
+        "Trend formy": trends,
+        "Góly celkem": avg_goals_all,
+        "Rozptyl skóre": score_var,
+        "Vstřelené Góly": team_stats["Góly"].round(2),
+        "Obdržené góly": team_stats["Obdržené góly"].round(2),
+        "Čistá konta %": team_stats.index.map(lambda t: f"{calculate_clean_sheets(season_df, t)}%"),
         "Over 2.5 %": team_stats.index.map(over25).astype(str) + "%",
-        "BTTS %": team_stats.index.map(btts).astype(str) + "%"
-    }).sort_values("Elo", ascending=False).reset_index(drop=True)
+        "BTTS %": team_stats.index.map(btts).astype(str) + "%",
+        "Intenzita": team_stats.index.map(lambda t: intensity_score_to_emoji(gii_dict.get(t, 0)))
+    })
 
-    st.dataframe(summary_table, hide_index=True)
+    summary_table = summary_table.sort_values("Body", ascending=False).reset_index(drop=True)
+    st.dataframe(summary_table, hide_index=True, use_container_width=True)
+
 
     # Top 5 sekce
     st.markdown("### 🌟 Top 5 týmy")
     cols = st.columns(4)
     cols[0].markdown("🔮 **Nejvíc gólů**")
-    cols[0].dataframe(summary_table.sort_values("Góly/zápas", ascending=False).head(5)[["Tým", "Góly/zápas"]], hide_index=True)
+    cols[0].dataframe(summary_table.sort_values("Vstřelené Góly", ascending=False).head(5)[["Tým", "Vstřelené Góly"]], hide_index=True)
 
     conceded_df = calculate_conceded_goals(season_df)
     cols[1].markdown("🔴 **Nejvíce obdržených gólů**")
