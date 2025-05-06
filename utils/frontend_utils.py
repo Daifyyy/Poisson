@@ -47,8 +47,8 @@ def display_team_status_table(home_team: str, away_team: str, df: pd.DataFrame, 
 
         styled_df = df.copy()
         styled_df["Status"] = styled_df["Status"].apply(style_status)
-        return styled_df.style.applymap(color_performance, subset=["Overperformance"])\
-                              .applymap(color_momentum, subset=["Momentum"])
+        return styled_df.style.map(color_performance, subset=["Overperformance"])\
+                              .map(color_momentum, subset=["Momentum"])
 
     # Výpočty pro oba týmy
     risk_home, pos_home = detect_risk_factors(df, home_team, elo_dict)[1], detect_positive_factors(df, home_team, elo_dict)[1]

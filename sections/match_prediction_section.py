@@ -11,6 +11,22 @@ from utils.poisson_utils import (
 )
 from utils.frontend_utils import display_team_status_table
 from utils.poisson_utils.match_style import tempo_tag
+from utils.export_utils import generate_excel_analysis_export
+from utils.utils_warnings import (
+    scoreline_variance_warning,
+    combined_form_tempo_warning,
+    conflict_style_warning,
+    calculate_recent_form_by_matches,
+    get_all_match_warnings,
+    get_all_positive_signals,
+    detect_overperformance_and_momentum
+)
+from utils.anomaly_detection import (
+    calculate_contrarian_risk_score,
+    calculate_upset_risk_score,
+    colored_risk_tag
+)
+
 
 
 
@@ -81,26 +97,117 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
     cols2[1].metric("🤝 Remíza", f"{outcomes['Draw']}%", f"{1 / (outcomes['Draw'] / 100):.2f}")
     cols2[2].metric("🚶‍♂️ Výhra hostů", f"{outcomes['Away Win']}%", f"{1 / (outcomes['Away Win'] / 100):.2f}")
 
+    
+
+    # # Warning na přestřelkový rozptyl
+    # variance_warning = scoreline_variance_warning(matrix)
+    # if variance_warning:
+    #     st.warning(variance_warning)
+
+    # # Warning na formu + tempo
+    # form_dict = calculate_recent_form_by_matches(df)
+    # style_form_warning = combined_form_tempo_warning(df, home_team, away_team, elo_dict, form_dict)
+    # if style_form_warning:
+    #     st.warning(style_form_warning)
+
     # for team in [home_team, away_team]:
-    #     warnings, _ = detect_risk_factors(df, team, elo_dict)
-    #     if warnings:
-    #         st.warning(f"⚠️ Rizika pro {team}: " + " ".join(warnings))
+    #     positives, _ = detect_positive_factors(df, team, elo_dict)
+    #     if positives:
+    #         st.success(f"✅ Pozitivní trendy u {team}: " + " ".join(positives))
 
-    for team in [home_team, away_team]:
-        positives, _ = detect_positive_factors(df, team, elo_dict)
-        if positives:
-            st.success(f"✅ Pozitivní trendy u {team}: " + " ".join(positives))
+    # warnings_home, warning_index_home = calculate_warning_index(df, home_team, elo_dict)
+    # warnings_away, warning_index_away = calculate_warning_index(df, away_team, elo_dict)
 
-    for team in [home_team, away_team]:
-        warnings, warning_score = calculate_warning_index(df, team, elo_dict)
-        if warnings:
-            st.error(f"⚠️ {team} Warning Index: {int(warning_score * 100)}% - " + ", ".join(warnings))
+    # if warnings_home:
+    #     st.error(f"⚠️ {home_team} Warning Index: {int(warning_index_home * 100)}% - " + ", ".join(warnings_home))
+    # if warnings_away:
+    #     st.error(f"⚠️ {away_team} Warning Index: {int(warning_index_away * 100)}% - " + ", ".join(warnings_away))
+
+    # style_warning = conflict_style_warning(df, home_team, away_team, elo_dict)
+    # if style_warning:
+    #     st.warning(style_warning)
+    
+    
+    form_dict = calculate_recent_form_by_matches(df)
+    style_form_warning = combined_form_tempo_warning(df, home_team, away_team, elo_dict, form_dict)
+    style_warning = conflict_style_warning(df, home_team, away_team, elo_dict)    
+
+
+    positives_summary = get_all_positive_signals(df, home_team, away_team, elo_dict)
+    for entry in positives_summary:
+        st.success(f"✅ Pozitivní trendy u {entry['team']}: " + " ".join(entry["messages"]))
+
+
+    warnings_list, warning_index_home, warning_index_away = get_all_match_warnings(df, home_team, away_team, matrix, elo_dict, form_dict)
+
+    for w in warnings_list:
+        if w["level"] == "high":
+            st.error(w["message"])
+        elif w["level"] == "medium":
+            st.warning(w["message"])
+        elif w["level"] == "low":
+            st.info(w["message"])
+
+
+    form_dog_positive = len(detect_positive_factors(df, away_team if outcomes["Home Win"] > outcomes["Away Win"] else home_team, elo_dict)[0]) > 0
+
+    tempo_home_val = calculate_match_tempo(df, home_team, elo_dict.get(away_team, 1500), True, elo_dict)["tempo"]
+    tempo_away_val = calculate_match_tempo(df, away_team, elo_dict.get(home_team, 1500), False, elo_dict)["tempo"]
+
+    contrarian_score = calculate_contrarian_risk_score(matrix, home_exp + away_exp, tempo_home_val, tempo_away_val, warning_index_home, warning_index_away)
+    upset_score = calculate_upset_risk_score(outcomes, warning_index_home, warning_index_away, form_dog_positive)
+    
+    
+        # Styl hry
+    st.markdown("## 🎮 Styl hry")
+    tempo_home = calculate_match_tempo(df, home_team, elo_dict.get(away_team, 1500), True, elo_dict)
+    tempo_away = calculate_match_tempo(df, away_team, elo_dict.get(home_team, 1500), False, elo_dict)
+
+    cols = st.columns(2)
+    for i, (team, tempo) in enumerate([(home_team, tempo_home), (away_team, tempo_away)]):
+        over, momentum = detect_overperformance_and_momentum(df, team)
+        team_status = classify_team_strength(df, team)
+        strength_emoji = classify_team_strength(df, team)
+        strength_text = {
+            "Silní":"💪",
+            "Průměrní":"⚖️",
+            "Slabí":"🪶"
+        }.get(strength_emoji, "Neurčití")
+
+        strength_display = f"{strength_text} {strength_emoji}"
+
+        with cols[i]:
+            st.markdown(f"### {'🏠' if i == 0 else '🚶‍♂️'} {team}")
+            left_col, right_col = st.columns(2)
+
+            with left_col:
+                st.markdown(f"<p style='font-size:15px'>⚡ Tempo zápasu:</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='font-size:20px'>{tempo['rating']}</p>", unsafe_allow_html=True)
+
+                st.markdown(f"<p style='font-size:15px'>🥾 Tvrdost zápasu:</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='font-size:20px'>{tempo['aggressiveness_rating']}</p>", unsafe_allow_html=True)
+
+                st.markdown(f"<p style='font-size:15px'>📊 Dominance v zápase:</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='font-size:20px'>{tempo['imbalance_type']}</p>", unsafe_allow_html=True)
+
+            with right_col:
+                st.markdown(f"<p style='font-size:15px'>🧾 Status týmu:</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='font-size:20px'>{strength_display}</p>", unsafe_allow_html=True)
+
+                st.markdown(f"<p style='font-size:15px'>🎯 Overperformance:</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='font-size:20px'>{over}</p>", unsafe_allow_html=True)
+
+                st.markdown(f"<p style='font-size:15px'>📈 Momentum:</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='font-size:20px'>{momentum}</p>", unsafe_allow_html=True)
+
+    st.markdown("## 🎲 Riziko nečekaného průběhu")
+    col1, col2 = st.columns(2)
+    col1.markdown(colored_risk_tag("🎭 Přestřelka místo nudy", contrarian_score), unsafe_allow_html=True)
+    col2.markdown(colored_risk_tag("🧨 Překvapení outsidera", upset_score), unsafe_allow_html=True)
 
     #df_team_status = display_team_status_table(home_team, away_team, df, elo_dict)
-    st.markdown("## 📊 Porovnání týmů")
-    st.write(display_team_status_table(home_team, away_team, df, elo_dict), use_container_width=True, hide_index=True)
-
-
+    # st.markdown("## 📊 Porovnání týmů")
+    # st.dataframe(display_team_status_table(home_team, away_team, df, elo_dict), use_container_width=True, hide_index=True)
 
     # Týmové statistiky
     st.markdown("## 🧠 Očekávané týmové statistiky")
@@ -127,11 +234,6 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
         df_disp = pd.DataFrame(data).T
         df_disp = df_disp[["Zápasy", "Góly", "Obdržené", "Střely", "Na branku", "xG", "Body/zápas", "Čistá konta %"]]
         st.dataframe(df_disp)
-
-    
-
-
-
 
     display_merged_table(merged_home_away_opponent_form(df, home_team), home_team, strength_home)
     display_merged_table(merged_home_away_opponent_form(df, away_team), away_team, strength_away)
@@ -164,23 +266,7 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
     else:
         st.warning("⚠️ Nenašly se žádné vzájemné zápasy.")
 
-
-    # Styl hry
-    st.markdown("## 🎮 Styl hry")
-    tempo_home = calculate_match_tempo(df, home_team, elo_dict.get(away_team, 1500), True, elo_dict)
-    tempo_away = calculate_match_tempo(df, away_team, elo_dict.get(home_team, 1500), False, elo_dict)
-
-    cols = st.columns(2)
-    for i, (team, tempo) in enumerate([(home_team, tempo_home), (away_team, tempo_away)]):
-        with cols[i]:
-            st.markdown(f"### {'🏠' if i == 0 else '🚶‍♂️'} {team}")
-            st.markdown(f"<p style='font-size:15px'>⚡ Tempo zápasu:</p>", unsafe_allow_html=True)
-            st.markdown(f"<p style='font-size:20px'>{tempo['rating']}</p>", unsafe_allow_html=True)
-            st.markdown(f"<p style='font-size:15px'>🥾 Tvrdost zápasu:</p>", unsafe_allow_html=True)
-            st.markdown(f"<p style='font-size:20px'>{tempo['aggressiveness_rating']}</p>", unsafe_allow_html=True)
-            st.markdown(f"<p style='font-size:15px'>📊 Dominance v zápase:</p>", unsafe_allow_html=True)
-            st.markdown(f"<p style='font-size:20px'>{tempo['imbalance_type']}</p>", unsafe_allow_html=True)
-
+        
     # Nejpravděpodobnější výsledky
     top_scores = get_top_scorelines(matrix, top_n=5)
     home_probs, away_probs = get_goal_probabilities(matrix)
@@ -200,3 +286,41 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
     col1.dataframe(top_df, use_container_width=True, hide_index=True)
     col2.markdown("### 🎯 Šance na počet vstřelených gólů")
     col2.dataframe(goal_chances, use_container_width=True, hide_index=True)
+
+
+    
+    # Extrakce konkrétních warningů z výstupu
+    variance_warning_msg = next((w["message"] for w in warnings_list if "rozptyl" in w["message"].lower()), None)
+    style_form_warning_msg = next((w["message"] for w in warnings_list if "forma" in w["message"].lower()), None)
+    style_conflict_warning_msg = next((w["message"] for w in warnings_list if "styl" in w["message"].lower()), None)
+
+    
+    # Export Excel
+    
+    excel_file = generate_excel_analysis_export(
+            league_name, home_team, away_team,
+            (home_exp, away_exp), outcomes, over_under, btts,
+            xpoints, xg_home, xg_away,
+            expected_tempo, expected_gii,
+            warnings_home=calculate_warning_index(df, home_team, elo_dict)[0],
+            warnings_away=calculate_warning_index(df, away_team, elo_dict)[0],
+            positives_home=detect_positive_factors(df, home_team, elo_dict)[0],
+            positives_away=detect_positive_factors(df, away_team, elo_dict)[0],
+            team_stats=elo_stats,
+            style_home=tempo_home, style_away=tempo_away,
+            form_home=pd.DataFrame(merged_home_away_opponent_form(df, home_team)).T,
+            form_away=pd.DataFrame(merged_home_away_opponent_form(df, away_team)).T,
+            h2h_stats=h2h,
+            top_scorelines=top_scores,
+            goal_probs=goal_chances,
+            variance_warning=variance_warning_msg,
+            style_form_warning=style_form_warning_msg,
+            style_conflict_warning=style_conflict_warning_msg,
+        )    
+    st.download_button(
+    "📥 Stáhnout analytickou zprávu jako Excel",
+        data=excel_file,
+        file_name=f"{home_team}_vs_{away_team}_analysis.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+

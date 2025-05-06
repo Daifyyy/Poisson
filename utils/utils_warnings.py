@@ -5,7 +5,7 @@ from scipy.stats import poisson
 import matplotlib.pyplot as plt
 import seaborn as sns
 import streamlit as st
-
+from itertools import product
 def load_data(file_path):
     df = pd.read_csv(file_path)
     df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
@@ -1487,9 +1487,134 @@ def detect_overperformance_and_momentum(df, team):
     return overperf_status, momentum_status
 
 
+# Pokud chceš funkci použít víckrát, dej ji např. do helpers.py
+def calculate_recent_form_by_matches(df):
+    """
+    Vrací dictionary: tým -> bodový průměr z posledních 5 zápasů.
+    """
+    recent_matches = df.copy().sort_values("Date").groupby("HomeTeam").tail(5)
+    form_dict = {}
+    for team in df["HomeTeam"].unique():
+        team_matches = df[(df["HomeTeam"] == team) | (df["AwayTeam"] == team)].sort_values("Date").tail(5)
+        points = 0
+        for _, row in team_matches.iterrows():
+            if row["HomeTeam"] == team and row["FTR"] == "H":
+                points += 3
+            elif row["AwayTeam"] == team and row["FTR"] == "A":
+                points += 3
+            elif row["FTR"] == "D":
+                points += 1
+        form_dict[team] = round(points / len(team_matches), 2) if len(team_matches) > 0 else 0
+    return form_dict
+
+def scoreline_variance_warning(matrix, threshold=15):
+    """
+    Vrátí varování, pokud více než `threshold` % pravděpodobnosti připadá na přestřelková skóre typu 2:2, 3:2, 3:3 atd.
+    """
+    high_scorelines = [(i, j) for i, j in product(range(7), repeat=2) if i + j >= 5 and i > 0 and j > 0]
+    total_prob = sum(matrix[i, j] for i, j in high_scorelines)
+    if total_prob * 100 > threshold:
+        return f"⚠️ {round(total_prob * 100, 1)} % pravděpodobnost přestřelky (např. 2:2, 3:2, 3:3)"
+    return None
+
+def combined_form_tempo_warning(df, home_team, away_team, elo_dict, form_dict, tempo_threshold=35, form_threshold=1.5):
+    """
+    Pokud oba týmy mají vyšší formu a očekávané tempo zápasu je vysoké, upozorní na riziko otevřeného zápasu.
+    """
+    home_tempo = calculate_match_tempo(df, home_team, elo_dict[away_team], True, elo_dict)["tempo"]
+    away_tempo = calculate_match_tempo(df, away_team, elo_dict[home_team], False, elo_dict)["tempo"]
+    avg_tempo = (home_tempo + away_tempo) / 2
+
+    home_form = form_dict.get(home_team, 0)
+    away_form = form_dict.get(away_team, 0)
+
+    if avg_tempo >= tempo_threshold and home_form > form_threshold and away_form > form_threshold:
+        return f"⚠️ Oba týmy mají dobrou formu a zápas má vyšší tempo ({avg_tempo:.1f}) – riziko otevřeného průběhu"
+    return None
+
+def conflict_style_warning(df, home_team, away_team, elo_dict):
+    """
+    Detekuje potenciální konflikt stylů – rychlý a dominantní tým vs trpící soupeř.
+    """
+    tempo_home = calculate_match_tempo(df, home_team, elo_dict.get(away_team, 1500), True, elo_dict)
+    tempo_away = calculate_match_tempo(df, away_team, elo_dict.get(home_team, 1500), False, elo_dict)
+
+    # podmínky pro varování:
+    if (
+        tempo_home["rating"] in ["Rychlé", "Velmi rychlé"]
+        and tempo_home["imbalance_type"] == "Dominantní"
+        and tempo_away["imbalance_type"] == "Trpící"
+    ):
+        return (
+            f"⚠️ Stylový konflikt – {home_team} je dominantní s vysokým tempem, "
+            f"{away_team} trpící. Riziko rozbití zápasu a přestřelky."
+        )
+    return None
 
 
+def get_all_match_warnings(df, home_team, away_team, matrix, elo_dict, form_dict):
+    """
+    Vrátí seznam všech varování včetně jejich závažnosti (high/medium/low)
+    a současně score indexy domácího a hostujícího týmu.
+    """
+    warnings = []
+    score_home = 0
+    score_away = 0
 
+    # 1. Rozptyl výsledku (Poisson matice)
+    variance_msg = scoreline_variance_warning(matrix)
+    if variance_msg:
+        warnings.append({"message": variance_msg, "level": "medium"})
+
+    # 2. Forma + tempo konflikt
+    style_form_msg = combined_form_tempo_warning(df, home_team, away_team, elo_dict, form_dict)
+    if style_form_msg:
+        warnings.append({"message": style_form_msg, "level": "medium"})
+
+    # 3. Střet stylů
+    style_conflict_msg = conflict_style_warning(df, home_team, away_team, elo_dict)
+    if style_conflict_msg:
+        warnings.append({"message": style_conflict_msg, "level": "low"})
+
+    # 4. Warning Index – každý tým
+    for team in [home_team, away_team]:
+        team_warnings, score = calculate_warning_index(df, team, elo_dict)
+
+        if team == home_team:
+            score_home = score
+        else:
+            score_away = score
+
+        if team_warnings:
+            severity = "high" if score > 0.6 else "medium" if score > 0.3 else "low"
+            warnings.append({
+                "message": f"⚠️ {team} Warning Index: {int(score * 100)}% – " + ", ".join(team_warnings),
+                "level": severity
+            })
+
+    # Seřazení podle závažnosti
+    level_priority = {"high": 0, "medium": 1, "low": 2}
+    warnings.sort(key=lambda x: level_priority.get(x["level"], 3))
+
+    return warnings, score_home, score_away
+
+def get_all_positive_signals(df, home_team, away_team, elo_dict):
+    """
+    Vrací seznam pozitivních trendů pro oba týmy (pokud existují).
+    """
+    from utils.poisson_utils import detect_positive_factors
+
+    positives_summary = []
+
+    for team in [home_team, away_team]:
+        positives, _ = detect_positive_factors(df, team, elo_dict)
+        if positives:
+            positives_summary.append({
+                "team": team,
+                "messages": positives
+            })
+
+    return positives_summary
 
 
 

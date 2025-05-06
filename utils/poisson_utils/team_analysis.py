@@ -3,6 +3,7 @@ import numpy as np
 
 from .core import prepare_df, calculate_points
 from .xg import calculate_team_pseudo_xg
+from utils.utils_warnings import detect_overperformance_and_momentum
 
 def calculate_clean_sheets(df: pd.DataFrame, team: str) -> float:
     """Vrací procento zápasů, kdy tým udržel čisté konto."""
