@@ -5,6 +5,9 @@ import pandas as pd
 import streamlit as st
 from io import BytesIO
 
+import pandas as pd
+from io import BytesIO
+
 def generate_excel_analysis_export(
     league_name, home_team, away_team,
     expected_score, outcomes, over_under, btts,
@@ -17,13 +20,10 @@ def generate_excel_analysis_export(
     h2h_stats, top_scorelines, goal_probs,
     variance_warning, style_form_warning, style_conflict_warning
 ):
-    """
-    Výstup všech analytických informací do Excel souboru.
-    """
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
 
-        # 1. Základní info
+        # Match Overview
         df_main = pd.DataFrame({
             "League": [league_name],
             "Home": [home_team],
@@ -44,7 +44,7 @@ def generate_excel_analysis_export(
         })
         df_main.to_excel(writer, index=False, sheet_name="Match Overview")
 
-        # 2. Warningy a trendy
+        # Warnings & Trends
         df_warn = pd.DataFrame({
             "Team": [home_team, away_team],
             "Warnings": ["; ".join(warnings_home), "; ".join(warnings_away)],
@@ -52,10 +52,10 @@ def generate_excel_analysis_export(
         })
         df_warn.to_excel(writer, index=False, sheet_name="Warnings & Trends")
 
-        # 3. Statistické porovnání
+        # Team Stats
         pd.DataFrame(team_stats).T.to_excel(writer, sheet_name="Team Stats")
 
-        # 4. Styl hry
+        # Match Style
         df_style = pd.DataFrame({
             "Attribute": ["Tempo", "Aggressiveness", "Dominance"],
             home_team: [style_home['rating'], style_home['aggressiveness_rating'], style_home['imbalance_type']],
@@ -63,23 +63,23 @@ def generate_excel_analysis_export(
         })
         df_style.to_excel(writer, index=False, sheet_name="Match Style")
 
-        # 5. Formy proti silným/průměrným/slabým
+        # Form Data
         form_home.T.to_excel(writer, sheet_name=f"{home_team} Form")
         form_away.T.to_excel(writer, sheet_name=f"{away_team} Form")
 
-        # 6. Head-to-Head
+        # Head-to-Head
         pd.DataFrame([h2h_stats]).to_excel(writer, sheet_name="Head2Head", index=False)
 
-        # 7. Top scorelines
+        # Top Scorelines
         pd.DataFrame([
             {"Scoreline": f"{a}:{b}", "Probability": f"{round(p * 100, 1)} %"}
             for (a, b), p in top_scorelines
         ]).to_excel(writer, sheet_name="Top Scorelines", index=False)
 
-        # 8. Pravděpodobnosti gólů
+        # Goal Probabilities
         goal_probs.to_excel(writer, sheet_name="Goal Probabilities", index=False)
 
-        # 9. Dodatečná varování
+        # Extra Warnings
         extra = pd.DataFrame({
             "Type": ["Scoreline Variance", "Style+Form", "Conflict Style"],
             "Message": [variance_warning or "", style_form_warning or "", style_conflict_warning or ""]
@@ -88,6 +88,7 @@ def generate_excel_analysis_export(
 
     output.seek(0)
     return output
+
 
 
 # Ve `render_single_match_prediction` přidej na konec sekce tlačítko:
