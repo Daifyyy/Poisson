@@ -4,6 +4,7 @@ import numpy as np
 from ..utils_warnings import classify_team_strength  # pokud není globálně importováno
 from .core import prepare_df
 
+
 def calculate_match_tempo(df: pd.DataFrame, team: str, opponent_elo: float, is_home: bool, elo_dict: dict, last_n: int = 10) -> dict:
     """Spočítá tempo, dominanci a tvrdost zápasu na základě posledních zápasů proti podobně silným soupeřům (ELO + typ soupeře)."""
     from datetime import timedelta
@@ -211,15 +212,19 @@ def calculate_match_style_score_per_match(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def calculate_gii_zscore(df: pd.DataFrame) -> pd.DataFrame:
-    """Vrací GII index (Game Intensity Index) pro každý zápas."""
+    """
+    Vrací GII index (Game Intensity Index) pro každý zápas
+    na základě MatchStyleScore.
+    """
     df = calculate_match_style_score_per_match(df)
 
-    gii_mean = df['match_tempo'].mean()
-    gii_std = df['match_tempo'].std()
+    gii_mean = df['MatchStyleScore'].mean()
+    gii_std = df['MatchStyleScore'].std()
 
-    df['GII'] = (df['match_tempo'] - gii_mean) / gii_std
+    df['GII'] = (df['MatchStyleScore'] - gii_mean) / (gii_std + 1e-5)
 
     return df
+
 
 def calculate_gii_for_team(df: pd.DataFrame, team: str) -> float:
     """Spočítá GII pro tým = průměr (střely + rohy + fauly) na zápas."""
