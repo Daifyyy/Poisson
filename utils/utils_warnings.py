@@ -920,29 +920,52 @@ def calculate_match_style_score_per_match(df):
 
     return df
 
-def expected_match_style_score(df, home_team, away_team, elo_dict, last_n=10):
-    
+def expected_match_style_score(df, home_team, away_team, elo_dict, last_n=10, min_required=5):
+    """
+    Predikuje styl zápasu (MatchStyleScore) na základě medianu z posledních X zápasů
+    proti soupeřům s podobným ELO. Používá jen poslední rok, zajišťuje robustnost a loguje počty.
+    """
+    from datetime import timedelta
+
     df = calculate_match_style_score_per_match(df)
+    df = df.copy()
+    latest_date = df['Date'].max()
+    one_year_ago = latest_date - timedelta(days=365)
+    df = df[df['Date'] >= one_year_ago]
 
     elo_home = elo_dict.get(home_team, 1500)
     elo_away = elo_dict.get(away_team, 1500)
 
-    def get_similar_matches(team, is_home, opponent_elo):
-        team_col = "HomeTeam" if is_home else "AwayTeam"
-        opp_col = "AwayTeam" if is_home else "HomeTeam"
-        matches = df[df[team_col] == team].copy()
-        matches["OppELO"] = matches[opp_col].map(elo_dict)
-        matches["EloDiff"] = abs(matches["OppELO"] - opponent_elo)
-        return matches.nsmallest(last_n, "EloDiff")
+    def get_similar_matches(team, opponent_elo, team_label):
+        matches = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)].copy()
+        matches['OppELO'] = matches.apply(
+            lambda row: elo_dict.get(row['AwayTeam'] if row['HomeTeam'] == team else row['HomeTeam'], 1500),
+            axis=1
+        )
+        matches['EloDiff'] = abs(matches['OppELO'] - opponent_elo)
 
-    home_matches = get_similar_matches(home_team, is_home=True, opponent_elo=elo_away)
-    away_matches = get_similar_matches(away_team, is_home=False, opponent_elo=elo_home)
+        max_elo_diff = 50
+        step = 25
+        filtered = matches[matches['EloDiff'] <= max_elo_diff]
+        while len(filtered) < min_required and max_elo_diff <= 200:
+            max_elo_diff += step
+            filtered = matches[matches['EloDiff'] <= max_elo_diff]
 
-    home_mss = home_matches["MatchStyleScore"].mean()
-    away_mss = away_matches["MatchStyleScore"].mean()
+        if filtered.empty:
+            print(f"[{team_label}] ⚠️ Nenalezeny relevantní zápasy — použity všechny dostupné zápasy ({len(matches)})")
+            return matches.sort_values("Date", ascending=False).head(last_n)
+        else:
+            print(f"[{team_label}] ✅ Použito {len(filtered)} zápasů s ELO rozdílem ≤ {max_elo_diff}")
+            return filtered.nsmallest(last_n, "EloDiff")
+
+    home_matches = get_similar_matches(home_team, elo_away, "Home team")
+    away_matches = get_similar_matches(away_team, elo_home, "Away team")
+
+    home_mss = home_matches["MatchStyleScore"].median() if not home_matches.empty else 0
+    away_mss = away_matches["MatchStyleScore"].median() if not away_matches.empty else 0
     expected_mss = round((home_mss + away_mss) / 2, 1)
 
-    # 🎭 Emoji škála
+    # 🎭 Hodnocení
     if expected_mss < 25:
         rating = "🪨 velmi nudné"
     elif expected_mss < 45:
@@ -956,10 +979,11 @@ def expected_match_style_score(df, home_team, away_team, elo_dict, last_n=10):
 
     return {
         "Expected Match Style Score": expected_mss,
-        "Home avg": round(home_mss, 1),
-        "Away avg": round(away_mss, 1),
+        "Home median": round(home_mss, 1),
+        "Away median": round(away_mss, 1),
         "rating": rating
     }
+
 
 
 def calculate_gii_zscore(df):
@@ -1360,8 +1384,32 @@ def calculate_warning_index(df, team, elo_dict):
 
     return warnings, warning_score
 
+def calibrate_pseudo_xg_weights(df):
+    """
+    Vypočítá váhy pro pseudo-xG na základě historických dat v datasetu.
+    Vrací tuple: (váha na branku, váha mimo branku)
+    """
+    df = df.copy()
+    df = df[(df['HS'] > 0) | (df['AS'] > 0)]
+
+    home_sot = df['HST'].sum()
+    away_sot = df['AST'].sum()
+    home_off = (df['HS'] - df['HST']).sum()
+    away_off = (df['AS'] - df['AST']).sum()
+    total_goals = df['FTHG'].sum() + df['FTAG'].sum()
+
+    total_sot = home_sot + away_sot
+    total_off = home_off + away_off
+
+    weight_on_target = total_goals / total_sot if total_sot > 0 else 0.1
+    weight_off_target = (total_goals / (total_sot + total_off) * 0.5) if total_off > 0 else 0.05
+
+    return round(weight_on_target, 3), round(weight_off_target, 3)
+
+
 def detect_overperformance_and_momentum(df, team):
     df = calculate_match_style_score_per_match(df)
+    w_on, w_off = calibrate_pseudo_xg_weights(df)
 
     latest_date = df['Date'].max()
     team_matches = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)]
@@ -1391,8 +1439,14 @@ def detect_overperformance_and_momentum(df, team):
             shots_conceded = row['HS']
             shots_on_target_conceded = row['HST']
 
-        xg = shots_on_target * 0.1  # jednoduchý pseudo-xG model
-        xg_conceded = shots_on_target_conceded * 0.1
+        # Odvozené hodnoty
+        shots_off_target = max(0, shots - shots_on_target)
+        shots_conceded_off_target = max(0, shots_conceded - shots_on_target_conceded)
+
+        # Rozšířený xG výpočet s kalibrovanými váhami
+        xg = shots_on_target * w_on + shots_off_target * w_off
+        xg_conceded = shots_on_target_conceded * w_on + shots_conceded_off_target * w_off
+
         tempo = shots + shots_conceded + row['HC'] + row['AC'] + row['HF'] + row['AF']
 
         total_goals += goals
@@ -1401,6 +1455,7 @@ def detect_overperformance_and_momentum(df, team):
         total_tempo += tempo
         total_xg_against += xg_conceded
         matches_count += 1
+
 
     if matches_count == 0:
         return "N/A", "N/A"
@@ -1434,8 +1489,14 @@ def detect_overperformance_and_momentum(df, team):
             shots_conceded = row['HS']
             shots_on_target_conceded = row['HST']
 
-        xg = shots_on_target * 0.1
-        xg_conceded = shots_on_target_conceded * 0.1
+        # Počet střel mimo branku (celkem - na branku)
+        shots_off_target = shots - shots_on_target
+        shots_conceded_off_target = shots_conceded - shots_on_target_conceded
+
+        # Rozšířený pseudo-xG výpočet
+        xg = shots_on_target * 0.1 + shots_off_target * 0.05
+        xg_conceded = shots_on_target_conceded * 0.1 + shots_conceded_off_target * 0.05
+
         tempo = shots + shots_conceded + row['HC'] + row['AC'] + row['HF'] + row['AF']
 
         last5_goals += goals
@@ -1484,7 +1545,7 @@ def detect_overperformance_and_momentum(df, team):
     else:
         momentum_status = "➖ Stabilní"
 
-    return overperf_status, momentum_status
+    return overperf_status, momentum_status, final_momentum
 
 
 # Pokud chceš funkci použít víckrát, dej ji např. do helpers.py

@@ -1,3 +1,5 @@
+import numpy as np
+
 def calculate_contrarian_risk_score(matrix, expected_goals, tempo_home, tempo_away, warning_index_home, warning_index_away):
     """
     Vyhodnotí riziko, že zápas nebude odpovídat očekávanému (např. místo nudného zápasu přestřelka).
@@ -64,25 +66,55 @@ def colored_risk_tag(label, score):
         color = "red"
     return f"<span style='background-color:{color}; color:white; padding:3px 8px; border-radius:10px;'>{label}: {int(score * 100)}%</span>"
 
-def calculate_confidence_index(outcomes: dict, warning_home: float, warning_away: float,
-                                pos_home: float, pos_away: float, variance_warning: bool) -> float:
+def calculate_confidence_index(
+    outcomes: dict,
+    poisson_matrix: np.ndarray,
+    warning_home: float,
+    warning_away: float,
+    form_stability_score: float = 1.0,  # 1 = stabilní, <1 = nestabilní
+    pos_home: float = 0.0,
+    pos_away: float = 0.0,
+    variance_warning: bool = False
+) -> float:
     """
-    Spočítá Confidence Index (0–100), který vyjadřuje, jak moc model věří své predikci.
-    Vyšší hodnota = vyšší důvěra v jednoznačný výsledek a konzistenci vstupních metrik.
+    Spočítá komplexní Confidence Index (0–100) na základě predikční dominance, variance, formy a rizik.
     """
-    max_prob = max(outcomes.values())  # Např. 65 % Home Win
+    import numpy as np
+
+    # Hybridní dominance score z 1X2 predikce
     sorted_probs = sorted(outcomes.values(), reverse=True)
-    prob_diff = sorted_probs[0] - sorted_probs[1]  # Rozdíl mezi 1. a 2. nejpravděpodobnějším výsledkem
+    margin = sorted_probs[0] - sorted_probs[1]
+    ratio = sorted_probs[0] / sum(sorted_probs)
+    hybrid_score = 1 * margin + 80 * ratio  # vážený dominance score
 
-    # Penalizace za varování přestřelky
-    variance_penalty = 0.1 if variance_warning else 0.0
+    # Rozptyl skóre z Poisson matice – čím větší variance, tím nižší jistota
+    variance = np.var(poisson_matrix)
+    variance_score = max(0, 30 - variance * 5)  # 0–25 bodů
 
-    # Výpočet indexu
+    # Penalizace za variance warning (např. na základě šířky rozdělení)
+    variance_penalty = 5 if variance_warning else 0
+    
+    # Penalizace za warning index (např. nízké ELO momentum, rizika)
+    warning_penalty = 20 * max(warning_home, warning_away)
+
+    # Bonus za pozitivní trendy (pokud např. tým má formu, momentum, atd.)
+    trend_bonus = 40 * max(pos_home, pos_away)
+
+    # Bonus nebo penalizace za stabilitu formy
+    form_bonus = (form_stability_score - 1) * 50 # např. 0.95 → -1.0, 1.10 → +2.0
+
+    # Výsledný confidence index
     confidence = (
-        0.5 * (max_prob / 100) +                       # Dominance výsledku
-        0.2 * (1 - max(warning_home, warning_away)) +  # Nízká rizika
-        0.2 * max(pos_home, pos_away) -                # Pozitivní trendy
-        variance_penalty                               # Penalizace za rozptyl výsledků
+        0.5 * hybrid_score +
+        0.2 * variance_score +
+        form_bonus +
+        trend_bonus -
+        warning_penalty -
+        variance_penalty
     )
+    
+    # Horní posílení – když vše je ideální
+    if confidence > 85 and not variance_warning and max(warning_home, warning_away) < 0.1:
+        confidence = min(confidence + 10, 100)
 
-    return round(min(max(confidence, 0), 1) * 100, 1)  # Výstup ve škále 0–100
+    return round(np.clip(confidence, 0, 100), 1)

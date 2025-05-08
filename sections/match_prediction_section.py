@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from utils.poisson_utils import (
     calculate_elo_ratings, expected_goals_weighted_by_elo, poisson_prediction, match_outcomes_prob,
     over_under_prob, btts_prob, calculate_expected_points, calculate_pseudo_xg_for_team,
@@ -7,7 +8,7 @@ from utils.poisson_utils import (
     expected_match_tempo, tempo_to_emoji, get_top_scorelines, get_goal_probabilities,
     detect_risk_factors, detect_positive_factors, calculate_warning_index,
     expected_team_stats_weighted_by_elo, classify_team_strength, merged_home_away_opponent_form,
-    get_head_to_head_stats, calculate_match_tempo
+    get_head_to_head_stats, calculate_match_tempo,get_team_style_vs_opponent_type
 )
 from utils.frontend_utils import display_team_status_table
 from utils.poisson_utils.match_style import tempo_tag
@@ -42,6 +43,15 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
         st.error(str(e))
         st.stop()
 
+    home_expected_style = get_team_style_vs_opponent_type(df, home_team, away_team)
+    away_expected_style = get_team_style_vs_opponent_type(df, away_team, home_team)
+
+    # fallback pokud některý tým má málo dat
+    if home_expected_style is None or away_expected_style is None:
+        expected_gii = round((gii_dict.get(home_team, 0) or 0 + gii_dict.get(away_team, 0) or 0) / 2, 2)
+    else:
+        expected_gii = round((home_expected_style + away_expected_style) / 2, 2)
+
     matrix = poisson_prediction(home_exp, away_exp)
     outcomes = match_outcomes_prob(matrix)
     over_under = over_under_prob(matrix)
@@ -52,7 +62,7 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
     xg_away = calculate_pseudo_xg_for_team(season_df, away_team)
 
     col1, col2 = st.columns(2)
-    expected_gii = round((gii_dict.get(home_team, 0) + gii_dict.get(away_team, 0)) / 2, 2)
+    #expected_gii = round((gii_dict.get(home_team, 0) + gii_dict.get(away_team, 0)) / 2, 2)
     expected_gii_emoji = intensity_score_to_emoji(expected_gii)
     expected_tempo = expected_match_tempo(
         df,            # DataFrame se zápasy
@@ -99,15 +109,24 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
 
     pos_score_home = detect_positive_factors(df, home_team, elo_dict)[1]
     pos_score_away = detect_positive_factors(df, away_team, elo_dict)[1]
+    _, pos_score_home = detect_positive_factors(df, home_team, elo_dict)
+    _, pos_score_away = detect_positive_factors(df, away_team, elo_dict)
+    _, _, form_stability_home = detect_overperformance_and_momentum(df, home_team)
+    _, _, form_stability_away = detect_overperformance_and_momentum(df, away_team)
+    form_stability_score = (form_stability_home + form_stability_away) / 2
     variance_flag = scoreline_variance_warning(matrix) is not None
-
+    form_stability_score = 1.0  # Pokud nemáš metodu, klidně ponech 1.0
+    
     confidence_index = calculate_confidence_index(
-        outcomes,
-        warning_index_home, warning_index_away,
-        pos_score_home, pos_score_away,
-        variance_flag
+        outcomes=outcomes,
+        poisson_matrix=matrix,
+        warning_home=warning_index_home,
+        warning_away=warning_index_away,
+        form_stability_score=form_stability_score,
+        pos_home=pos_score_home,
+        pos_away=pos_score_away,
+        variance_warning=variance_flag
     )
-
 
 
     tempo_emoji = tempo_to_emoji(expected_tempo)
@@ -185,7 +204,7 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
 
     cols = st.columns(2)
     for i, (team, tempo) in enumerate([(home_team, tempo_home), (away_team, tempo_away)]):
-        over, momentum = detect_overperformance_and_momentum(df, team)
+        over, momentum, _= detect_overperformance_and_momentum(df, team)
         team_status = classify_team_strength(df, team)
         strength_emoji = classify_team_strength(df, team)
         strength_text = {

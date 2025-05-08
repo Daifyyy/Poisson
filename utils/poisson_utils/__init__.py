@@ -63,4 +63,5 @@ from .match_style import (
     expected_match_style_score,
     expected_match_tempo,
     tempo_to_emoji,
+    get_team_style_vs_opponent_type
 )
