@@ -24,7 +24,8 @@ from utils.utils_warnings import (
 from utils.anomaly_detection import (
     calculate_contrarian_risk_score,
     calculate_upset_risk_score,
-    colored_risk_tag
+    colored_risk_tag,
+    calculate_confidence_index
 )
 
 
@@ -64,6 +65,51 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
         xg_away["xG_away"]       # Pseudo-xG hostů
     )
 
+    form_dict = calculate_recent_form_by_matches(df)
+    style_form_warning = combined_form_tempo_warning(df, home_team, away_team, elo_dict, form_dict)
+    style_warning = conflict_style_warning(df, home_team, away_team, elo_dict)    
+
+
+    positives_summary = get_all_positive_signals(df, home_team, away_team, elo_dict)
+    for entry in positives_summary:
+        st.success(f"✅ Pozitivní trendy u {entry['team']}: " + " ".join(entry["messages"]))
+
+
+    warnings_list, warning_index_home, warning_index_away = get_all_match_warnings(df, home_team, away_team, matrix, elo_dict, form_dict)
+
+    for w in warnings_list:
+        if w["level"] == "high":
+            st.error(w["message"])
+        elif w["level"] == "medium":
+            st.warning(w["message"])
+        elif w["level"] == "low":
+            st.info(w["message"])
+
+    
+
+    
+
+    form_dog_positive = len(detect_positive_factors(df, away_team if outcomes["Home Win"] > outcomes["Away Win"] else home_team, elo_dict)[0]) > 0
+
+    tempo_home_val = calculate_match_tempo(df, home_team, elo_dict.get(away_team, 1500), True, elo_dict)["tempo"]
+    tempo_away_val = calculate_match_tempo(df, away_team, elo_dict.get(home_team, 1500), False, elo_dict)["tempo"]
+
+    contrarian_score = calculate_contrarian_risk_score(matrix, home_exp + away_exp, tempo_home_val, tempo_away_val, warning_index_home, warning_index_away)
+    upset_score = calculate_upset_risk_score(outcomes, warning_index_home, warning_index_away, form_dog_positive)
+
+    pos_score_home = detect_positive_factors(df, home_team, elo_dict)[1]
+    pos_score_away = detect_positive_factors(df, away_team, elo_dict)[1]
+    variance_flag = scoreline_variance_warning(matrix) is not None
+
+    confidence_index = calculate_confidence_index(
+        outcomes,
+        warning_index_home, warning_index_away,
+        pos_score_home, pos_score_away,
+        variance_flag
+    )
+
+
+
     tempo_emoji = tempo_to_emoji(expected_tempo)
 
     with col1:
@@ -81,6 +127,8 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
         # col2.markdown(f"### {tempo_emoji} ({expected_tempo})")
         col2.markdown(tempo_tag(expected_tempo), unsafe_allow_html=True)
 
+    
+    
 
     # Klíčové metriky
     st.markdown("## 📊 Klíčové metriky")
@@ -92,11 +140,11 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
 
     # Výsledkové pravděpodobnosti
     st.markdown("## 🧠 Pravděpodobnosti výsledků")
-    cols2 = st.columns(3)
+    cols2 = st.columns(4)
     cols2[0].metric("🏠 Výhra domácích", f"{outcomes['Home Win']}%", f"{1 / (outcomes['Home Win'] / 100):.2f}")
     cols2[1].metric("🤝 Remíza", f"{outcomes['Draw']}%", f"{1 / (outcomes['Draw'] / 100):.2f}")
     cols2[2].metric("🚶‍♂️ Výhra hostů", f"{outcomes['Away Win']}%", f"{1 / (outcomes['Away Win'] / 100):.2f}")
-
+    cols2[3].metric("🔒 Confidence", f"{confidence_index} %")
     
 
     # # Warning na přestřelkový rozptyl
@@ -128,34 +176,6 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
     #     st.warning(style_warning)
     
     
-    form_dict = calculate_recent_form_by_matches(df)
-    style_form_warning = combined_form_tempo_warning(df, home_team, away_team, elo_dict, form_dict)
-    style_warning = conflict_style_warning(df, home_team, away_team, elo_dict)    
-
-
-    positives_summary = get_all_positive_signals(df, home_team, away_team, elo_dict)
-    for entry in positives_summary:
-        st.success(f"✅ Pozitivní trendy u {entry['team']}: " + " ".join(entry["messages"]))
-
-
-    warnings_list, warning_index_home, warning_index_away = get_all_match_warnings(df, home_team, away_team, matrix, elo_dict, form_dict)
-
-    for w in warnings_list:
-        if w["level"] == "high":
-            st.error(w["message"])
-        elif w["level"] == "medium":
-            st.warning(w["message"])
-        elif w["level"] == "low":
-            st.info(w["message"])
-
-
-    form_dog_positive = len(detect_positive_factors(df, away_team if outcomes["Home Win"] > outcomes["Away Win"] else home_team, elo_dict)[0]) > 0
-
-    tempo_home_val = calculate_match_tempo(df, home_team, elo_dict.get(away_team, 1500), True, elo_dict)["tempo"]
-    tempo_away_val = calculate_match_tempo(df, away_team, elo_dict.get(home_team, 1500), False, elo_dict)["tempo"]
-
-    contrarian_score = calculate_contrarian_risk_score(matrix, home_exp + away_exp, tempo_home_val, tempo_away_val, warning_index_home, warning_index_away)
-    upset_score = calculate_upset_risk_score(outcomes, warning_index_home, warning_index_away, form_dog_positive)
     
     
         # Styl hry

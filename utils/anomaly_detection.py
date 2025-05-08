@@ -63,3 +63,26 @@ def colored_risk_tag(label, score):
     else:
         color = "red"
     return f"<span style='background-color:{color}; color:white; padding:3px 8px; border-radius:10px;'>{label}: {int(score * 100)}%</span>"
+
+def calculate_confidence_index(outcomes: dict, warning_home: float, warning_away: float,
+                                pos_home: float, pos_away: float, variance_warning: bool) -> float:
+    """
+    Spočítá Confidence Index (0–100), který vyjadřuje, jak moc model věří své predikci.
+    Vyšší hodnota = vyšší důvěra v jednoznačný výsledek a konzistenci vstupních metrik.
+    """
+    max_prob = max(outcomes.values())  # Např. 65 % Home Win
+    sorted_probs = sorted(outcomes.values(), reverse=True)
+    prob_diff = sorted_probs[0] - sorted_probs[1]  # Rozdíl mezi 1. a 2. nejpravděpodobnějším výsledkem
+
+    # Penalizace za varování přestřelky
+    variance_penalty = 0.1 if variance_warning else 0.0
+
+    # Výpočet indexu
+    confidence = (
+        0.5 * (max_prob / 100) +                       # Dominance výsledku
+        0.2 * (1 - max(warning_home, warning_away)) +  # Nízká rizika
+        0.2 * max(pos_home, pos_away) -                # Pozitivní trendy
+        variance_penalty                               # Penalizace za rozptyl výsledků
+    )
+
+    return round(min(max(confidence, 0), 1) * 100, 1)  # Výstup ve škále 0–100

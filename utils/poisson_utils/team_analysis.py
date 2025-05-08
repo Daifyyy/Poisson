@@ -312,3 +312,92 @@ def calculate_recent_form(df: pd.DataFrame, days: int = 31) -> dict:
 
     return form
 
+def calculate_team_home_advantage(df, team: str) -> float:
+    """
+    Spočítá relativní domácí výhodu daného týmu vůči ligovému průměru.
+    Výstupem je upravený home advantage v rozsahu ±0.3 (většinou).
+    """
+    home_avg = df[df['HomeTeam'] == team]['FTHG'].mean()
+    away_avg = df[df['AwayTeam'] == team]['FTAG'].mean()
+    team_diff = home_avg - away_avg
+
+    league_home_avg = df['FTHG'].mean()
+    league_away_avg = df['FTAG'].mean()
+    league_diff = league_home_avg - league_away_avg
+
+    if pd.isna(team_diff) or pd.isna(league_diff) or league_diff == 0:
+        return 0.0
+
+    home_adv_ratio = team_diff / league_diff
+    home_adv_scaled = league_diff * home_adv_ratio * 0.5  # tlumený koeficient
+
+    return round(home_adv_scaled, 2)
+
+def expected_goals_weighted_by_home_away(df, home_team, away_team, elo_dict) -> tuple:
+    """
+    Rozšířená verze výpočtu očekávaných gólů, která respektuje domácí vs venkovní výkonnost
+    a dynamicky dopočítává faktor domácí výhody pomocí funkce calculate_team_home_advantage().
+    """
+    
+    df = prepare_df(df)
+
+    latest_date = df['Date'].max()
+    one_year_ago = latest_date - pd.Timedelta(days=365)
+
+    df_hist = df[df['Date'] < one_year_ago]
+    df_season = df[df['Date'] >= one_year_ago]
+    df_last10 = df[
+        (df['HomeTeam'] == home_team) | (df['AwayTeam'] == home_team) |
+        (df['HomeTeam'] == away_team) | (df['AwayTeam'] == away_team)
+    ].sort_values('Date').tail(10)
+
+    def filter_by_elo(sub_df, team, is_home, opponent_elo, n=10):
+        team_col = 'HomeTeam' if is_home else 'AwayTeam'
+        opp_col = 'AwayTeam' if is_home else 'HomeTeam'
+        gf_col = 'FTHG' if is_home else 'FTAG'
+        ga_col = 'FTAG' if is_home else 'FTHG'
+
+        matches = sub_df[sub_df[team_col] == team].copy()
+        matches['OppELO'] = matches[opp_col].map(elo_dict)
+        matches['EloDiff'] = abs(matches['OppELO'] - opponent_elo)
+        matches = matches.sort_values('EloDiff').head(n)
+
+        gf = matches[gf_col].mean() if not matches.empty else 1.0
+        ga = matches[ga_col].mean() if not matches.empty else 1.0
+        return gf, ga
+
+    elo_away = elo_dict.get(away_team, 1500)
+    elo_home = elo_dict.get(home_team, 1500)
+
+    hist_home, hist_home_ga = filter_by_elo(df_hist, home_team, True, elo_away)
+    hist_away, hist_away_ga = filter_by_elo(df_hist, away_team, False, elo_home)
+
+    season_home, season_home_ga = filter_by_elo(df_season, home_team, True, elo_away)
+    season_away, season_away_ga = filter_by_elo(df_season, away_team, False, elo_home)
+
+    last5_home, last5_home_ga = filter_by_elo(df_last10, home_team, True, elo_away)
+    last5_away, last5_away_ga = filter_by_elo(df_last10, away_team, False, elo_home)
+
+    league_avg_home_goals = df['FTHG'].mean()
+    league_avg_away_goals = df['FTAG'].mean()
+
+    def compute_expected(gf, ga, l_home, l_away):
+        return l_home * (gf / l_home) * (ga / l_away)
+
+    ehist_home = compute_expected(hist_home, hist_away_ga, league_avg_home_goals, league_avg_away_goals)
+    eseason_home = compute_expected(season_home, season_away_ga, league_avg_home_goals, league_avg_away_goals)
+    elast5_home = compute_expected(last5_home, last5_away_ga, league_avg_home_goals, league_avg_away_goals)
+
+    ehist_away = compute_expected(hist_away, hist_home_ga, league_avg_away_goals, league_avg_home_goals)
+    eseason_away = compute_expected(season_away, season_home_ga, league_avg_away_goals, league_avg_home_goals)
+    elast5_away = compute_expected(last5_away, last5_home_ga, league_avg_away_goals, league_avg_home_goals)
+
+    base_expected_home = 0.3 * ehist_home + 0.4 * eseason_home + 0.3 * elast5_home
+    base_expected_away = 0.3 * ehist_away + 0.4 * eseason_away + 0.3 * elast5_away
+
+    final_home_advantage = calculate_team_home_advantage(df, home_team)
+
+    expected_home = base_expected_home + final_home_advantage
+    expected_away = base_expected_away
+
+    return round(expected_home, 2), round(expected_away, 2)
