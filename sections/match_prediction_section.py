@@ -28,6 +28,30 @@ from utils.anomaly_detection import (
     colored_risk_tag,
     calculate_confidence_index
 )
+@st.cache_data
+def get_cached_match_inputs(df, home_team, away_team, elo_dict):
+    from utils.poisson_utils import (
+        expected_goals_weighted_by_elo, poisson_prediction, match_outcomes_prob,
+        over_under_prob, btts_prob, calculate_expected_points
+    )
+    home_exp, away_exp = expected_goals_weighted_by_elo(df, home_team, away_team, elo_dict)
+    matrix = poisson_prediction(home_exp, away_exp)
+    outcomes = match_outcomes_prob(matrix)
+    over_under = over_under_prob(matrix)
+    btts = btts_prob(matrix)
+    xpoints = calculate_expected_points(outcomes)
+    return {
+        "home_exp": home_exp,
+        "away_exp": away_exp,
+        "matrix": matrix,
+        "outcomes": outcomes,
+        "over_under": over_under,
+        "btts": btts,
+        "xpoints": xpoints
+    }
+@st.cache_data
+def get_cached_pseudo_xg(season_df, team):
+    return calculate_pseudo_xg_for_team(season_df, team)
 
 
 
@@ -36,13 +60,13 @@ from utils.anomaly_detection import (
 def render_single_match_prediction(df, season_df, home_team, away_team, league_name, gii_dict):
     st.header(f"🔮 {home_team} vs {away_team}")
 
+    elo_dict = calculate_elo_ratings(df)
     try:
-        elo_dict = calculate_elo_ratings(df)
-        home_exp, away_exp = expected_goals_weighted_by_elo(df, home_team, away_team, elo_dict)
+        match_data = get_cached_match_inputs(df, home_team, away_team, elo_dict)
     except ValueError as e:
         st.error(str(e))
         st.stop()
-
+        
     home_expected_style = get_team_style_vs_opponent_type(df, home_team, away_team)
     away_expected_style = get_team_style_vs_opponent_type(df, away_team, home_team)
 
@@ -52,14 +76,23 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
     else:
         expected_gii = round((home_expected_style + away_expected_style) / 2, 2)
 
-    matrix = poisson_prediction(home_exp, away_exp)
-    outcomes = match_outcomes_prob(matrix)
-    over_under = over_under_prob(matrix)
-    btts = btts_prob(matrix)
-    xpoints = calculate_expected_points(outcomes)
+    # matrix = poisson_prediction(home_exp, away_exp)
+    # outcomes = match_outcomes_prob(matrix)
+    # over_under = over_under_prob(matrix)
+    # btts = btts_prob(matrix)
+    # xpoints = calculate_expected_points(outcomes)
 
-    xg_home = calculate_pseudo_xg_for_team(season_df, home_team)
-    xg_away = calculate_pseudo_xg_for_team(season_df, away_team)
+    home_exp = match_data["home_exp"]
+    away_exp = match_data["away_exp"]
+    matrix = match_data["matrix"]
+    outcomes = match_data["outcomes"]
+    over_under = match_data["over_under"]
+    btts = match_data["btts"]
+    xpoints = match_data["xpoints"]
+    
+    xg_home = get_cached_pseudo_xg(season_df, home_team)
+    xg_away = get_cached_pseudo_xg(season_df, away_team)
+
 
     col1, col2 = st.columns(2)
     #expected_gii = round((gii_dict.get(home_team, 0) + gii_dict.get(away_team, 0)) / 2, 2)
