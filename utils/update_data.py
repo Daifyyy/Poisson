@@ -75,3 +75,8 @@ def update_all_leagues():
             messages.append(f"❌ {code}: Chyba – {str(e)}")
 
     return messages
+
+if __name__ == "__main__":
+    logs = update_all_leagues()
+    for log in logs:
+        print(log)
