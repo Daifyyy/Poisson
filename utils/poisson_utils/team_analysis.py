@@ -1,7 +1,8 @@
 import pandas as pd
 import numpy as np
+from scipy.stats import poisson
 
-from .core import prepare_df, calculate_points
+from .core import prepare_df, calculate_points,poisson_over25_probability
 from .xg import calculate_team_pseudo_xg
 from utils.utils_warnings import detect_overperformance_and_momentum
 
@@ -401,3 +402,99 @@ def expected_goals_weighted_by_home_away(df, home_team, away_team, elo_dict) -> 
     expected_away = base_expected_away
 
     return round(expected_home, 2), round(expected_away, 2)
+
+def expected_goals_combined_homeaway_allmatches(df, home_team, away_team, weight_homeaway=0.7):
+    df = prepare_df(df)
+    latest_date = df['Date'].max()
+    one_year_ago = latest_date - pd.Timedelta(days=365)
+
+    # časová období
+    df_hist = df[df['Date'] < one_year_ago]
+    df_season = df[df['Date'] >= one_year_ago]
+
+    # posledních 5 zápasů
+    df_last5_home = df[df['HomeTeam'] == home_team].sort_values("Date").tail(5)
+    df_last5_away = df[df['AwayTeam'] == away_team].sort_values("Date").tail(5)
+    df_last5_all_home = df[(df['HomeTeam'] == home_team) | (df['AwayTeam'] == home_team)].sort_values("Date").tail(5)
+    df_last5_all_away = df[(df['HomeTeam'] == away_team) | (df['AwayTeam'] == away_team)].sort_values("Date").tail(5)
+
+    league_avg_home = df['FTHG'].mean()
+    league_avg_away = df['FTAG'].mean()
+
+    def safe_stat(series, default=1.0):
+        val = series.median()
+        return val if not np.isnan(val) else default
+
+    def get_home_away_exp(sub, team, is_home):
+        if is_home:
+            m = sub[sub['HomeTeam'] == team]
+            gf = safe_stat(m['FTHG'])
+            ga = safe_stat(m['FTAG'])
+        else:
+            m = sub[sub['AwayTeam'] == team]
+            gf = safe_stat(m['FTAG'])
+            ga = safe_stat(m['FTHG'])
+        return gf, ga
+
+    def get_all_matches_exp(sub, team):
+        m = sub[(sub['HomeTeam'] == team) | (sub['AwayTeam'] == team)]
+        gf_list, ga_list = [], []
+        for _, row in m.iterrows():
+            if row['HomeTeam'] == team:
+                gf_list.append(row['FTHG'])
+                ga_list.append(row['FTAG'])
+            else:
+                gf_list.append(row['FTAG'])
+                ga_list.append(row['FTHG'])
+        return safe_stat(pd.Series(gf_list)), safe_stat(pd.Series(ga_list))
+
+    def compute_expected(gf, ga_opp, l_home, l_away):
+        return l_home * (gf / l_home) * (ga_opp / l_away)
+
+    def compute_weighted_exp(dfs_home, dfs_away, extractor_home, extractor_away):
+        eh, ea = [], []
+        for dfh, dfa in zip(dfs_home, dfs_away):
+            gf_home, ga_home = extractor_home(dfh)
+            gf_away, ga_away = extractor_away(dfa)
+            eh.append(compute_expected(gf_home, ga_away, league_avg_home, league_avg_away))
+            ea.append(compute_expected(gf_away, ga_home, league_avg_away, league_avg_home))
+        weighted_home = 0.3 * eh[0] + 0.4 * eh[1] + 0.3 * eh[2]
+        weighted_away = 0.3 * ea[0] + 0.4 * ea[1] + 0.3 * ea[2]
+        return weighted_home, weighted_away, eh, ea
+
+    # Výpočty
+    exp_ha_home, exp_ha_away, eh, ea = compute_weighted_exp(
+        [df_hist, df_season, df_last5_home],
+        [df_hist, df_season, df_last5_away],
+        lambda d: get_home_away_exp(d, home_team, True),
+        lambda d: get_home_away_exp(d, away_team, False)
+    )
+
+    exp_all_home, exp_all_away, eh_all, ea_all = compute_weighted_exp(
+        [df_hist, df_season, df_last5_all_home],
+        [df_hist, df_season, df_last5_all_away],
+        lambda d: get_all_matches_exp(d, home_team),
+        lambda d: get_all_matches_exp(d, away_team)
+    )
+
+    final_home = round(weight_homeaway * exp_ha_home + (1 - weight_homeaway) * exp_all_home, 2)
+    final_away = round(weight_homeaway * exp_ha_away + (1 - weight_homeaway) * exp_all_away, 2)
+
+    # Výpis pravděpodobností Over 2.5
+    print("🟦 Home/Away-only přístup – Over 2.5:")
+    print(f"  Historie:      {poisson_over25_probability(eh[0], ea[0])}%")
+    print(f"  Sezóna:        {poisson_over25_probability(eh[1], ea[1])}%")
+    print(f"  Posledních 5:  {poisson_over25_probability(eh[2], ea[2])}%")
+    print(f"  => Průměr:     {poisson_over25_probability(exp_ha_home, exp_ha_away)}%")
+
+    print("🟧 All matches přístup – Over 2.5:")
+    print(f"  Historie:      {poisson_over25_probability(eh_all[0], ea_all[0])}%")
+    print(f"  Sezóna:        {poisson_over25_probability(eh_all[1], ea_all[1])}%")
+    print(f"  Posledních 5:  {poisson_over25_probability(eh_all[2], ea_all[2])}%")
+    print(f"  => Průměr:     {poisson_over25_probability(exp_all_home, exp_all_away)}%")
+
+    print("🎯 Finální kombinovaná Over 2.5:")
+    print(f"  Výsledek:      {poisson_over25_probability(final_home, final_away)}%")
+
+    return final_home, final_away
+

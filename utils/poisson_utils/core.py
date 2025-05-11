@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 import math
+from scipy.stats import poisson
+
 
 def prepare_df(df: pd.DataFrame) -> pd.DataFrame:
     """Základní úprava dat: kopírování, převod datumu, odstranění nevalidních řádků, seřazení podle data."""
@@ -235,6 +237,14 @@ def compute_score_stats(df: pd.DataFrame, team: str):
 
     return score_list, avg_goals_per_match, score_variance
 
+def poisson_over25_probability(home_exp, away_exp):
+    matrix = np.zeros((7, 7))
+    for i in range(7):
+        for j in range(7):
+            matrix[i][j] = poisson.pmf(i, home_exp) * poisson.pmf(j, away_exp)
+
+    prob_over = sum(matrix[i][j] for i in range(7) for j in range(7) if i + j > 2.5)
+    return round(prob_over * 100, 2)
 
 
 

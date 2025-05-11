@@ -8,7 +8,9 @@ from utils.poisson_utils import (
     expected_match_tempo, tempo_to_emoji, get_top_scorelines, get_goal_probabilities,
     detect_risk_factors, detect_positive_factors, calculate_warning_index,
     expected_team_stats_weighted_by_elo, classify_team_strength, merged_home_away_opponent_form,
-    get_head_to_head_stats, calculate_match_tempo,get_team_style_vs_opponent_type,calculate_elo_ratings
+    get_head_to_head_stats, calculate_match_tempo,get_team_style_vs_opponent_type,calculate_elo_ratings,
+    expected_goals_combined_homeaway_allmatches
+
 )
 from utils.frontend_utils import display_team_status_table
 from utils.poisson_utils.match_style import tempo_tag
@@ -36,7 +38,8 @@ def get_cached_match_inputs(df_hash,df, home_team, away_team, elo_dict):
     #     over_under_prob, btts_prob, calculate_expected_points
     # )
 
-    home_exp, away_exp = expected_goals_weighted_by_elo(df, home_team, away_team, elo_dict)
+    home_exp, away_exp = expected_goals_combined_homeaway_allmatches(df, home_team, away_team)
+    #home_exp, away_exp = expected_goals_weighted_by_elo(df, home_team, away_team, elo_dict)
     matrix = poisson_prediction(home_exp, away_exp)
     outcomes = match_outcomes_prob(matrix)
     over_under = over_under_prob(matrix)

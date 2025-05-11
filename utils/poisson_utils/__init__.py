@@ -50,6 +50,8 @@ from .team_analysis import (
     analyze_opponent_strength,
     get_head_to_head_stats,
     merged_home_away_opponent_form,
+    expected_goals_combined_homeaway_allmatches
+
 )
 
 from .match_style import (
