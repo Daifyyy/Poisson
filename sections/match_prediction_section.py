@@ -38,7 +38,7 @@ def get_cached_match_inputs(df_hash,df, home_team, away_team, elo_dict):
     #     over_under_prob, btts_prob, calculate_expected_points
     # )
 
-    home_exp, away_exp = expected_goals_combined_homeaway_allmatches(df, home_team, away_team)
+    home_exp, away_exp = expected_goals_combined_homeaway_allmatches(df, home_team, away_team,elo_dict)
     #home_exp, away_exp = expected_goals_weighted_by_elo(df, home_team, away_team, elo_dict)
     matrix = poisson_prediction(home_exp, away_exp)
     outcomes = match_outcomes_prob(matrix)
