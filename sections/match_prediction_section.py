@@ -9,7 +9,7 @@ from utils.poisson_utils import (
     detect_risk_factors, detect_positive_factors, calculate_warning_index,
     expected_team_stats_weighted_by_elo, classify_team_strength, merged_home_away_opponent_form,
     get_head_to_head_stats, calculate_match_tempo,get_team_style_vs_opponent_type,calculate_elo_ratings,
-    expected_goals_combined_homeaway_allmatches
+    expected_goals_combined_homeaway_allmatches,expected_goals_weighted_by_home_away
 
 )
 from utils.frontend_utils import display_team_status_table

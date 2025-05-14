@@ -403,13 +403,193 @@ def expected_goals_weighted_by_home_away(df, home_team, away_team, elo_dict) -> 
 
     return round(expected_home, 2), round(expected_away, 2)
 
-def expected_goals_combined_homeaway_allmatches(df, home_team, away_team, elo_dict,
-                                                 weight_homeaway=0.4, weight_all=0.3, weight_elo=0.3):
+# def expected_goals_combined_homeaway_allmatches(df, home_team, away_team, elo_dict,
+#                                                  weight_homeaway=0.4, weight_all=0.3, weight_elo=0.3):
+#     df = prepare_df(df)
+#     latest_date = df['Date'].max()
+#     one_year_ago = latest_date - pd.Timedelta(days=365)
+
+#     # časová období
+#     df_hist = df[df['Date'] < one_year_ago]
+#     df_season = df[df['Date'] >= one_year_ago]
+
+#     # posledních 5 zápasů
+#     df_last5_home = get_last_n_matches(df, home_team, role="home")
+#     df_last5_away = get_last_n_matches(df, away_team, role="away")
+#     df_last5_all_home = get_last_n_matches(df, home_team)
+#     df_last5_all_away = get_last_n_matches(df, away_team)
+
+#     league_avg_home = df['FTHG'].mean()
+#     league_avg_away = df['FTAG'].mean()
+
+#     def safe_stat(series, default=1.0):
+#         val = series.median()
+#         return val if not np.isnan(val) else default
+
+#     def get_home_away_exp(sub, team, is_home):
+#         if is_home:
+#             m = sub[sub['HomeTeam'] == team]
+#             gf = safe_stat(m['FTHG'])
+#             ga = safe_stat(m['FTAG'])
+#         else:
+#             m = sub[sub['AwayTeam'] == team]
+#             gf = safe_stat(m['FTAG'])
+#             ga = safe_stat(m['FTHG'])
+#         return gf, ga
+
+#     def get_all_matches_exp(sub, team):
+#         m = sub[(sub['HomeTeam'] == team) | (sub['AwayTeam'] == team)]
+#         gf_list, ga_list = [], []
+#         for _, row in m.iterrows():
+#             if row['HomeTeam'] == team:
+#                 gf_list.append(row['FTHG'])
+#                 ga_list.append(row['FTAG'])
+#             else:
+#                 gf_list.append(row['FTAG'])
+#                 ga_list.append(row['FTHG'])
+#         return safe_stat(pd.Series(gf_list)), safe_stat(pd.Series(ga_list))
+
+#     def compute_expected(gf, ga_opp, l_home, l_away):
+#         return l_home * (gf / l_home) * (ga_opp / l_away)
+
+#     def compute_weighted_exp(dfs_home, dfs_away, extractor_home, extractor_away):
+#         eh, ea = [], []
+#         for dfh, dfa in zip(dfs_home, dfs_away):
+#             gf_home, ga_home = extractor_home(dfh)
+#             gf_away, ga_away = extractor_away(dfa)
+#             eh.append(compute_expected(gf_home, ga_away, league_avg_home, league_avg_away))
+#             ea.append(compute_expected(gf_away, ga_home, league_avg_away, league_avg_home))
+#         weighted_home = 0.15 * eh[0] + 0.5 * eh[1] + 0.35 * eh[2]
+#         weighted_away = 0.15 * ea[0] + 0.5 * ea[1] + 0.35 * ea[2]
+#         return weighted_home, weighted_away, eh, ea
+
+#     # Výpočty pro přístup 1 (Home/Away only)
+#     exp_ha_home, exp_ha_away,eh, ea = compute_weighted_exp(
+#         [df_hist, df_season, df_last5_home],
+#         [df_hist, df_season, df_last5_away],
+#         lambda d: get_home_away_exp(d, home_team, True),
+#         lambda d: get_home_away_exp(d, away_team, False)
+#     )
+
+#     # Výpočty pro přístup 2 (All matches)
+#     exp_all_home, exp_all_away,eh_all, ea_all = compute_weighted_exp(
+#         [df_hist, df_season, df_last5_all_home],
+#         [df_hist, df_season, df_last5_all_away],
+#         lambda d: get_all_matches_exp(d, home_team),
+#         lambda d: get_all_matches_exp(d, away_team)
+#     )
+
+#     # Výpočty pro přístup 3 (ELO relevantní + stáří vážené)
+#     exp_elo_home, exp_elo_away = expected_goals_vs_similar_elo_weighted(df, home_team, away_team, elo_dict)
+
+#     # Finální vážená kombinace
+#     final_home = round(
+#         weight_homeaway * exp_ha_home +
+#         weight_all * exp_all_home +
+#         weight_elo * exp_elo_home, 2)
+
+#     final_away = round(
+#         weight_homeaway * exp_ha_away +
+#         weight_all * exp_all_away +
+#         weight_elo * exp_elo_away, 2)
+
+#     # Výpis pravděpodobností Over 2.5
+#     print("🟦 Home/Away-only přístup – Over 2.5:")
+#     print(f"  Historie:      {poisson_over25_probability(eh[0], ea[0])}%")
+#     print(f"  Sezóna:        {poisson_over25_probability(eh[1], ea[1])}%")
+#     print(f"  Posledních 5:  {poisson_over25_probability(eh[2], ea[2])}%")
+#     print(f"  => Průměr:     {poisson_over25_probability(exp_ha_home, exp_ha_away)}%")
+
+#     print("🟧 All matches přístup – Over 2.5:")
+#     print(f"  Historie:      {poisson_over25_probability(eh_all[0], ea_all[0])}%")
+#     print(f"  Sezóna:        {poisson_over25_probability(eh_all[1], ea_all[1])}%")
+#     print(f"  Posledních 5:  {poisson_over25_probability(eh_all[2], ea_all[2])}%")
+#     print(f"  => Průměr:     {poisson_over25_probability(exp_all_home, exp_all_away)}%")
+
+#     print("🧠 Similar ELO přístup – Over 2.5:")
+#     print(f"  => Výsledek:   {poisson_over25_probability(exp_elo_home, exp_elo_away)}%")
+
+#     print("🎯 Finální kombinovaná Over 2.5:")
+#     print(f"  Výsledek:      {poisson_over25_probability(final_home, final_away)}%")
+
+#     return final_home, final_away
+def expected_goals_vs_opponent_strength_weighted(df, team, opponent, elo_dict, is_home=True, n=20):
+    """
+    Vypočítá očekávané góly na základě toho, jak tým skóruje proti soupeřům podobné síly jako aktuální soupeř.
+    Síla soupeřů se určuje podle ELO ratingu (rozděleno do tříd: strong, average, weak).
+    """
+    df = prepare_df(df)
+    df = df.sort_values("Date")
+
+    # Filtruj posledních N zápasů týmu v dané roli
+    team_matches = df[df['HomeTeam'] == team] if is_home else df[df['AwayTeam'] == team]
+    team_matches = team_matches.tail(n)
+
+    if team_matches.empty:
+        return 1.0  # fallback
+
+    # Nastav sloupce podle role
+    team_col = 'HomeTeam' if is_home else 'AwayTeam'
+    opp_col = 'AwayTeam' if is_home else 'HomeTeam'
+    gf_col = 'FTHG' if is_home else 'FTAG'
+    ga_col = 'FTAG' if is_home else 'FTHG'
+
+    # Přidej ELO soupeřů a klasifikaci
+    team_matches = team_matches.copy()
+    team_matches["Opponent"] = team_matches[opp_col]
+    team_matches["EloOpp"] = team_matches["Opponent"].map(elo_dict)
+    team_matches = team_matches.dropna(subset=["EloOpp"])
+
+    opp_elo = elo_dict.get(opponent, 1500)
+
+    # Percentilové rozdělení soupeřů v lize
+    all_elos = list(elo_dict.values())
+    p30 = np.percentile(all_elos, 30)
+    p70 = np.percentile(all_elos, 70)
+
+    def classify(e):
+        if e <= p30:
+            return "weak"
+        elif e >= p70:
+            return "strong"
+        else:
+            return "average"
+
+    team_matches["OppStrength"] = team_matches["EloOpp"].apply(classify)
+    current_strength = classify(opp_elo)
+
+    # Výpočet průměrů podle třídy soupeřů
+    gfs = {}
+    for group in ["strong", "average", "weak"]:
+        sub = team_matches[team_matches["OppStrength"] == group]
+        gfs[group] = sub[gf_col].mean() if not sub.empty else 1.0
+
+    # Váhy dle podobnosti aktuálního soupeře
+    weights = {
+        "strong": 0.6 if current_strength == "strong" else 0.2,
+        "average": 0.6 if current_strength == "average" else 0.2,
+        "weak": 0.6 if current_strength == "weak" else 0.2
+    }
+
+    # Vážený průměr
+    expected = (
+        weights["strong"] * gfs["strong"] +
+        weights["average"] * gfs["average"] +
+        weights["weak"] * gfs["weak"]
+    )
+
+    return round(expected, 2)
+
+def expected_goals_combined_homeaway_allmatches(
+    df, home_team, away_team, elo_dict,
+    weight_homeaway=0.4,
+    weight_all=0.3,
+    weight_matchup=0.3
+):
     df = prepare_df(df)
     latest_date = df['Date'].max()
     one_year_ago = latest_date - pd.Timedelta(days=365)
 
-    # časová období
     df_hist = df[df['Date'] < one_year_ago]
     df_season = df[df['Date'] >= one_year_ago]
 
@@ -423,95 +603,89 @@ def expected_goals_combined_homeaway_allmatches(df, home_team, away_team, elo_di
     league_avg_away = df['FTAG'].mean()
 
     def safe_stat(series, default=1.0):
-        val = series.median()
+        val = series.mean()
         return val if not np.isnan(val) else default
 
     def get_home_away_exp(sub, team, is_home):
-        if is_home:
-            m = sub[sub['HomeTeam'] == team]
-            gf = safe_stat(m['FTHG'])
-            ga = safe_stat(m['FTAG'])
-        else:
-            m = sub[sub['AwayTeam'] == team]
-            gf = safe_stat(m['FTAG'])
-            ga = safe_stat(m['FTHG'])
+        df_team = sub[sub['HomeTeam'] == team] if is_home else sub[sub['AwayTeam'] == team]
+        gf = safe_stat(df_team['FTHG'] if is_home else df_team['FTAG'])
+        ga = safe_stat(df_team['FTAG'] if is_home else df_team['FTHG'])
         return gf, ga
 
     def get_all_matches_exp(sub, team):
-        m = sub[(sub['HomeTeam'] == team) | (sub['AwayTeam'] == team)]
-        gf_list, ga_list = [], []
-        for _, row in m.iterrows():
+        matches = sub[(sub['HomeTeam'] == team) | (sub['AwayTeam'] == team)]
+        gf, ga = [], []
+        for _, row in matches.iterrows():
             if row['HomeTeam'] == team:
-                gf_list.append(row['FTHG'])
-                ga_list.append(row['FTAG'])
+                gf.append(row['FTHG'])
+                ga.append(row['FTAG'])
             else:
-                gf_list.append(row['FTAG'])
-                ga_list.append(row['FTHG'])
-        return safe_stat(pd.Series(gf_list)), safe_stat(pd.Series(ga_list))
+                gf.append(row['FTAG'])
+                ga.append(row['FTHG'])
+        return safe_stat(pd.Series(gf)), safe_stat(pd.Series(ga))
 
-    def compute_expected(gf, ga_opp, l_home, l_away):
-        return l_home * (gf / l_home) * (ga_opp / l_away)
+    def compute_expected(gf, ga_opp):
+        return league_avg_home * (gf / league_avg_home) * (ga_opp / league_avg_away)
 
-    def compute_weighted_exp(dfs_home, dfs_away, extractor_home, extractor_away):
-        eh, ea = [], []
-        for dfh, dfa in zip(dfs_home, dfs_away):
-            gf_home, ga_home = extractor_home(dfh)
-            gf_away, ga_away = extractor_away(dfa)
-            eh.append(compute_expected(gf_home, ga_away, league_avg_home, league_avg_away))
-            ea.append(compute_expected(gf_away, ga_home, league_avg_away, league_avg_home))
-        weighted_home = 0.15 * eh[0] + 0.5 * eh[1] + 0.35 * eh[2]
-        weighted_away = 0.15 * ea[0] + 0.5 * ea[1] + 0.35 * ea[2]
-        return weighted_home, weighted_away, eh, ea
+    def compute_weighted(dfh_list, dfa_list, extractor_home, extractor_away):
+        e_home, e_away = [], []
+        for dfh, dfa in zip(dfh_list, dfa_list):
+            gf_h, ga_h = extractor_home(dfh)
+            gf_a, ga_a = extractor_away(dfa)
+            e_home.append(compute_expected(gf_h, ga_a))
+            e_away.append(compute_expected(gf_a, ga_h))
+        w_home = 0.15 * e_home[0] + 0.5 * e_home[1] + 0.35 * e_home[2]
+        w_away = 0.15 * e_away[0] + 0.5 * e_away[1] + 0.35 * e_away[2]
+        return w_home, w_away, e_home, e_away
 
-    # Výpočty pro přístup 1 (Home/Away only)
-    exp_ha_home, exp_ha_away,eh, ea = compute_weighted_exp(
+    # 1. Home/Away přístup
+    ha_home, ha_away, ha_parts_home, ha_parts_away = compute_weighted(
         [df_hist, df_season, df_last5_home],
         [df_hist, df_season, df_last5_away],
         lambda d: get_home_away_exp(d, home_team, True),
         lambda d: get_home_away_exp(d, away_team, False)
     )
 
-    # Výpočty pro přístup 2 (All matches)
-    exp_all_home, exp_all_away,eh_all, ea_all = compute_weighted_exp(
+    # 2. All matches přístup
+    all_home, all_away, all_parts_home, all_parts_away = compute_weighted(
         [df_hist, df_season, df_last5_all_home],
         [df_hist, df_season, df_last5_all_away],
         lambda d: get_all_matches_exp(d, home_team),
         lambda d: get_all_matches_exp(d, away_team)
     )
 
-    # Výpočty pro přístup 3 (ELO relevantní + stáří vážené)
-    exp_elo_home, exp_elo_away = expected_goals_vs_similar_elo_weighted(df, home_team, away_team, elo_dict)
+    # 3. Matchup přístup (proti silným/průměrným/slabým soupeřům)
+    matchup_home = expected_goals_vs_opponent_strength_weighted(df, home_team, away_team, elo_dict, is_home=True)
+    matchup_away = expected_goals_vs_opponent_strength_weighted(df, away_team, home_team, elo_dict, is_home=False)
 
-    # Finální vážená kombinace
+    # Kombinace všech tří přístupů
     final_home = round(
-        weight_homeaway * exp_ha_home +
-        weight_all * exp_all_home +
-        weight_elo * exp_elo_home, 2)
+        weight_homeaway * ha_home +
+        weight_all * all_home +
+        weight_matchup * matchup_home, 2)
 
     final_away = round(
-        weight_homeaway * exp_ha_away +
-        weight_all * exp_all_away +
-        weight_elo * exp_elo_away, 2)
+        weight_homeaway * ha_away +
+        weight_all * all_away +
+        weight_matchup * matchup_away, 2)
 
-    # Výpis pravděpodobností Over 2.5
-    print("🟦 Home/Away-only přístup – Over 2.5:")
-    print(f"  Historie:      {poisson_over25_probability(eh[0], ea[0])}%")
-    print(f"  Sezóna:        {poisson_over25_probability(eh[1], ea[1])}%")
-    print(f"  Posledních 5:  {poisson_over25_probability(eh[2], ea[2])}%")
-    print(f"  => Průměr:     {poisson_over25_probability(exp_ha_home, exp_ha_away)}%")
+    # Debug výstup
+    def print_parts(label, parts_home, parts_away, combined_home, combined_away):
+        print(f"{label}")
+        print(f"  Historie:      {poisson_over25_probability(parts_home[0], parts_away[0])}%")
+        print(f"  Sezóna:        {poisson_over25_probability(parts_home[1], parts_away[1])}%")
+        print(f"  Posledních 5:  {poisson_over25_probability(parts_home[2], parts_away[2])}%")
+        print(f"  => Průměr:     {poisson_over25_probability(combined_home, combined_away)}%")
 
-    print("🟧 All matches přístup – Over 2.5:")
-    print(f"  Historie:      {poisson_over25_probability(eh_all[0], ea_all[0])}%")
-    print(f"  Sezóna:        {poisson_over25_probability(eh_all[1], ea_all[1])}%")
-    print(f"  Posledních 5:  {poisson_over25_probability(eh_all[2], ea_all[2])}%")
-    print(f"  => Průměr:     {poisson_over25_probability(exp_all_home, exp_all_away)}%")
-
-    print("🧠 Similar ELO přístup – Over 2.5:")
-    print(f"  => Výsledek:   {poisson_over25_probability(exp_elo_home, exp_elo_away)}%")
-
-    print("🎯 Finální kombinovaná Over 2.5:")
+    print_parts("🟦 Home/Away-only přístup – Over 2.5:", ha_parts_home, ha_parts_away, ha_home, ha_away)
+    print_parts("🟧 All matches přístup – Over 2.5:", all_parts_home, all_parts_away, all_home, all_away)
+    print("🎯 Matchup přístup (síla soupeře):")
+    print(f"  Home exp:      {matchup_home}  |  Away exp: {matchup_away}")
+    print(f"  Over 2.5:      {poisson_over25_probability(matchup_home, matchup_away)}%")
+    print("✅ Finální kombinovaná Over 2.5:")
     print(f"  Výsledek:      {poisson_over25_probability(final_home, final_away)}%")
 
     return final_home, final_away
+
 
 
