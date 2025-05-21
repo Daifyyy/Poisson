@@ -3,6 +3,8 @@ import streamlit as st
 from sections.overview_section import render_league_overview
 from sections.match_prediction_section import render_single_match_prediction
 from sections.multi_prediction_section import render_multi_match_predictions
+from sections.team_detail_section import render_team_detail
+
 from utils.poisson_utils import load_data, detect_current_season, calculate_team_strengths, calculate_gii_zscore,calculate_elo_ratings, get_team_average_gii
 from utils.frontend_utils import validate_dataset
 from utils.update_data import update_all_leagues
@@ -75,10 +77,44 @@ teams_in_season = sorted(set(season_df["HomeTeam"].unique()) | set(season_df["Aw
 home_team = st.sidebar.selectbox("Domácí tým", teams_in_season)
 away_team = st.sidebar.selectbox("Hostující tým", teams_in_season)
 multi_prediction_mode = st.sidebar.checkbox("📝 Hromadné predikce")
+#show_team_detail = st.sidebar.checkbox("📌 Zobrazit detail týmu")
 
-if home_team == away_team:
+import urllib.parse
+
+query_params = st.query_params
+
+raw_team = st.query_params.get("selected_team", None)
+if isinstance(raw_team, list):
+    raw_team = raw_team[0]
+selected_team = urllib.parse.unquote_plus(raw_team) if raw_team else None
+
+
+
+print(selected_team)
+
+if selected_team:
+    render_team_detail(df, season_df, selected_team, league_name, gii_dict)
+    if st.button("🔙 Zpět na ligový přehled"):
+        st.query_params.clear()
+        st.rerun()
+elif home_team == away_team:
     render_league_overview(season_df, league_name, gii_dict)
 elif not multi_prediction_mode:
-    render_single_match_prediction(df, season_df, home_team, away_team, league_name, gii_dict, elo_dict)
+    render_single_match_prediction(
+    df, season_df, home_team, away_team, league_name, gii_dict, elo_dict
+)
 else:
-    render_multi_match_predictions(st.session_state, home_team, away_team, league_name, league_file, league_files)
+    render_multi_match_predictions(
+    st.session_state,
+    home_team,
+    away_team,
+    league_name,
+    league_file,
+    league_files
+)
+
+
+
+
+
+

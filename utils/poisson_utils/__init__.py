@@ -52,6 +52,7 @@ from .team_analysis import (
     merged_home_away_opponent_form,
     expected_goals_combined_homeaway_allmatches,
     expected_goals_weighted_by_home_away,
+    get_team_card_stats
     
 
 )
@@ -67,5 +68,9 @@ from .match_style import (
     expected_match_style_score,
     expected_match_tempo,
     tempo_to_emoji,
-    get_team_style_vs_opponent_type
+    get_team_style_vs_opponent_type,
+    calculate_attack_volume,
+    calculate_attack_efficiency,
+    calculate_full_attacking_pressure,
+
 )

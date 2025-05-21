@@ -5,11 +5,14 @@ from utils.poisson_utils import (
     aggregate_team_stats, calculate_team_pseudo_xg, add_btts_column,
     calculate_conceded_goals, calculate_recent_team_form,
     calculate_elo_changes, calculate_team_styles,
-    calculate_clean_sheets, intensity_score_to_emoji,compute_score_stats,compute_form_trend
+    calculate_clean_sheets, intensity_score_to_emoji, compute_score_stats, compute_form_trend
 )
 
-
 def render_league_overview(season_df, league_name, gii_dict):
+    query_params = st.query_params
+    if "selected_team" in query_params:
+        return  # Pokud je aktivní detail týmu, sekce overview se nespustí
+
     st.header(f"🏆 {league_name}")
 
     num_matches = len(season_df)
@@ -18,7 +21,7 @@ def render_league_overview(season_df, league_name, gii_dict):
     btts_pct = round(100 * season_df['BTTS'].mean(), 1)
     over_25 = round(100 * season_df[(season_df['FTHG'] + season_df['FTAG']) > 2.5].shape[0] / num_matches, 1)
 
-    st.markdown(f"📅 Zápasů: {num_matches} ⚽ Průměr gólů: {avg_goals} 🥅 BTTS: {btts_pct}% 📈 Over 2.5: {over_25}%")
+    st.markdown(f"🗕️ Zápasů: {num_matches}	⚽ Průměr gólů: {avg_goals}	🤽 BTTS: {btts_pct}%	📈 Over 2.5: {over_25}%")
 
     elo_dict = calculate_elo_ratings(season_df)
     form_emojis = calculate_form_emojis(season_df)
@@ -37,8 +40,6 @@ def render_league_overview(season_df, league_name, gii_dict):
         trends.append(compute_form_trend(score_list))
         avg_goals_all.append(round(avg_goals_per_match, 2))
         score_var.append(round(score_variance, 2))
-    print(team_stats.head())
-    print(team_stats.columns)
 
     summary_table = pd.DataFrame({
         "Tým": team_stats.index,
@@ -49,6 +50,9 @@ def render_league_overview(season_df, league_name, gii_dict):
         "Góly celkem": avg_goals_all,
         "Rozptyl skóre": score_var,
         "Vstřelené Góly": team_stats["Góly"].round(2),
+        "Střely": team_stats["Střely"].round(1),
+        "Na branku": team_stats["Na branku"].round(1),
+        "Rohy": team_stats["Rohy"].round(1),
         "Obdržené góly": team_stats["Obdržené góly"].round(2),
         "Čistá konta %": team_stats.index.map(lambda t: f"{calculate_clean_sheets(season_df, t)}%"),
         "Over 2.5 %": team_stats.index.map(over25).astype(str) + "%",
@@ -57,10 +61,24 @@ def render_league_overview(season_df, league_name, gii_dict):
     })
 
     summary_table = summary_table.sort_values("Body", ascending=False).reset_index(drop=True)
-    st.dataframe(summary_table, hide_index=True, use_container_width=True)
+    import urllib.parse
+    import urllib
+    def clickable_team_link(team):
+        encoded_team = urllib.parse.quote_plus(team)
+        return f'<a href="?selected_team={encoded_team}">🔍 {team}</a>'
 
+    summary_table_display = summary_table.copy()
+    summary_table_display["Tým"] = summary_table_display["Tým"].apply(clickable_team_link)
 
-    # Top 5 sekce
+    st.markdown("""
+    <style>
+        .stDataFrame tbody tr td:first-child { white-space: nowrap; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown("Kliknutím na tým zobrazíš jeho detail:")
+    st.write(summary_table_display.to_html(escape=False, index=False), unsafe_allow_html=True)
+
     st.markdown("### 🌟 Top 5 týmy")
     cols = st.columns(4)
     cols[0].markdown("🔮 **Nejvíc gólů**")
@@ -91,5 +109,3 @@ def render_league_overview(season_df, league_name, gii_dict):
     cols2[2].dataframe(off_df.head(5)[["Tým", "Ofenzivní styl index"]], hide_index=True)
     cols2[3].markdown("🧱 **Defenzivní styl**")
     cols2[3].dataframe(def_df.head(5)[["Tým", "Defenzivní styl index"]], hide_index=True)
-
-    st.stop()

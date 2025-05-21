@@ -45,10 +45,33 @@ def calculate_pseudo_xg_for_team(df: pd.DataFrame, team: str) -> dict:
         "xG_total_away": round(away_xg, 2)
     }
 
-def calculate_team_pseudo_xg(df: pd.DataFrame) -> dict:
-    """Vrací dictionary xG statistik pro všechny týmy."""
+def calculate_team_pseudo_xg(df):
+    """
+    Hrubý výpočet pseudo xG a xGA na základě střel a střel na bránu.
+    xG = 0.1 * střely + 0.3 * střely na branku
+    xGA = stejný výpočet na základě střel soupeře
+    """
     teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
-    return {team: calculate_pseudo_xg_for_team(df, team) for team in teams}
+    result = {}
+    for team in teams:
+        home_matches = df[df['HomeTeam'] == team]
+        away_matches = df[df['AwayTeam'] == team]
+        total_matches = len(home_matches) + len(away_matches)
+
+        shots_for = home_matches['HS'].sum() + away_matches['AS'].sum()
+        shots_on_target_for = home_matches['HST'].sum() + away_matches['AST'].sum()
+        shots_against = home_matches['AS'].sum() + away_matches['HS'].sum()
+        shots_on_target_against = home_matches['AST'].sum() + away_matches['HST'].sum()
+
+        xg = 0.1 * shots_for + 0.3 * shots_on_target_for
+        xga = 0.1 * shots_against + 0.3 * shots_on_target_against
+
+        result[team] = {
+            "xg": round(xg / max(total_matches, 1), 2),
+            "xga": round(xga / max(total_matches, 1), 2)
+        }
+    return result
+
 
 def expected_goals_weighted_by_elo(df: pd.DataFrame, home_team: str, away_team: str, elo_dict: dict) -> tuple:
     """Spočítá očekávané góly domácích a hostů na základě ELO soupeřů a váženého průměru tří období."""

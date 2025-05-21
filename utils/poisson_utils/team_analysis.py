@@ -313,6 +313,31 @@ def calculate_recent_form(df: pd.DataFrame, days: int = 31) -> dict:
 
     return form
 
+def get_team_card_stats(df, team):
+    """
+    Spočítá celkový počet žlutých a červených karet daného týmu v zadaném dataframe.
+    
+    Vrací slovník:
+    {
+        "yellow": int,
+        "red": int,
+        "fouls": int
+    }
+    """
+    home = df[df['HomeTeam'] == team]
+    away = df[df['AwayTeam'] == team]
+
+    total_yellow = home['HY'].sum() + away['AY'].sum()
+    total_red = home['HR'].sum() + away['AR'].sum()
+    total_fouls = home['HF'].sum() + away['AF'].sum()
+
+    return {
+        "yellow": total_yellow,
+        "red": total_red,
+        "fouls": total_fouls
+    }
+
+
 def calculate_team_home_advantage(df, team: str) -> float:
     """
     Spočítá relativní domácí výhodu daného týmu vůči ligovému průměru.
