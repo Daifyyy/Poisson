@@ -42,7 +42,7 @@ def render_league_overview(season_df, league_name, gii_dict):
 
     summary_table = pd.DataFrame({
         "Tým": team_stats.index,
-        "Elo": team_stats.index.map(lambda t: elo_dict.get(t, 1500)).round(0),
+        "Elo": pd.Series(team_stats.index.map(lambda t: elo_dict.get(t, 1500))).round(0).values,
         "Body": team_stats.index.map(lambda t: points_data.get(t, {}).get("points", 0)),
         "Form": team_stats.index.map(lambda t: form_emojis.get(t, "❄️❄️❄️")),
         "Trend formy": trends,

@@ -3,7 +3,7 @@ import streamlit as st
 from sections.overview_section import render_league_overview
 from sections.match_prediction_section import render_single_match_prediction
 from sections.multi_prediction_section import render_multi_match_predictions
-from utils.poisson_utils import load_data, detect_current_season, calculate_team_strengths, calculate_gii_zscore, get_team_average_gii
+from utils.poisson_utils import load_data, detect_current_season, calculate_team_strengths, calculate_gii_zscore,calculate_elo_ratings, get_team_average_gii
 from utils.frontend_utils import validate_dataset
 from utils.update_data import update_all_leagues
 
@@ -56,14 +56,16 @@ def load_and_prepare(file_path):
     team_strengths, _, _ = calculate_team_strengths(df)
     season_df = calculate_gii_zscore(season_df)
     gii_dict = get_team_average_gii(season_df)
-    return df, season_df, gii_dict
+    elo_dict = calculate_elo_ratings(df)
+    return df, season_df, gii_dict, elo_dict
+
 
 # --- Načtení s podmínkou opětovného načtení po aktualizaci ---
 if st.session_state.get("reload_flag"):
     st.cache_data.clear()
     del st.session_state["reload_flag"]
 
-df, season_df, gii_dict = load_and_prepare(league_file)
+df, season_df, gii_dict, elo_dict = load_and_prepare(league_file)
 
 if "match_list" not in st.session_state:
     st.session_state.match_list = []
@@ -77,6 +79,6 @@ multi_prediction_mode = st.sidebar.checkbox("📝 Hromadné predikce")
 if home_team == away_team:
     render_league_overview(season_df, league_name, gii_dict)
 elif not multi_prediction_mode:
-    render_single_match_prediction(df, season_df, home_team, away_team, league_name, gii_dict)
+    render_single_match_prediction(df, season_df, home_team, away_team, league_name, gii_dict, elo_dict)
 else:
     render_multi_match_predictions(st.session_state, home_team, away_team, league_name, league_file, league_files)

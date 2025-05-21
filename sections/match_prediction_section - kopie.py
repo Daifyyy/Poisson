@@ -8,9 +8,7 @@ from utils.poisson_utils import (
     expected_match_tempo, tempo_to_emoji, get_top_scorelines, get_goal_probabilities,
     detect_risk_factors, detect_positive_factors, calculate_warning_index,
     expected_team_stats_weighted_by_elo, classify_team_strength, merged_home_away_opponent_form,
-    get_head_to_head_stats, calculate_match_tempo,get_team_style_vs_opponent_type,calculate_elo_ratings,
-    expected_goals_combined_homeaway_allmatches,expected_goals_weighted_by_home_away
-
+    get_head_to_head_stats, calculate_match_tempo,get_team_style_vs_opponent_type
 )
 from utils.frontend_utils import display_team_status_table
 from utils.poisson_utils.match_style import tempo_tag
@@ -32,14 +30,13 @@ from utils.anomaly_detection import (
 )
 
 @st.cache_data
-def get_cached_match_inputs(df_hash,df, home_team, away_team, elo_dict):
-    # from utils.poisson_utils import (
-    #     expected_goals_weighted_by_elo, poisson_prediction, match_outcomes_prob,
-    #     over_under_prob, btts_prob, calculate_expected_points
-    # )
+def get_cached_match_inputs(df, home_team, away_team, elo_dict):
+    from utils.poisson_utils import (
+        expected_goals_weighted_by_elo, poisson_prediction, match_outcomes_prob,
+        over_under_prob, btts_prob, calculate_expected_points
+    )
 
-    home_exp, away_exp = expected_goals_combined_homeaway_allmatches(df, home_team, away_team,elo_dict)
-    #home_exp, away_exp = expected_goals_weighted_by_elo(df, home_team, away_team, elo_dict)
+    home_exp, away_exp = expected_goals_weighted_by_elo(df, home_team, away_team, elo_dict)
     matrix = poisson_prediction(home_exp, away_exp)
     outcomes = match_outcomes_prob(matrix)
     over_under = over_under_prob(matrix)
@@ -55,24 +52,16 @@ def get_cached_match_inputs(df_hash,df, home_team, away_team, elo_dict):
         "btts": btts,
         "xpoints": xpoints
     }
-@st.cache_data
-def cache_all_pseudo_xg(season_df):
-    teams = sorted(set(season_df['HomeTeam']).union(season_df['AwayTeam']))
-    return {t: calculate_pseudo_xg_for_team(season_df, t) for t in teams}
-@st.cache_data
-def get_cached_tempo(df_hash, df, team, opponent_elo, is_home, elo_dict):
-    return calculate_match_tempo(df, team, opponent_elo, is_home, elo_dict)
 
 
 
 
 
-def render_single_match_prediction(df, season_df, home_team, away_team, league_name, gii_dict, elo_dict):
+def render_single_match_prediction(df, season_df, home_team, away_team, league_name, gii_dict):
     st.header(f"🔮 {home_team} vs {away_team}")
 
     try:
-        df_hash = hash(pd.util.hash_pandas_object(df).sum())
-        match_data = get_cached_match_inputs(df_hash, df, home_team, away_team, elo_dict)
+        match_data = get_cached_match_inputs(df, home_team, away_team, elo_dict)
     except ValueError as e:
         st.error(str(e))
         st.stop()
@@ -107,13 +96,11 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
     # btts = btts_prob(matrix)
     # xpoints = calculate_expected_points(outcomes)
 
-    xg_dict = cache_all_pseudo_xg(season_df)
-    xg_home = xg_dict.get(home_team, {"xG_home": 0})
-    xg_away = xg_dict.get(away_team, {"xG_away": 0})
-
+    xg_home = calculate_pseudo_xg_for_team(season_df, home_team)
+    xg_away = calculate_pseudo_xg_for_team(season_df, away_team)
 
     col1, col2 = st.columns(2)
-    expected_gii = round((gii_dict.get(home_team, 0) + gii_dict.get(away_team, 0)) / 2, 2)
+    #expected_gii = round((gii_dict.get(home_team, 0) + gii_dict.get(away_team, 0)) / 2, 2)
     expected_gii_emoji = intensity_score_to_emoji(expected_gii)
     expected_tempo = expected_match_tempo(
         df,            # DataFrame se zápasy
@@ -152,10 +139,8 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
 
     form_dog_positive = len(detect_positive_factors(df, away_team if outcomes["Home Win"] > outcomes["Away Win"] else home_team, elo_dict)[0]) > 0
 
-    tempo_home = get_cached_tempo(df_hash, df, home_team, elo_dict.get(away_team, 1500), True, elo_dict)
-    tempo_away = get_cached_tempo(df_hash, df, away_team, elo_dict.get(home_team, 1500), False, elo_dict)
-    tempo_home_val = tempo_home["tempo"]
-    tempo_away_val = tempo_away["tempo"]
+    tempo_home_val = calculate_match_tempo(df, home_team, elo_dict.get(away_team, 1500), True, elo_dict)["tempo"]
+    tempo_away_val = calculate_match_tempo(df, away_team, elo_dict.get(home_team, 1500), False, elo_dict)["tempo"]
 
     contrarian_score = calculate_contrarian_risk_score(matrix, home_exp + away_exp, tempo_home_val, tempo_away_val, warning_index_home, warning_index_away)
     upset_score = calculate_upset_risk_score(outcomes, warning_index_home, warning_index_away, form_dog_positive)
@@ -252,6 +237,8 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
     
         # Styl hry
     st.markdown("## 🎮 Styl hry")
+    tempo_home = calculate_match_tempo(df, home_team, elo_dict.get(away_team, 1500), True, elo_dict)
+    tempo_away = calculate_match_tempo(df, away_team, elo_dict.get(home_team, 1500), False, elo_dict)
 
     cols = st.columns(2)
     for i, (team, tempo) in enumerate([(home_team, tempo_home), (away_team, tempo_away)]):
