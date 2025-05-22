@@ -72,5 +72,8 @@ from .match_style import (
     calculate_attack_volume,
     calculate_attack_efficiency,
     calculate_full_attacking_pressure,
-
+    calculate_advanced_team_metrics,
+    calculate_team_extra_stats,
+    get_team_record,
+    analyze_team_profile
 )

@@ -61,6 +61,9 @@ def aggregate_team_stats(df):
         shots_on_target = pd.concat([home['HST'], away['AST']])
         corners = pd.concat([home['HC'], away['AC']])
         yellows = pd.concat([home['HY'], away['AY']])
+        reds = pd.concat([home['HR'], away['AR']])
+        fouls = pd.concat([home['HF'], away['AF']])
+
 
         records.append({
             "Tým": team,
@@ -69,7 +72,10 @@ def aggregate_team_stats(df):
             "Střely": shots.mean(),
             "Na branku": shots_on_target.mean(),
             "Rohy": corners.mean(),
-            "Žluté": yellows.mean()
+            "Žluté": yellows.mean(),
+            "Červené": reds.mean(),
+            "Fauly": fouls.mean()
+
         })
 
     df_stats = pd.DataFrame(records).set_index("Tým")

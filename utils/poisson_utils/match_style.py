@@ -531,3 +531,217 @@ def tempo_to_emoji(tempo_value: float) -> str:
         return "💤 Totální nuda"
 
 
+def calculate_advanced_team_metrics(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return pd.DataFrame(columns=[
+            "Tým", "Ofenzivní efektivita", "Defenzivní efektivita", 
+            "Přesnost střel", "Konverzní míra"
+        ]).set_index("Tým")
+        
+    teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
+    records = []
+
+    for team in teams:
+        home = df[df['HomeTeam'] == team]
+        away = df[df['AwayTeam'] == team]
+
+        total_shots = pd.concat([home['HS'], away['AS']]).sum()
+        shots_on_target = pd.concat([home['HST'], away['AST']]).sum()
+        goals = pd.concat([home['FTHG'], away['FTAG']]).sum()
+        conceded = pd.concat([home['FTAG'], away['FTHG']]).sum()
+
+        offensive_eff = total_shots / goals if goals > 0 else 0
+        defensive_eff = conceded / total_shots if total_shots > 0 else 0
+        shot_accuracy = shots_on_target / total_shots if total_shots > 0 else 0
+        conversion_rate = goals / total_shots if total_shots > 0 else 0
+
+        records.append({
+            "Tým": team,
+            "Ofenzivní efektivita": offensive_eff,
+            "Defenzivní efektivita": defensive_eff,
+            "Přesnost střel": shot_accuracy,
+            "Konverzní míra": conversion_rate,
+        })
+
+    return pd.DataFrame(records).set_index("Tým")
+
+def calculate_team_extra_stats(df: pd.DataFrame, team: str) -> dict:
+    if df.empty:
+        return {"Čistá konta %": 0.0, "Over 2.5 %": 0.0, "BTTS %": 0.0}
+
+    is_home = df['HomeTeam'] == team
+    is_away = df['AwayTeam'] == team
+
+    goals_conceded = df.loc[is_home, 'FTAG'].tolist() + df.loc[is_away, 'FTHG'].tolist()
+    clean_sheets = sum(1 for g in goals_conceded if g == 0)
+    cs_pct = 100 * clean_sheets / len(goals_conceded) if goals_conceded else 0
+
+    over_25 = ((df['FTHG'] + df['FTAG']) > 2.5).mean() * 100
+    btts = ((df['FTHG'] > 0) & (df['FTAG'] > 0)).mean() * 100
+
+    return {
+        "Čistá konta %": cs_pct,
+        "Over 2.5 %": over_25,
+        "BTTS %": btts
+    }
+    
+def get_team_record(df, team, side=None):
+    if side == "home":
+        matches = df[df["HomeTeam"] == team]
+        wins = matches[matches["FTR"] == "H"]
+        draws = matches[matches["FTR"] == "D"]
+        losses = matches[matches["FTR"] == "A"]
+        return len(wins), len(draws), len(losses)
+
+    elif side == "away":
+        matches = df[df["AwayTeam"] == team]
+        wins = matches[matches["FTR"] == "A"]
+        draws = matches[matches["FTR"] == "D"]
+        losses = matches[matches["FTR"] == "H"]
+        return len(wins), len(draws), len(losses)
+
+    else:
+        matches = df[(df["HomeTeam"] == team) | (df["AwayTeam"] == team)]
+
+        # Výhra = domácí vítězství nebo venkovní vítězství
+        wins = matches[((matches["HomeTeam"] == team) & (matches["FTR"] == "H")) |
+                       ((matches["AwayTeam"] == team) & (matches["FTR"] == "A"))]
+
+        draws = matches[((matches["HomeTeam"] == team) | (matches["AwayTeam"] == team)) & (matches["FTR"] == "D")]
+
+        losses = matches[((matches["HomeTeam"] == team) & (matches["FTR"] == "A")) |
+                         ((matches["AwayTeam"] == team) & (matches["FTR"] == "H"))]
+
+        return len(wins), len(draws), len(losses)
+
+
+def analyze_team_profile(
+    df: pd.DataFrame,
+    team: str,
+    conversion_rate: float,
+    defensive_efficiency: float,
+    yellow_per_foul: float,
+    red_per_foul: float,
+    df_last_matches: pd.DataFrame = None
+) -> dict:
+    team_df = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)].copy()
+    if team_df.empty:
+        return {
+            "forma": "N/A",
+            "výherní série": 0,
+            "proherní série": 0,
+            "bez čistého konta": 0,
+            "silné stránky": "Nedostatek dat",
+            "rizika": "Nedostatek dat",
+            "styl": "N/A",
+            "profilové hodnocení": []
+        }
+
+    # Posledních 10 zápasů
+    if df_last_matches is None:
+        df_last_matches = team_df.sort_values("Date", ascending=False).head(10)
+
+    results = []
+    clean_sheet_count = 0
+    btts_count = 0
+    over25_count = 0
+    conceded_2plus = 0
+    win_streak = 0
+    lose_streak = 0
+    no_cs_streak = 0
+
+    for _, row in df_last_matches.iterrows():
+        is_home = row['HomeTeam'] == team
+        gf = row['FTHG'] if is_home else row['FTAG']
+        ga = row['FTAG'] if is_home else row['FTHG']
+        ftr = row['FTR']
+
+        if (ftr == 'H' and is_home) or (ftr == 'A' and not is_home):
+            results.append("W")
+        elif ftr == 'D':
+            results.append("D")
+        else:
+            results.append("L")
+
+        if ga == 0:
+            clean_sheet_count += 1
+        else:
+            no_cs_streak += 1
+
+        if gf > 0 and ga > 0:
+            btts_count += 1
+        if gf + ga > 2.5:
+            over25_count += 1
+        if ga >= 2:
+            conceded_2plus += 1
+
+    for r in results:
+        if r == "W":
+            win_streak += 1
+        else:
+            break
+    for r in results:
+        if r == "L":
+            lose_streak += 1
+        else:
+            break
+
+    # Shrnutí
+    strengths = []
+    risks = []
+    profile_tags = []
+
+    if clean_sheet_count >= 4:
+        strengths.append("Častá čistá konta")
+    if win_streak >= 3:
+        strengths.append("Výherní série")
+    if btts_count >= 7:
+        strengths.append("Zábavné zápasy (BTTS)")
+    if over25_count >= 7:
+        strengths.append("Časté Over 2.5")
+
+    if conceded_2plus >= 4:
+        risks.append("Často inkasuje 2+ góly")
+    if lose_streak >= 3:
+        risks.append("Série proher")
+    if no_cs_streak >= 5:
+        risks.append("Dlouho bez čistého konta")
+
+    # ✴️ Rozšířené metriky: konverze a defenziva
+    if conversion_rate > 0.15 and defensive_efficiency < 0.07:
+        profile_tags.append("💪 Dominantní tým (silný útok i obrana)")
+    elif conversion_rate > 0.15 and defensive_efficiency > 0.12:
+        profile_tags.append("🔁 Ofenzivní síla, defenzivní slabiny")
+    elif conversion_rate < 0.08 and defensive_efficiency < 0.07:
+        profile_tags.append("🧤 Defenzivně pevný, ale neefektivní v útoku")
+    elif conversion_rate < 0.08 and defensive_efficiency > 0.12:
+        profile_tags.append("⚠️ Slabý v obou směrech")
+
+    if conversion_rate > 0.15:
+        profile_tags.append(f"⚽ Vysoká konverzní míra ({conversion_rate * 100:.1f}%)")
+    elif conversion_rate < 0.08:
+        profile_tags.append(f"🚫 Nízká konverze ({conversion_rate * 100:.1f}%)")
+
+    if defensive_efficiency > 0.12:
+        profile_tags.append("❗ Zranitelná defenziva (gól z každé 8. střely)")
+
+    if yellow_per_foul > 0.25:
+        profile_tags.append(f"🟡 Fauly často trestané žlutou ({yellow_per_foul:.2f})")
+    else:
+        profile_tags.append(f"🟢 Disciplína v normě ({yellow_per_foul:.2f})")
+
+    if red_per_foul > 0.05:
+        profile_tags.append(f"🔴 Riziko červených ({red_per_foul:.2f} na faul)")
+
+    return {
+        "forma": "".join(results[:5]),
+        "výherní série": win_streak,
+        "proherní série": lose_streak,
+        "bez čistého konta": no_cs_streak,
+        "silné stránky": ", ".join(strengths) if strengths else "Není výrazná",
+        "rizika": ", ".join(risks) if risks else "Bez zásadních slabin",
+        "styl": "⚡ Útočný styl" if btts_count >= 7 and over25_count >= 7 else "🛡️ Defenzivní tým" if clean_sheet_count >= 5 else "🔁 Neutrální profil",
+        "profilové hodnocení": profile_tags
+    }
+
+
