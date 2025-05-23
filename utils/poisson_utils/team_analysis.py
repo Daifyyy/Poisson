@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from scipy.stats import poisson
-
+import streamlit as st
 from .core import prepare_df,get_last_n_matches, calculate_points,poisson_over25_probability,expected_goals_vs_similar_elo_weighted 
 from .xg import calculate_team_pseudo_xg
 from utils.utils_warnings import detect_overperformance_and_momentum
@@ -428,116 +428,6 @@ def expected_goals_weighted_by_home_away(df, home_team, away_team, elo_dict) -> 
 
     return round(expected_home, 2), round(expected_away, 2)
 
-# def expected_goals_combined_homeaway_allmatches(df, home_team, away_team, elo_dict,
-#                                                  weight_homeaway=0.4, weight_all=0.3, weight_elo=0.3):
-#     df = prepare_df(df)
-#     latest_date = df['Date'].max()
-#     one_year_ago = latest_date - pd.Timedelta(days=365)
-
-#     # časová období
-#     df_hist = df[df['Date'] < one_year_ago]
-#     df_season = df[df['Date'] >= one_year_ago]
-
-#     # posledních 5 zápasů
-#     df_last5_home = get_last_n_matches(df, home_team, role="home")
-#     df_last5_away = get_last_n_matches(df, away_team, role="away")
-#     df_last5_all_home = get_last_n_matches(df, home_team)
-#     df_last5_all_away = get_last_n_matches(df, away_team)
-
-#     league_avg_home = df['FTHG'].mean()
-#     league_avg_away = df['FTAG'].mean()
-
-#     def safe_stat(series, default=1.0):
-#         val = series.median()
-#         return val if not np.isnan(val) else default
-
-#     def get_home_away_exp(sub, team, is_home):
-#         if is_home:
-#             m = sub[sub['HomeTeam'] == team]
-#             gf = safe_stat(m['FTHG'])
-#             ga = safe_stat(m['FTAG'])
-#         else:
-#             m = sub[sub['AwayTeam'] == team]
-#             gf = safe_stat(m['FTAG'])
-#             ga = safe_stat(m['FTHG'])
-#         return gf, ga
-
-#     def get_all_matches_exp(sub, team):
-#         m = sub[(sub['HomeTeam'] == team) | (sub['AwayTeam'] == team)]
-#         gf_list, ga_list = [], []
-#         for _, row in m.iterrows():
-#             if row['HomeTeam'] == team:
-#                 gf_list.append(row['FTHG'])
-#                 ga_list.append(row['FTAG'])
-#             else:
-#                 gf_list.append(row['FTAG'])
-#                 ga_list.append(row['FTHG'])
-#         return safe_stat(pd.Series(gf_list)), safe_stat(pd.Series(ga_list))
-
-#     def compute_expected(gf, ga_opp, l_home, l_away):
-#         return l_home * (gf / l_home) * (ga_opp / l_away)
-
-#     def compute_weighted_exp(dfs_home, dfs_away, extractor_home, extractor_away):
-#         eh, ea = [], []
-#         for dfh, dfa in zip(dfs_home, dfs_away):
-#             gf_home, ga_home = extractor_home(dfh)
-#             gf_away, ga_away = extractor_away(dfa)
-#             eh.append(compute_expected(gf_home, ga_away, league_avg_home, league_avg_away))
-#             ea.append(compute_expected(gf_away, ga_home, league_avg_away, league_avg_home))
-#         weighted_home = 0.15 * eh[0] + 0.5 * eh[1] + 0.35 * eh[2]
-#         weighted_away = 0.15 * ea[0] + 0.5 * ea[1] + 0.35 * ea[2]
-#         return weighted_home, weighted_away, eh, ea
-
-#     # Výpočty pro přístup 1 (Home/Away only)
-#     exp_ha_home, exp_ha_away,eh, ea = compute_weighted_exp(
-#         [df_hist, df_season, df_last5_home],
-#         [df_hist, df_season, df_last5_away],
-#         lambda d: get_home_away_exp(d, home_team, True),
-#         lambda d: get_home_away_exp(d, away_team, False)
-#     )
-
-#     # Výpočty pro přístup 2 (All matches)
-#     exp_all_home, exp_all_away,eh_all, ea_all = compute_weighted_exp(
-#         [df_hist, df_season, df_last5_all_home],
-#         [df_hist, df_season, df_last5_all_away],
-#         lambda d: get_all_matches_exp(d, home_team),
-#         lambda d: get_all_matches_exp(d, away_team)
-#     )
-
-#     # Výpočty pro přístup 3 (ELO relevantní + stáří vážené)
-#     exp_elo_home, exp_elo_away = expected_goals_vs_similar_elo_weighted(df, home_team, away_team, elo_dict)
-
-#     # Finální vážená kombinace
-#     final_home = round(
-#         weight_homeaway * exp_ha_home +
-#         weight_all * exp_all_home +
-#         weight_elo * exp_elo_home, 2)
-
-#     final_away = round(
-#         weight_homeaway * exp_ha_away +
-#         weight_all * exp_all_away +
-#         weight_elo * exp_elo_away, 2)
-
-#     # Výpis pravděpodobností Over 2.5
-#     print("🟦 Home/Away-only přístup – Over 2.5:")
-#     print(f"  Historie:      {poisson_over25_probability(eh[0], ea[0])}%")
-#     print(f"  Sezóna:        {poisson_over25_probability(eh[1], ea[1])}%")
-#     print(f"  Posledních 5:  {poisson_over25_probability(eh[2], ea[2])}%")
-#     print(f"  => Průměr:     {poisson_over25_probability(exp_ha_home, exp_ha_away)}%")
-
-#     print("🟧 All matches přístup – Over 2.5:")
-#     print(f"  Historie:      {poisson_over25_probability(eh_all[0], ea_all[0])}%")
-#     print(f"  Sezóna:        {poisson_over25_probability(eh_all[1], ea_all[1])}%")
-#     print(f"  Posledních 5:  {poisson_over25_probability(eh_all[2], ea_all[2])}%")
-#     print(f"  => Průměr:     {poisson_over25_probability(exp_all_home, exp_all_away)}%")
-
-#     print("🧠 Similar ELO přístup – Over 2.5:")
-#     print(f"  => Výsledek:   {poisson_over25_probability(exp_elo_home, exp_elo_away)}%")
-
-#     print("🎯 Finální kombinovaná Over 2.5:")
-#     print(f"  Výsledek:      {poisson_over25_probability(final_home, final_away)}%")
-
-#     return final_home, final_away
 def expected_goals_vs_opponent_strength_weighted(df, team, opponent, elo_dict, is_home=True, n=20):
     """
     Vypočítá očekávané góly na základě toho, jak tým skóruje proti soupeřům podobné síly jako aktuální soupeř.
@@ -711,6 +601,126 @@ def expected_goals_combined_homeaway_allmatches(
     print(f"  Výsledek:      {poisson_over25_probability(final_home, final_away)}%")
 
     return final_home, final_away
+
+import pandas as pd
+
+def render_team_comparison_section(team1, team2, stats_total_1, stats_home_1, stats_away_1,
+                                     stats_total_2, stats_home_2, stats_away_2):
+    st.markdown(f"## 🆚 Porovnání týmů: {team1} vs {team2}")
+
+    icon_map = {
+        "Góly": "⚽", "Obdržené góly": "🥅", "Střely": "📸",
+        "Na branku": "🎯", "Rohy": "🚩", "Fauly": "⚠️",
+        "Žluté": "🟨", "Červené": "🟥", "Přesnost střel": "🎯",
+        "Konverzní míra": "🌟", "Čistá konta %": "🧤",
+        "Over 2.5 %": "📈", "BTTS %": "🎯"
+    }
+
+    metriky = [
+        "Góly", "Obdržené góly", "Střely", "Na branku", "Rohy", "Fauly",
+        "Žluté", "Červené", "Přesnost střel", "Konverzní míra",
+        "Čistá konta %", "Over 2.5 %", "BTTS %"
+    ]
+
+    col_celkem, col_doma, col_venku = st.columns(3)
+
+    with col_celkem:
+        st.markdown("### Celkem")
+        for met in metriky:
+            icon = icon_map.get(met, "")
+            val = stats_total_1.get(met, 0)
+            delta_val = stats_total_2.get(met, 0)
+            st.markdown(f"{icon} **{val:.2f}** <span style='color:gray;'>({delta_val:.2f})</span>", unsafe_allow_html=True)
+
+    with col_doma:
+        st.markdown("### 🏠 Doma")
+        for met in metriky:
+            icon = icon_map.get(met, "")
+            val = stats_home_1.get(met, 0)
+            delta_val = stats_home_2.get(met, 0)
+            st.markdown(f"{icon} **{val:.2f}** <span style='color:gray;'>({delta_val:.2f})</span>", unsafe_allow_html=True)
+
+    with col_venku:
+        st.markdown("### 🚌 Venku")
+        for met in metriky:
+            icon = icon_map.get(met, "")
+            val = stats_away_1.get(met, 0)
+            delta_val = stats_away_2.get(met, 0)
+            st.markdown(f"{icon} **{val:.2f}** <span style='color:gray;'>({delta_val:.2f})</span>", unsafe_allow_html=True)
+
+
+
+def generate_team_comparison(df: pd.DataFrame, team1: str, team2: str) -> pd.DataFrame:
+    def team_stats(df, team):
+        home = df[df['HomeTeam'] == team]
+        away = df[df['AwayTeam'] == team]
+
+        matches = pd.concat([home, away])
+        if matches.empty:
+            return {}
+
+        goals = pd.concat([home['FTHG'], away['FTAG']]).mean()
+        goals_conceded = pd.concat([home['FTAG'], away['FTHG']]).mean()
+        shots = pd.concat([home['HS'], away['AS']]).mean()
+        shots_on_target = pd.concat([home['HST'], away['AST']]).mean()
+        corners = pd.concat([home['HC'], away['AC']]).mean()
+        fouls = pd.concat([home['HF'], away['AF']]).mean()
+        yellows = pd.concat([home['HY'], away['AY']]).mean()
+        reds = pd.concat([home['HR'], away['AR']]).mean()
+
+        offensive_eff = shots / goals if goals else 0
+        defensive_eff = goals_conceded / shots if shots else 0
+        accuracy = shots_on_target / shots if shots else 0
+        conversion = goals / shots if shots else 0
+
+        clean_sheets = 0
+        total_matches = 0
+        over25 = 0
+        btts = 0
+
+        for _, row in matches.iterrows():
+            is_home = row['HomeTeam'] == team
+            gf = row['FTHG'] if is_home else row['FTAG']
+            ga = row['FTAG'] if is_home else row['FTHG']
+            if ga == 0:
+                clean_sheets += 1
+            if row['FTHG'] + row['FTAG'] > 2.5:
+                over25 += 1
+            if row['FTHG'] > 0 and row['FTAG'] > 0:
+                btts += 1
+            total_matches += 1
+
+        return {
+            "⚽ Góly": goals,
+            "🥅 Obdržené góly": goals_conceded,
+            "📸 Střely": shots,
+            "🎯 Na branku": shots_on_target,
+            "🚩 Rohy": corners,
+            "⚠️ Fauly": fouls,
+            "🟨 Žluté": yellows,
+            "🟥 Červené": reds,
+            "⚡ Ofenzivní efektivita": offensive_eff,
+            "🛡️ Defenzivní efektivita": defensive_eff,
+            "🎯 Přesnost střel": accuracy * 100,
+            "🌟 Konverzní míra": conversion * 100,
+            "🧤 Čistá konta %": (clean_sheets / total_matches) * 100 if total_matches else 0,
+            "📈 Over 2.5 %": (over25 / total_matches) * 100 if total_matches else 0,
+            "🎯 BTTS %": (btts / total_matches) * 100 if total_matches else 0,
+        }
+
+    stats1 = team_stats(df, team1)
+    stats2 = team_stats(df, team2)
+
+    metrics = list(stats1.keys())
+    rows = []
+    for m in metrics:
+        val1 = stats1.get(m, 0)
+        val2 = stats2.get(m, 0)
+        diff = val1 - val2
+        rows.append([m, round(val1, 1), round(val2, 1)])  # odstraněn rozdíl
+
+
+    return pd.DataFrame(rows, columns=["Metrika", team1, team2]).set_index("Metrika")
 
 
 

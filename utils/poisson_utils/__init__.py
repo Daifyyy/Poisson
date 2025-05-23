@@ -52,7 +52,9 @@ from .team_analysis import (
     merged_home_away_opponent_form,
     expected_goals_combined_homeaway_allmatches,
     expected_goals_weighted_by_home_away,
-    get_team_card_stats
+    get_team_card_stats,
+    generate_team_comparison,
+    render_team_comparison_section
     
 
 )

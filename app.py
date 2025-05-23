@@ -5,6 +5,7 @@ from sections.match_prediction_section import render_single_match_prediction
 from sections.multi_prediction_section import render_multi_match_predictions
 from sections.team_detail_section import render_team_detail
 
+import urllib.parse
 from utils.poisson_utils import load_data, detect_current_season, calculate_team_strengths, calculate_gii_zscore,calculate_elo_ratings, get_team_average_gii
 from utils.frontend_utils import validate_dataset
 from utils.update_data import update_all_leagues
@@ -46,8 +47,23 @@ with st.sidebar.expander("🔧 Správa dat"):
 
 
 # --- Sidebar: Výběr ligy ---
-league_name = st.sidebar.selectbox("🌍 Vyber ligu", list(league_files.keys()))
+# league_name = st.sidebar.selectbox("🌍 Vyber ligu", list(league_files.keys()))
+# --- Načtení ligy z URL (pokud existuje) ---
+selected_league_from_url = st.query_params.get("selected_league", None)
+if isinstance(selected_league_from_url, list):
+    selected_league_from_url = selected_league_from_url[0]
+
+# Použij jako výchozí vybranou ligu z URL, jinak první ligu
+default_league_index = (
+    list(league_files.keys()).index(selected_league_from_url)
+    if selected_league_from_url in league_files
+    else 0
+)
+
+league_name = st.sidebar.selectbox("🌍 Vyber ligu", list(league_files.keys()), index=default_league_index)
 league_file = league_files[league_name]
+
+# league_file = league_files[league_name]
 
 # --- Načtení a příprava dat ---
 @st.cache_data(show_spinner=False)
@@ -60,6 +76,7 @@ def load_and_prepare(file_path):
     gii_dict = get_team_average_gii(season_df)
     elo_dict = calculate_elo_ratings(df)
     return df, season_df, gii_dict, elo_dict
+
 
 
 # --- Načtení s podmínkou opětovného načtení po aktualizaci ---
@@ -77,41 +94,57 @@ teams_in_season = sorted(set(season_df["HomeTeam"].unique()) | set(season_df["Aw
 home_team = st.sidebar.selectbox("Domácí tým", teams_in_season)
 away_team = st.sidebar.selectbox("Hostující tým", teams_in_season)
 multi_prediction_mode = st.sidebar.checkbox("📝 Hromadné predikce")
-#show_team_detail = st.sidebar.checkbox("📌 Zobrazit detail týmu")
 
-import urllib.parse
-
+# --- Query params ---
 query_params = st.query_params
-
-raw_team = st.query_params.get("selected_team", None)
+raw_team = query_params.get("selected_team", None)
 if isinstance(raw_team, list):
     raw_team = raw_team[0]
 selected_team = urllib.parse.unquote_plus(raw_team) if raw_team else None
 
+# Zjisti ligu z query param nebo použij výchozí
+selected_league_from_url = query_params.get("selected_league", None)
+if isinstance(selected_league_from_url, list):
+    selected_league_from_url = selected_league_from_url[0]
+
+# --- Detekce změny ligy ---
+if "last_selected_league" not in st.session_state:
+    st.session_state["last_selected_league"] = league_name
+elif st.session_state["last_selected_league"] != league_name:
+    selected_team = None
+    query_params.clear()
+    query_params["selected_league"] = league_name
+    st.session_state["last_selected_league"] = league_name
+    st.rerun()
 
 
-print(selected_team)
-
+# === ROUTING ===
 if selected_team:
     render_team_detail(df, season_df, selected_team, league_name, gii_dict)
     if st.button("🔙 Zpět na ligový přehled"):
         st.query_params.clear()
+        st.query_params["selected_league"] = league_name
         st.rerun()
-elif home_team == away_team:
-    render_league_overview(season_df, league_name, gii_dict)
-elif not multi_prediction_mode:
+
+
+elif home_team != away_team:
     render_single_match_prediction(
-    df, season_df, home_team, away_team, league_name, gii_dict, elo_dict
-)
-else:
+        df, season_df, home_team, away_team, league_name, gii_dict, elo_dict
+    )
+
+elif multi_prediction_mode:
     render_multi_match_predictions(
-    st.session_state,
-    home_team,
-    away_team,
-    league_name,
-    league_file,
-    league_files
-)
+        st.session_state,
+        home_team,
+        away_team,
+        league_name,
+        league_file,
+        league_files
+    )
+
+else:
+    render_league_overview(season_df, league_name, gii_dict)
+
 
 
 

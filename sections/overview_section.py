@@ -65,7 +65,8 @@ def render_league_overview(season_df, league_name, gii_dict):
     import urllib
     def clickable_team_link(team):
         encoded_team = urllib.parse.quote_plus(team)
-        return f'<a href="?selected_team={encoded_team}">🔍 {team}</a>'
+        encoded_league = urllib.parse.quote_plus(league_name)
+        return f'<a href="?selected_team={encoded_team}&selected_league={encoded_league}">🔍 {team}</a>'
 
     summary_table_display = summary_table.copy()
     summary_table_display["Tým"] = summary_table_display["Tým"].apply(clickable_team_link)

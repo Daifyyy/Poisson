@@ -8,7 +8,7 @@ from utils.poisson_utils import (
     calculate_elo_changes, calculate_team_styles,
     calculate_clean_sheets, intensity_score_to_emoji, compute_score_stats, compute_form_trend,
     merged_home_away_opponent_form,classify_team_strength,calculate_advanced_team_metrics,
-    calculate_team_extra_stats,get_team_record,analyze_team_profile
+    calculate_team_extra_stats,get_team_record,analyze_team_profile,generate_team_comparison,render_team_comparison_section
 )
 
 def render_team_detail(df, season_df, team, league_name, gii_dict):
@@ -47,8 +47,62 @@ def render_team_detail(df, season_df, team, league_name, gii_dict):
     else:
         df = season_cutoff
 
+    
+    # ✅ Nová volba do sidebaru
+    difficulty_filter = st.sidebar.selectbox(
+        "🎯 Filtrovat podle síly soupeře:",
+        ["Vše", "Silní", "Průměrní", "Slabí"]
+    )
+    
+    compare_team = st.sidebar.selectbox(
+        "🔄 Porovnat s jiným týmem:",
+        ["Žádný"] + sorted(df['HomeTeam'].unique().tolist())
+    )
+
+        
     # Aktualizuj season_df na základě výběru
     season_df = df
+        # Filtrace zápasů
+    
+        # Další filtrace season_df podle obtížnosti soupeře
+    # 💡 Aplikuj filtr síly soupeře
+    if difficulty_filter != "Vše":
+        season_df["Opponent"] = season_df.apply(lambda row: row['AwayTeam'] if row['HomeTeam'] == team else row['HomeTeam'], axis=1)
+        season_df["Soupeř síla"] = season_df["Opponent"].apply(lambda opp: classify_team_strength(df, opp))
+        season_df = season_df[season_df["Soupeř síla"] == difficulty_filter]
+
+    # 💡 Teprve teď připrav data k výpočtu statistik
+    home = season_df[season_df['HomeTeam'] == team]
+    away = season_df[season_df['AwayTeam'] == team]
+    all_matches = pd.concat([home, away])
+
+    if compare_team and compare_team != "Žádný" and compare_team != team:
+        stats_all = calculate_advanced_team_metrics(all_matches)
+        stats_home = calculate_advanced_team_metrics(home, is_home=True)
+        stats_away = calculate_advanced_team_metrics(away, is_home=False)
+
+        # ⬇️ použij původní df (ne season_df) pro druhý tým
+        compare_home = df[df['HomeTeam'] == compare_team]
+        compare_away = df[df['AwayTeam'] == compare_team]
+
+        compare_matches = pd.concat([compare_home, compare_away])
+
+        if team in stats_all.index and compare_team in calculate_advanced_team_metrics(compare_matches).index:
+            render_team_comparison_section(
+                team, compare_team,
+                stats_all.loc[team], stats_home.loc[team], stats_away.loc[team],
+                calculate_advanced_team_metrics(compare_matches).loc[compare_team],
+                calculate_advanced_team_metrics(compare_home, is_home=True).loc[compare_team],
+                calculate_advanced_team_metrics(compare_away, is_home=False).loc[compare_team]
+            )
+            return
+        else:
+            st.warning("⚠️ Jeden z týmů nemá dostupná data pro zvolený filtr.")
+            return
+
+
+
+
 
 
     st.header(f"📌 Detail týmu: {team}")
@@ -129,10 +183,7 @@ def render_team_detail(df, season_df, team, league_name, gii_dict):
     expected_points = xp_data.get("expected_points", 0)
     clean_pct = calculate_clean_sheets(season_df, team)
 
-        # Filtrace zápasů
-    home = season_df[season_df['HomeTeam'] == team]
-    away = season_df[season_df['AwayTeam'] == team]
-    all_matches = pd.concat([home, away])
+    
 
     def calc_metrics(df, is_home=None):
         if is_home is None:  # All matches
@@ -191,52 +242,86 @@ def render_team_detail(df, season_df, team, league_name, gii_dict):
         return f"<span style='color:{color}'>{arrow} {diff:+.2f}</span>"
 
     # Funkce pro výpis jednoho sloupce
-    def display_metrics_block(col, title, data, adv_data, extra):
-        with col:
-            st.markdown(f"#### {title}")
+    # def display_metrics_block(col, title, data, adv_data, extra):
+    #     with col:
+    #         st.markdown(f"#### {title}")
             
-            # Základní metriky
-            st.markdown(f"**⚽ Góly:** {data['Góly']:.2f} {colored_delta(data['Góly'], league_avg['Góly'], 'Góly')}", unsafe_allow_html=True)
-            st.markdown(f"**🥅 Obdržené góly:** {data['Obdržené góly']:.2f} {colored_delta(data['Obdržené góly'], league_avg['Obdržené góly'], 'Obdržené góly')}", unsafe_allow_html=True)
-            st.markdown(f"**📸 Střely:** {data['Střely']:.2f} {colored_delta(data['Střely'], league_avg['Střely'], 'Střely')}", unsafe_allow_html=True)
-            st.markdown(f"**🎯 Na branku:** {data['Na branku']:.2f} {colored_delta(data['Na branku'], league_avg['Na branku'], 'Na branku')}", unsafe_allow_html=True)
-            st.markdown(f"**🚩 Rohy:** {data['Rohy']:.2f} {colored_delta(data['Rohy'], league_avg['Rohy'], 'Rohy')}", unsafe_allow_html=True)
-            st.markdown(f"**⚠️ Fauly:** {data['Fauly']:.2f} {colored_delta(data['Fauly'], league_avg['Fauly'], 'Fauly')}", unsafe_allow_html=True)
-            st.markdown(f"**🟨 Žluté:** {data['Žluté']:.2f} {colored_delta(data['Žluté'], league_avg['Žluté'], 'Žluté')}", unsafe_allow_html=True)
-            st.markdown(f"**🟥 Červené:** {data['Červené']:.2f} {colored_delta(data['Červené'], league_avg['Červené'], 'Červené')}", unsafe_allow_html=True)
+    #         # Základní metriky
+    #         st.markdown(f"**⚽ Góly:** {data['Góly']:.2f} {colored_delta(data['Góly'], league_avg['Góly'], 'Góly')}", unsafe_allow_html=True)
+    #         st.markdown(f"**🥅 Obdržené góly:** {data['Obdržené góly']:.2f} {colored_delta(data['Obdržené góly'], league_avg['Obdržené góly'], 'Obdržené góly')}", unsafe_allow_html=True)
+    #         st.markdown(f"**📸 Střely:** {data['Střely']:.2f} {colored_delta(data['Střely'], league_avg['Střely'], 'Střely')}", unsafe_allow_html=True)
+    #         st.markdown(f"**🎯 Na branku:** {data['Na branku']:.2f} {colored_delta(data['Na branku'], league_avg['Na branku'], 'Na branku')}", unsafe_allow_html=True)
+    #         st.markdown(f"**🚩 Rohy:** {data['Rohy']:.2f} {colored_delta(data['Rohy'], league_avg['Rohy'], 'Rohy')}", unsafe_allow_html=True)
+    #         st.markdown(f"**⚠️ Fauly:** {data['Fauly']:.2f} {colored_delta(data['Fauly'], league_avg['Fauly'], 'Fauly')}", unsafe_allow_html=True)
+    #         st.markdown(f"**🟨 Žluté:** {data['Žluté']:.2f} {colored_delta(data['Žluté'], league_avg['Žluté'], 'Žluté')}", unsafe_allow_html=True)
+    #         st.markdown(f"**🟥 Červené:** {data['Červené']:.2f} {colored_delta(data['Červené'], league_avg['Červené'], 'Červené')}", unsafe_allow_html=True)
+    #         # st.markdown(f"**⚡ Ofenzivní efektivita:** {adv_data['Ofenzivní efektivita']:.2f} {colored_delta(adv_data['Ofenzivní efektivita'], league_avg_advanced['Ofenzivní efektivita'], 'Ofenzivní efektivita')}", unsafe_allow_html=True)
+    #         # st.markdown(f"**🛡️ Defenzivní efektivita:** {adv_data['Defenzivní efektivita']:.2f} {colored_delta(adv_data['Defenzivní efektivita'], league_avg_advanced['Defenzivní efektivita'], 'Defenzivní efektivita')}", unsafe_allow_html=True)
+    #         st.markdown(f"**🎯 Přesnost střel:** {adv_data['Přesnost střel'] * 100:.1f}% {colored_delta(adv_data['Přesnost střel'], league_avg_advanced['Přesnost střel'], 'Přesnost střel')}", unsafe_allow_html=True)
+    #         st.markdown(f"**🌟 Konverzní míra:** {adv_data['Konverzní míra'] * 100:.1f}% {colored_delta(adv_data['Konverzní míra'], league_avg_advanced['Konverzní míra'], 'Konverzní míra')}", unsafe_allow_html=True)
+    #         st.markdown(f"**🧤 Čistá konta:** {extra['Čistá konta %']:.1f}%", unsafe_allow_html=True)
+    #         st.markdown(f"**📈 Over 2.5 %:** {extra['Over 2.5 %']:.1f}%", unsafe_allow_html=True)
+    #         st.markdown(f"**🎯 BTTS %:** {extra['BTTS %']:.1f}%", unsafe_allow_html=True)
+
+    def display_metrics_block(col, title, data, advanced, extra, show_labels=True):
+        with col:
+            st.markdown(f"### {title}")
+
+            def format_metric(label, value, delta_str):
+                if show_labels:
+                    return f"**{label}:** {value:.2f} {delta_str}"
+                else:
+                    return f"{value:.2f} {delta_str}"
+
+            st.markdown(format_metric("⚽ Góly", data['Góly'], colored_delta(data['Góly'], league_avg['Góly'], 'Góly')), unsafe_allow_html=True)
+            st.markdown(format_metric("🥅 Obdržené góly", data['Obdržené góly'], colored_delta(data['Obdržené góly'], league_avg['Obdržené góly'], 'Obdržené góly')), unsafe_allow_html=True)
+            st.markdown(format_metric("📸 Střely", data['Střely'], colored_delta(data['Střely'], league_avg['Střely'], 'Střely')), unsafe_allow_html=True)
+            st.markdown(format_metric("🎯 Na branku", data['Na branku'], colored_delta(data['Na branku'], league_avg['Na branku'], 'Na branku')), unsafe_allow_html=True)
+            st.markdown(format_metric("🚩 Rohy", data['Rohy'], colored_delta(data['Rohy'], league_avg['Rohy'], 'Rohy')), unsafe_allow_html=True)
+            st.markdown(format_metric("⚠️ Fauly", data['Fauly'], colored_delta(data['Fauly'], league_avg['Fauly'], 'Fauly')), unsafe_allow_html=True)
+            st.markdown(format_metric("🟨 Žluté", data['Žluté'], colored_delta(data['Žluté'], league_avg['Žluté'], 'Žluté')), unsafe_allow_html=True)
+            st.markdown(format_metric("🟥 Červené", data['Červené'], colored_delta(data['Červené'], league_avg['Červené'], 'Červené')), unsafe_allow_html=True)
 
             st.markdown("---")
-            st.markdown(f"**⚡ Ofenzivní efektivita:** {adv_data['Ofenzivní efektivita']:.2f} {colored_delta(adv_data['Ofenzivní efektivita'], league_avg_advanced['Ofenzivní efektivita'], 'Ofenzivní efektivita')}", unsafe_allow_html=True)
-            st.markdown(f"**🛡️ Defenzivní efektivita:** {adv_data['Defenzivní efektivita']:.2f} {colored_delta(adv_data['Defenzivní efektivita'], league_avg_advanced['Defenzivní efektivita'], 'Defenzivní efektivita')}", unsafe_allow_html=True)
-            st.markdown(f"**🎯 Přesnost střel:** {adv_data['Přesnost střel'] * 100:.1f}% {colored_delta(adv_data['Přesnost střel'], league_avg_advanced['Přesnost střel'], 'Přesnost střel')}", unsafe_allow_html=True)
-            st.markdown(f"**🌟 Konverzní míra:** {adv_data['Konverzní míra'] * 100:.1f}% {colored_delta(adv_data['Konverzní míra'], league_avg_advanced['Konverzní míra'], 'Konverzní míra')}", unsafe_allow_html=True)
-            st.markdown(f"**🧤 Čistá konta:** {extra['Čistá konta %']:.1f}%", unsafe_allow_html=True)
-            st.markdown(f"**📈 Over 2.5 %:** {extra['Over 2.5 %']:.1f}%", unsafe_allow_html=True)
-            st.markdown(f"**🎯 BTTS %:** {extra['BTTS %']:.1f}%", unsafe_allow_html=True)
+            st.markdown(format_metric("🎯 Přesnost střel", advanced["Přesnost střel"], colored_delta(advanced["Přesnost střel"], league_avg_advanced["Přesnost střel"], "Přesnost střel")), unsafe_allow_html=True)
+            st.markdown(format_metric("🌟 Konverzní míra", advanced["Konverzní míra"], colored_delta(advanced["Konverzní míra"], league_avg_advanced["Konverzní míra"], "Konverzní míra")), unsafe_allow_html=True)
+            st.markdown(format_metric("🧤 Čistá konta", extra["Čistá konta %"], ""), unsafe_allow_html=True)
+            st.markdown(format_metric("📈 Over 2.5 %", extra["Over 2.5 %"], ""), unsafe_allow_html=True)
+            st.markdown(format_metric("🎯 BTTS %", extra["BTTS %"], ""), unsafe_allow_html=True)
+
+
+    
+    # Celkem
+    # display_metrics_block(col_all, "Celkem", metrics_all, advanced_stats.loc[team], extra_all)
+
+    # # Doma
+    # home_adv = calculate_advanced_team_metrics(home)
+    # if not home_adv.empty and team in home_adv.index:
+    #     display_metrics_block(col_home, "🏠 Doma", metrics_home, home_adv.loc[team], extra_home)
+
+    # # Venku
+    # away_adv = calculate_advanced_team_metrics(away)
+    # if not away_adv.empty and team in away_adv.index:
+    #     display_metrics_block(col_away, "🚌 Venku", metrics_away, away_adv.loc[team], extra_away)
 
     # Celkem
-    display_metrics_block(col_all, "Celkem", metrics_all, advanced_stats.loc[team], extra_all)
+    display_metrics_block(col_all, "Celkem", metrics_all, advanced_stats.loc[team], extra_all, show_labels=True)
 
     # Doma
     home_adv = calculate_advanced_team_metrics(home)
     if not home_adv.empty and team in home_adv.index:
-        display_metrics_block(col_home, "🏠 Doma", metrics_home, home_adv.loc[team], extra_home)
+        display_metrics_block(col_home, "🏠 Doma", metrics_home, home_adv.loc[team], extra_home, show_labels=False)
 
     # Venku
     away_adv = calculate_advanced_team_metrics(away)
     if not away_adv.empty and team in away_adv.index:
-        display_metrics_block(col_away, "🚌 Venku", metrics_away, away_adv.loc[team], extra_away)
+        display_metrics_block(col_away, "🚌 Venku", metrics_away, away_adv.loc[team], extra_away, show_labels=False)
 
 
     st.markdown("---")
-    st.subheader("📅 Posledních 5 zápasů")
 
-    # ✅ Nová volba do sidebaru
-    difficulty_filter = st.sidebar.selectbox(
-        "🎯 Filtrovat posledních 5 zápasů podle síly soupeře:",
-        ["Vše", "Silní", "Průměrní", "Slabí"]
-    )
-
+    
+    
     # ✅ Připrav zápasy týmu
     df_team = season_df[(season_df['HomeTeam'] == team) | (season_df['AwayTeam'] == team)].copy()
 
@@ -262,7 +347,7 @@ def render_team_detail(df, season_df, team, league_name, gii_dict):
         opp_goals = row['FTAG'] if is_home else row['FTHG']
         return pd.Series({
             "Datum": row['Date'].date(),
-            "Soupeř": f"{'vs' if is_home else '@'} {opponent}",
+            "Soupeř": opponent,  # ❌ žádný prefix
             "H/A": "H" if is_home else "A",
             "Skóre": f"{team_goals}:{opp_goals}",
             "Střely": row['HS'] if is_home else row['AS'],
@@ -275,6 +360,7 @@ def render_team_detail(df, season_df, team, league_name, gii_dict):
 
     # ✅ Převod a styling
     match_details = last_matches.apply(format_result, axis=1)
+    match_details = match_details.reset_index(drop=True)  # ✅ odstraní indexový sloupec
 
     def highlight_result(row):
         score = row["Skóre"].split(":")
@@ -286,47 +372,25 @@ def render_team_detail(df, season_df, team, league_name, gii_dict):
 
     styled_matches = match_details.style.apply(highlight_result, axis=1)
 
-    # ✅ Výstup bez indexu
+    # ✅ Výstup
     st.markdown("### 🕵️ Posledních 5 zápasů")
-    st.dataframe(
-        styled_matches.hide(axis="index").set_table_attributes('style="width: 100%;"').set_table_styles([
-            {"selector": "th", "props": [("text-align", "left")]}
-        ]),
-        use_container_width=True
-    )
+    # st.dataframe(
+    #     styled_matches.hide(axis="index").set_table_attributes('style="width: 100%;"').set_table_styles([
+    #         {"selector": "th", "props": [("text-align", "left")]}
+    #     ]),
+    #     use_container_width=True
+    # )
+    st.table(styled_matches)
 
-    # Disciplinovanost – karty na faul
     # Disciplinovanost – karty na faul
     yellow_per_foul = stats['Žluté'] / stats['Fauly'] if stats['Fauly'] else 0
     red_per_foul = stats.get('Červené', 0) / stats['Fauly'] if stats['Fauly'] else 0
-    # st.markdown(f"- 🟨 Žluté na faul: **{yellow_per_foul:.2f}**")
-    # st.markdown(f"- 🟥 Červené na faul: **{red_per_foul:.2f}**")
-
-    # # Ofenzivní efektivita – střely na 1 gól
-    offensive_efficiency = (stats['Střely'] / stats['Góly']) if stats['Góly'] else 0
-    # st.markdown(f"- ⚡ Ofenzivní efektivita (střel na gól): **{offensive_efficiency:.2f}**" + compare_stat("Střely", stats['Střely'], league_avg))
 
     # # Defenzivní efektivita – gól na střelu
     defensive_efficiency = (stats['Obdržené góly'] / stats['Střely']) if stats['Střely'] else 0
-    # st.markdown(f"- 🛡️ Defenzivní efektivita (góly na střelu): **{defensive_efficiency:.2f}**" + compare_stat("Obdržené góly", stats['Obdržené góly'], league_avg))
 
     # # Přesnost a konverze
     conversion_rate = (stats['Góly'] / stats['Střely']) if stats['Střely'] else 0
-    shot_accuracy = (stats['Na branku'] / stats['Střely']) if stats['Střely'] else 0
-    # st.markdown(f"- 🎯 Přesnost střel: **{shot_accuracy * 100:.1f}%**" + compare_stat("Na branku", stats['Na branku'], league_avg))
-    # st.markdown(f"- 💥 Konverzní míra: **{conversion_rate * 100:.1f}%**" + compare_stat("Góly", stats['Góly'], league_avg))
-    # total_matches = len(season_df[(season_df['HomeTeam'] == team) | (season_df['AwayTeam'] == team)])
-    # wins = season_df[((season_df['HomeTeam'] == team) & (season_df['FTR'] == 'H')) | ((season_df['AwayTeam'] == team) & (season_df['FTR'] == 'A'))]
-    # draws = season_df[season_df['FTR'] == 'D'][(season_df['HomeTeam'] == team) | (season_df['AwayTeam'] == team)]
-    # losses = total_matches - len(wins) - len(draws)
-    # over25 = season_df[(season_df['HomeTeam'] == team) | (season_df['AwayTeam'] == team)]
-    # over25_ratio = (over25['FTHG'] + over25['FTAG'] > 2.5).mean() * 100
-    # btts_ratio = ((over25['FTHG'] > 0) & (over25['FTAG'] > 0)).mean() * 100
-    # st.markdown(f"- ✅ Výher: **{len(wins)}**  | 🤝 Remíz: **{len(draws)}** | ❌ Proher: **{losses}**")
-    # st.markdown(f"- 🔼 Zápasy s více než 2.5 góly: **{over25_ratio:.1f}%**")
-    # st.markdown(f"- 🎯 Zápasy, kde skórovaly oba týmy (BTTS): **{btts_ratio:.1f}%**")
-
-    # st.markdown("---")
 
     df_team = season_df[(season_df['HomeTeam'] == team) | (season_df['AwayTeam'] == team)].copy()
     df_team['Opponent'] = df_team.apply(lambda row: row['AwayTeam'] if row['HomeTeam'] == team else row['HomeTeam'], axis=1)
@@ -340,7 +404,9 @@ def render_team_detail(df, season_df, team, league_name, gii_dict):
         yellow_per_foul,
         red_per_foul
     )
-
+    
+    st.markdown("---")
+    
     if (
         profile["výherní série"] >= 2 or
         profile["proherní série"] >= 2 or

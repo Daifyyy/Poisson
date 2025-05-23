@@ -531,7 +531,7 @@ def tempo_to_emoji(tempo_value: float) -> str:
         return "💤 Totální nuda"
 
 
-def calculate_advanced_team_metrics(df: pd.DataFrame) -> pd.DataFrame:
+def calculate_advanced_team_metrics(df: pd.DataFrame, is_home: bool = None) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=[
             "Tým", "Ofenzivní efektivita", "Defenzivní efektivita", 
