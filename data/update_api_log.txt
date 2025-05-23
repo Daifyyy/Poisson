@@ -1,0 +1,91 @@
+
+[2025-05-23 15:16:16] Aktualizace lig:
+❌ E0: CHYBA - 'Date'
+❌ E1: CHYBA - 'Date'
+❌ SP1: CHYBA - 'Date'
+❌ B1: CHYBA - 'Date'
+❌ D1: CHYBA - 'Date'
+❌ D2: CHYBA - 'Date'
+❌ I1: CHYBA - 'Date'
+❌ F1: CHYBA - 'Date'
+❌ N1: CHYBA - 'Date'
+❌ P1: CHYBA - 'Date'
+❌ T1: CHYBA - 'Date'
+
+[2025-05-23 15:17:55] Aktualizace lig:
+❌ E0: CHYBA - 'Date'
+❌ E1: CHYBA - 'Date'
+❌ SP1: CHYBA - 'Date'
+❌ B1: CHYBA - 'Date'
+❌ D1: CHYBA - 'Date'
+❌ D2: CHYBA - 'Date'
+❌ I1: CHYBA - 'Date'
+❌ F1: CHYBA - 'Date'
+❌ N1: CHYBA - 'Date'
+❌ P1: CHYBA - 'Date'
+❌ T1: CHYBA - 'Date'
+
+[2025-05-23 15:23:54] Aktualizace lig:
+❌ E0: CHYBA - 'Date'
+❌ E1: CHYBA - 'Date'
+❌ SP1: CHYBA - 'Date'
+❌ B1: CHYBA - 'Date'
+❌ D1: CHYBA - 'Date'
+❌ D2: CHYBA - 'Date'
+❌ I1: CHYBA - 'Date'
+❌ F1: CHYBA - 'Date'
+❌ N1: CHYBA - 'Date'
+❌ P1: CHYBA - 'Date'
+❌ T1: CHYBA - 'Date'
+
+[2025-05-23 15:28:34] Aktualizace lig:
+❌ E0: CHYBA - 'Date'
+❌ E1: CHYBA - 'Date'
+❌ SP1: CHYBA - 'Date'
+❌ B1: CHYBA - 'Date'
+❌ D1: CHYBA - 'Date'
+❌ D2: CHYBA - 'Date'
+❌ I1: CHYBA - 'Date'
+❌ F1: CHYBA - 'Date'
+❌ N1: CHYBA - 'Date'
+❌ P1: CHYBA - 'Date'
+❌ T1: CHYBA - 'Date'
+
+[2025-05-23 15:30:46] Aktualizace lig:
+❌ E0: CHYBA - 'Date'
+❌ E1: CHYBA - 'Date'
+❌ SP1: CHYBA - 'Date'
+❌ B1: CHYBA - 'Date'
+❌ D1: CHYBA - 'Date'
+❌ D2: CHYBA - 'Date'
+❌ I1: CHYBA - 'Date'
+❌ F1: CHYBA - 'Date'
+❌ N1: CHYBA - 'Date'
+❌ P1: CHYBA - 'Date'
+❌ T1: CHYBA - 'Date'
+
+[2025-05-23 15:33:44] Aktualizace lig:
+✅ E0: 380 nových zápasů ➕ Celkem: 380 - OK
+✅ E1: 557 nových zápasů ➕ Celkem: 557 - OK
+✅ SP1: 380 nových zápasů ➕ Celkem: 380 - OK
+❌ B1: CHYBA - argument of type 'NoneType' is not iterable
+✅ D1: 308 nových zápasů ➕ Celkem: 308 - OK
+✅ D2: 308 nových zápasů ➕ Celkem: 308 - OK
+✅ I1: 380 nových zápasů ➕ Celkem: 380 - OK
+✅ F1: 382 nových zápasů ➕ Celkem: 382 - OK
+✅ N1: 324 nových zápasů ➕ Celkem: 324 - OK
+✅ P1: 308 nových zápasů ➕ Celkem: 308 - OK
+❌ T1: CHYBA - 'Date'
+
+[2025-05-23 15:40:05] Aktualizace lig:
+✅ E0: 380 nových zápasů ➕ Celkem: 380 - OK
+❌ E1: CHYBA - 'Date'
+❌ SP1: CHYBA - 'Date'
+❌ B1: CHYBA - 'Date'
+❌ D1: CHYBA - 'Date'
+❌ D2: CHYBA - 'Date'
+❌ I1: CHYBA - 'Date'
+❌ F1: CHYBA - 'Date'
+❌ N1: CHYBA - 'Date'
+❌ P1: CHYBA - 'Date'
+❌ T1: CHYBA - 'Date'
