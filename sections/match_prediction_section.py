@@ -15,7 +15,7 @@ from utils.poisson_utils import (
 from utils.frontend_utils import display_team_status_table
 from utils.poisson_utils.match_style import tempo_tag
 from utils.export_utils import generate_excel_analysis_export
-from utils.utils_warnings import (
+from utils.team_analysis import (
     scoreline_variance_warning,
     combined_form_tempo_warning,
     conflict_style_warning,

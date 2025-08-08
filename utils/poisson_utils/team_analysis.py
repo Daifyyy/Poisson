@@ -4,7 +4,6 @@ from scipy.stats import poisson
 import streamlit as st
 from .core import prepare_df,get_last_n_matches, calculate_points,poisson_over25_probability,expected_goals_vs_similar_elo_weighted 
 from .xg import calculate_team_pseudo_xg
-from utils.utils_warnings import detect_overperformance_and_momentum
 
 def calculate_clean_sheets(df: pd.DataFrame, team: str) -> float:
     """Vrací procento zápasů, kdy tým udržel čisté konto."""

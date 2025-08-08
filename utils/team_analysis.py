@@ -1,26 +1,8 @@
 
 import pandas as pd
 import numpy as np
-from scipy.stats import poisson
-import matplotlib.pyplot as plt
-import seaborn as sns
-import streamlit as st
 from itertools import product
-def load_data(file_path):
-    df = pd.read_csv(file_path)
-    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
-    df = df.dropna(subset=['FTHG', 'FTAG', 'Date'])
-    df = df.sort_values('Date')
-    return df
-
-def prepare_df(df):
-    """Základní úprava dat: kopírování, převod datumu, odstranění nevalidních řádků, seřazení podle data."""
-    df = df.copy()
-    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
-    df = df.dropna(subset=['Date'])
-    df = df.sort_values('Date')
-    return df
-
+from .data_preparation import prepare_df
 def calculate_team_goal_averages(df):
     """Vrátí slovník: tým -> průměr vstřelených gólů (kombinace doma a venku)."""
     teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
@@ -93,20 +75,6 @@ def split_teams_by_strength(df):
     return top_teams, middle_teams, bottom_teams
 
 
-
-def detect_current_season(df):
-    df = prepare_df(df)
-
-    dates = df['Date'].drop_duplicates().sort_values().reset_index(drop=True)
-    date_diffs = dates.diff().fillna(pd.Timedelta(days=0))
-    season_breaks = dates[date_diffs > pd.Timedelta(days=30)].reset_index(drop=True)
-
-    if not season_breaks.empty:
-        season_start = season_breaks.iloc[-1]  # poslední pauza => začátek aktuální sezony
-    else:
-        season_start = dates.iloc[0]  # fallback – bereme vše
-    print(season_start)
-    return df[df['Date'] >= season_start], season_start
 
 def calculate_team_strengths(df):
     league_avg_home_goals = df['FTHG'].mean()
@@ -211,63 +179,6 @@ def calculate_form_emojis(df, days=31):
 
     return form_emojis
 
-
-def poisson_prediction(home_exp, away_exp, max_goals=6):
-    matrix = np.zeros((max_goals + 1, max_goals + 1))
-    for i in range(max_goals + 1):
-        for j in range(max_goals + 1):
-            matrix[i][j] = poisson.pmf(i, home_exp) * poisson.pmf(j, away_exp)
-    return matrix
-
-def match_outcomes_prob(matrix):
-    home_win = np.tril(matrix, -1).sum()
-    draw = np.trace(matrix)
-    away_win = np.triu(matrix, 1).sum()
-    return {'Home Win': round(home_win * 100, 2), 'Draw': round(draw * 100, 2), 'Away Win': round(away_win * 100, 2)}
-
-def over_under_prob(matrix, line=2.5):
-    prob_over = sum([matrix[i][j] for i in range(matrix.shape[0]) for j in range(matrix.shape[1]) if i + j > line])
-    return {'Over 2.5': round(prob_over * 100, 2), 'Under 2.5': round((1 - prob_over) * 100, 2)}
-
-def btts_prob(matrix):
-    btts = sum([matrix[i][j] for i in range(1, matrix.shape[0]) for j in range(1, matrix.shape[1])])
-    return {'BTTS Yes': round(btts * 100, 2), 'BTTS No': round((1 - btts) * 100, 2)}
-
-def prob_to_odds(prob_percent):
-    if prob_percent <= 0:
-        return "∞"
-    return round(100 / prob_percent, 2)
-
-def generate_score_table_df(matrix, home_team, away_team):
-    df = pd.DataFrame(matrix * 100)
-    df.index.name = f"{home_team} góly"
-    df.columns.name = f"{away_team} góly"
-
-    styled = df.style\
-        .format("{:.1f} %")\
-        .background_gradient(cmap="YlOrRd", axis=None)\
-        .set_properties(**{
-            "text-align": "center",
-            "font-size": "11px"
-        })
-
-    return styled
-
-
-def get_top_scorelines(matrix, top_n=5):
-    score_probs = [((i, j), matrix[i][j]) for i in range(matrix.shape[0]) for j in range(matrix.shape[1])]
-    score_probs.sort(key=lambda x: x[1], reverse=True)
-    return score_probs[:top_n]
-
-def plot_top_scorelines(score_probs, home_team, away_team):
-    labels = [f"{a}:{b}" for (a, b), _ in score_probs]
-    values = [round(p * 100, 2) for _, p in score_probs]
-    fig, ax = plt.subplots()
-    ax.bar(labels, values, color='skyblue')
-    ax.set_title(f"Top skóre: {home_team} vs {away_team}")
-    ax.set_xlabel("Skóre")
-    ax.set_ylabel("Pravděpodobnost (%)")
-    return fig
 
 def expected_team_stats_weighted_by_elo(df, home_team, away_team, stat_columns, elo_dict):
     df = prepare_df(df)
