@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+from typing import Dict
 from utils.poisson_utils import (
     calculate_elo_ratings, calculate_form_emojis, calculate_expected_and_actual_points,
     aggregate_team_stats, calculate_team_pseudo_xg, add_btts_column,
@@ -11,67 +12,78 @@ from utils.poisson_utils import (
     calculate_team_extra_stats,get_team_record,analyze_team_profile,generate_team_comparison,render_team_comparison_section
 )
 
-def render_team_detail(df, season_df, team, league_name, gii_dict):
+def render_team_detail(
+    df: pd.DataFrame,
+    season_df: pd.DataFrame,
+    team: str,
+    league_name: str,
+    gii_dict: Dict[str, float],
+) -> None:
+    """Render detailed information for a selected team.
+
+    Args:
+        df: DataFrame containing match data.
+        season_df: DataFrame with season data for statistics.
+        team: Team name to display.
+        league_name: Name of the league.
+        gii_dict: Mapping of teams to intensity index values.
+
+    Returns:
+        None
+    """
     st.sidebar.markdown("### ⏱️ Časový filtr")
     min_date, max_date = df['Date'].min(), df['Date'].max()
-    
+
     time_filter = st.sidebar.radio(
-        "Vyber rozsah dat", 
+        "Vyber rozsah dat",
         ["Celá sezóna", "Posledních 5 zápasů", "Posledních 10 zápasů", "Posledních 5 doma", "Posledních 5 venku"]
     )
 
-    # Určení začátku sezóny podle mezer mezi zápasy
-    df_sorted = df.sort_values("Date")
-    df_sorted["DateDiff"] = df_sorted["Date"].diff().dt.days
-    gap_threshold = 30
-    latest_index = df_sorted[df_sorted["Date"] == df_sorted["Date"].max()].index[0]
-    cutoff_idx = df_sorted.iloc[:latest_index].loc[df_sorted["DateDiff"] > gap_threshold].last_valid_index()
-    season_start_date = df_sorted.loc[cutoff_idx + 1, "Date"] if cutoff_idx is not None else df_sorted["Date"].min()
-    
-    # Sezónní dataset
-    season_cutoff = df[df['Date'] >= season_start_date]
+    def _apply_time_filter(data: pd.DataFrame) -> pd.DataFrame:
+        df_sorted = data.sort_values("Date")
+        df_sorted["DateDiff"] = df_sorted["Date"].diff().dt.days
+        gap_threshold = 30
+        latest_index = df_sorted[df_sorted["Date"] == df_sorted["Date"].max()].index[0]
+        cutoff_idx = df_sorted.iloc[:latest_index].loc[df_sorted["DateDiff"] > gap_threshold].last_valid_index()
+        season_start = df_sorted.loc[cutoff_idx + 1, "Date"] if cutoff_idx is not None else df_sorted["Date"].min()
+        season_cutoff = data[data['Date'] >= season_start]
 
-    # Filtrace podle výběru
-    if time_filter == "Posledních 5 zápasů":
-        team_matches = season_cutoff[(season_cutoff['HomeTeam'] == team) | (season_cutoff['AwayTeam'] == team)]
-        df = team_matches.sort_values("Date", ascending=False).head(5)
-    elif time_filter == "Posledních 10 zápasů":
-        team_matches = season_cutoff[(season_cutoff['HomeTeam'] == team) | (season_cutoff['AwayTeam'] == team)]
-        df = team_matches.sort_values("Date", ascending=False).head(10)
-    elif time_filter == "Posledních 5 doma":
-        team_matches = season_cutoff[season_cutoff['HomeTeam'] == team]
-        df = team_matches.sort_values("Date", ascending=False).head(5)
-    elif time_filter == "Posledních 5 venku":
-        team_matches = season_cutoff[season_cutoff['AwayTeam'] == team]
-        df = team_matches.sort_values("Date", ascending=False).head(5)
-    else:
-        df = season_cutoff
+        if time_filter == "Posledních 5 zápasů":
+            matches = season_cutoff[(season_cutoff['HomeTeam'] == team) | (season_cutoff['AwayTeam'] == team)]
+            return matches.sort_values("Date", ascending=False).head(5)
+        if time_filter == "Posledních 10 zápasů":
+            matches = season_cutoff[(season_cutoff['HomeTeam'] == team) | (season_cutoff['AwayTeam'] == team)]
+            return matches.sort_values("Date", ascending=False).head(10)
+        if time_filter == "Posledních 5 doma":
+            matches = season_cutoff[season_cutoff['HomeTeam'] == team]
+            return matches.sort_values("Date", ascending=False).head(5)
+        if time_filter == "Posledních 5 venku":
+            matches = season_cutoff[season_cutoff['AwayTeam'] == team]
+            return matches.sort_values("Date", ascending=False).head(5)
+        return season_cutoff
 
-    
-    # ✅ Nová volba do sidebaru
+    df = _apply_time_filter(df)
+
     difficulty_filter = st.sidebar.selectbox(
         "🎯 Filtrovat podle síly soupeře:",
         ["Vše", "Silní", "Průměrní", "Slabí"]
     )
-    
+
     compare_team = st.sidebar.selectbox(
         "🔄 Porovnat s jiným týmem:",
         ["Žádný"] + sorted(df['HomeTeam'].unique().tolist())
     )
 
-        
-    # Aktualizuj season_df na základě výběru
-    season_df = df
-        # Filtrace zápasů
-    
-        # Další filtrace season_df podle obtížnosti soupeře
-    # 💡 Aplikuj filtr síly soupeře
-    if difficulty_filter != "Vše":
-        season_df["Opponent"] = season_df.apply(lambda row: row['AwayTeam'] if row['HomeTeam'] == team else row['HomeTeam'], axis=1)
-        season_df["Soupeř síla"] = season_df["Opponent"].apply(lambda opp: classify_team_strength(df, opp))
-        season_df = season_df[season_df["Soupeř síla"] == difficulty_filter]
+    def _apply_difficulty_filter(data: pd.DataFrame) -> pd.DataFrame:
+        if difficulty_filter != "Vše":
+            data = data.copy()
+            data["Opponent"] = data.apply(lambda row: row['AwayTeam'] if row['HomeTeam'] == team else row['HomeTeam'], axis=1)
+            data["Soupeř síla"] = data["Opponent"].apply(lambda opp: classify_team_strength(df, opp))
+            data = data[data["Soupeř síla"] == difficulty_filter]
+        return data
 
-    # 💡 Teprve teď připrav data k výpočtu statistik
+    season_df = _apply_difficulty_filter(df)
+
     home = season_df[season_df['HomeTeam'] == team]
     away = season_df[season_df['AwayTeam'] == team]
     all_matches = pd.concat([home, away])
