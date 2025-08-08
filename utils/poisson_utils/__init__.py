@@ -1,20 +1,28 @@
 # from ..poisson_utils import scoreline_variance_warning, combined_form_tempo_warning, conflict_style_warning
 
-
-from .core import (
+from .data import (
     prepare_df,
     load_data,
+    detect_current_season,
+    get_last_n_matches,
+)
+
+from .stats import (
     calculate_points,
     add_btts_column,
-    poisson_prediction,
     calculate_team_strengths,
     classify_team_strength,
-    detect_current_season,
+    aggregate_team_stats,
+    compute_form_trend,
+    compute_score_stats,
+)
+
+from .prediction import (
+    poisson_prediction,
     calculate_expected_points,
     prob_to_odds,
-    aggregate_team_stats,
-    compute_form_trend, 
-    compute_score_stats
+    poisson_over25_probability,
+    expected_goals_vs_similar_elo_weighted,
 )
 
 from .elo import (
@@ -23,7 +31,7 @@ from .elo import (
     detect_risk_factors,
     detect_positive_factors,
     calculate_warning_index,
-    detect_overperformance_and_momentum
+    detect_overperformance_and_momentum,
 )
 
 from .xg import (
@@ -38,7 +46,6 @@ from .xg import (
     get_top_scorelines,
     btts_prob,
     expected_team_stats_weighted_by_elo,
-    
 )
 
 from .team_analysis import (
@@ -53,7 +60,7 @@ from .team_analysis import (
     expected_goals_weighted_by_home_away,
     get_team_card_stats,
     generate_team_comparison,
-    render_team_comparison_section
+    render_team_comparison_section,
 )
 
 from .match_style import (
@@ -74,5 +81,5 @@ from .match_style import (
     calculate_advanced_team_metrics,
     calculate_team_extra_stats,
     get_team_record,
-    analyze_team_profile
+    analyze_team_profile,
 )

@@ -2,7 +2,9 @@ import pandas as pd
 import numpy as np
 from scipy.stats import poisson
 import streamlit as st
-from .core import prepare_df,get_last_n_matches, calculate_points,poisson_over25_probability,expected_goals_vs_similar_elo_weighted 
+from .data import prepare_df, get_last_n_matches
+from .stats import calculate_points
+from .prediction import poisson_over25_probability, expected_goals_vs_similar_elo_weighted 
 from .xg import calculate_team_pseudo_xg
 from utils.utils_warnings import detect_overperformance_and_momentum
 
@@ -276,7 +278,8 @@ def merged_home_away_opponent_form(df: pd.DataFrame, team: str) -> dict:
 
 def calculate_recent_form(df: pd.DataFrame, days: int = 31) -> dict:
     """Vrací dictionary: tým -> průměr bodů za posledních N dní."""
-    from .core import prepare_df, calculate_points
+    from .data import prepare_df
+    from .stats import calculate_points
 
     df = prepare_df(df)
     latest_date = df['Date'].max()

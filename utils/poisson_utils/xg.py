@@ -1,7 +1,8 @@
 import pandas as pd
 import numpy as np
 
-from .core import prepare_df
+from .data import prepare_df
+from .prediction import poisson_prediction
 
 def calculate_pseudo_xg_for_team(df: pd.DataFrame, team: str) -> dict:
     """Počítá pseudo-xG metriky pro jeden tým."""
@@ -185,7 +186,6 @@ def expected_team_stats_weighted_by_elo(df: pd.DataFrame, home_team: str, away_t
 
 def poisson_prediction_matrix(home_xg: float, away_xg: float, max_goals: int = 6) -> np.ndarray:
     """Vrací Poissonovu predikční matici výsledků."""
-    from .core import poisson_prediction
     return poisson_prediction(home_xg, away_xg, max_goals)
 
 def over_under_prob(df: pd.DataFrame, home_team: str, away_team: str, elo_dict: dict) -> dict:
