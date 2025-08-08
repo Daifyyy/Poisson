@@ -3,7 +3,7 @@ import pathlib
 import pandas as pd
 
 sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
-from utils.poisson_utils.core import aggregate_team_stats
+from utils.poisson_utils.stats import aggregate_team_stats
 
 
 def test_aggregate_team_stats_handles_missing_columns():

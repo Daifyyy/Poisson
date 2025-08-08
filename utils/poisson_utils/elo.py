@@ -1,7 +1,8 @@
 import pandas as pd
 import numpy as np
 
-from .core import prepare_df, calculate_points
+from .data import prepare_df
+from .stats import calculate_points
 
 def calculate_elo_ratings(df: pd.DataFrame, k: int = 20) -> dict:
     """Spočítá ELO ratingy týmů na základě výsledků zápasů."""
@@ -173,7 +174,8 @@ def detect_positive_factors(df: pd.DataFrame, team: str, elo_dict: dict) -> tupl
 
 def calculate_warning_index(df: pd.DataFrame, team: str, elo_dict: dict) -> tuple:
     """Spočítá Warning Index (0–1) na základě poklesu xG, konverze, obrany, ELO a bodů."""
-    from .core import prepare_df, calculate_points
+    from .data import prepare_df
+    from .stats import calculate_points
     from .elo import calculate_elo_ratings
     from .match_style import calculate_match_style_score_per_match
 
@@ -271,7 +273,8 @@ def calculate_warning_index(df: pd.DataFrame, team: str, elo_dict: dict) -> tupl
 
 def detect_overperformance_and_momentum(df: pd.DataFrame, team: str) -> tuple:
     """Detekuje, zda tým aktuálně overperformuje a jeho momentum (s emoji a CZ výstupem)."""
-    from .core import prepare_df, calculate_points
+    from .data import prepare_df
+    from .stats import calculate_points
     import numpy as np
 
     df = prepare_df(df)

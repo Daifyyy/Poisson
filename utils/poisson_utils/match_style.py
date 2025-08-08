@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 
 from ..utils_warnings import classify_team_strength  # pokud není globálně importováno
-from .core import prepare_df
+from .data import prepare_df
 
 
 def calculate_match_tempo(df: pd.DataFrame, team: str, opponent_elo: float, is_home: bool, elo_dict: dict, last_n: int = 10) -> dict:
