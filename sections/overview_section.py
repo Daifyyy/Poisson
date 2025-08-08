@@ -17,6 +17,10 @@ def render_league_overview(season_df, league_name, gii_dict):
     st.header(f"🏆 {league_name}")
 
     num_matches = len(season_df)
+    if num_matches == 0:
+        st.info("No match data available for this league.")
+        return
+
     avg_goals = round((season_df['FTHG'] + season_df['FTAG']).mean(), 1)
     season_df = add_btts_column(season_df)
     btts_pct = round(100 * season_df['BTTS'].mean(), 1)
