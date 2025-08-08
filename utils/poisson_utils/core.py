@@ -46,25 +46,25 @@ def load_data(file_path: str) -> pd.DataFrame:
 #     })
 #     return team_stats
 
-def aggregate_team_stats(df):
+def aggregate_team_stats(df: pd.DataFrame) -> pd.DataFrame:
     """Agreguje statistiky za všechny zápasy (doma i venku) pro každý tým."""
-    teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
+    df = df.copy()
+    for col in ["HY", "AY", "HR", "AR", "HF", "AF"]:
+        if col not in df.columns:
+            df[col] = 0
+    teams = pd.concat([df["HomeTeam"], df["AwayTeam"]]).unique()
     records = []
-
     for team in teams:
-        home = df[df['HomeTeam'] == team]
-        away = df[df['AwayTeam'] == team]
-
-        goals = pd.concat([home['FTHG'], away['FTAG']])
-        conceded = pd.concat([home['FTAG'], away['FTHG']])
-        shots = pd.concat([home['HS'], away['AS']])
-        shots_on_target = pd.concat([home['HST'], away['AST']])
-        corners = pd.concat([home['HC'], away['AC']])
-        yellows = pd.concat([home['HY'], away['AY']])
-        reds = pd.concat([home['HR'], away['AR']])
-        fouls = pd.concat([home['HF'], away['AF']])
-
-
+        home = df[df["HomeTeam"] == team]
+        away = df[df["AwayTeam"] == team]
+        goals = pd.concat([home["FTHG"], away["FTAG"]])
+        conceded = pd.concat([home["FTAG"], away["FTHG"]])
+        shots = pd.concat([home["HS"], away["AS"]])
+        shots_on_target = pd.concat([home["HST"], away["AST"]])
+        corners = pd.concat([home["HC"], away["AC"]])
+        yellows = pd.concat([home["HY"], away["AY"]])
+        reds = pd.concat([home["HR"], away["AR"]])
+        fouls = pd.concat([home["HF"], away["AF"]])
         records.append({
             "Tým": team,
             "Góly": goals.mean(),
@@ -75,12 +75,8 @@ def aggregate_team_stats(df):
             "Žluté": yellows.mean(),
             "Červené": reds.mean(),
             "Fauly": fouls.mean()
-
         })
-
     df_stats = pd.DataFrame(records).set_index("Tým")
-
-    print(df_stats.columns)
     return df_stats
 
 
