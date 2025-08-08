@@ -8,6 +8,8 @@ import streamlit as st
 from itertools import product
 
 from utils.statistics import calculate_clean_sheets  # noqa: F401
+from utils.poisson_utils.stats import calculate_points
+
 def load_data(file_path):
     df = pd.read_csv(file_path)
     df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
@@ -32,24 +34,6 @@ def calculate_team_goal_averages(df):
         away_avg = df[df['AwayTeam'] == team]['FTAG'].mean()
         avg_goals[team] = np.nanmean([home_avg, away_avg])
     return avg_goals
-
-def calculate_points(row, is_home):
-    """Vrátí body (3, 1, 0) podle výsledku zápasu a toho, zda tým hrál doma nebo venku."""
-    if is_home:
-        if row['FTHG'] > row['FTAG']:
-            return 3
-        elif row['FTHG'] == row['FTAG']:
-            return 1
-        else:
-            return 0
-    else:
-        if row['FTAG'] > row['FTHG']:
-            return 3
-        elif row['FTAG'] == row['FTHG']:
-            return 1
-        else:
-            return 0
-
 
 def form_points_to_emoji(avg_points):
     """Vrací emoji reprezentaci podle průměrného počtu bodů na zápas."""
