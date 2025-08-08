@@ -6,7 +6,14 @@ from sections.multi_prediction_section import render_multi_match_predictions
 from sections.team_detail_section import render_team_detail
 
 import urllib.parse
-from utils.poisson_utils import load_data, detect_current_season, calculate_team_strengths, calculate_gii_zscore,calculate_elo_ratings, get_team_average_gii
+from utils.poisson_utils import (
+    load_data,
+    detect_current_season,
+    calculate_team_strengths,
+    calculate_gii_zscore,
+    calculate_elo_ratings,
+    get_team_average_gii,
+)
 from utils.frontend_utils import validate_dataset
 from utils.update_data import update_all_leagues
 
