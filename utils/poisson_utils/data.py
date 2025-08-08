@@ -23,15 +23,60 @@ def load_data(file_path: str) -> pd.DataFrame:
     return df
 
 
-def detect_current_season(df: pd.DataFrame) -> tuple:
-    """Detekuje aktuální sezónu podle nejnovějšího data."""
+def detect_current_season(
+    df: pd.DataFrame, *, start_month: int = 8, gap_days: int = 30
+) -> tuple:
+    """Return matches belonging to the current season.
+
+    The function tries to infer the start of the ongoing season in a more
+    flexible way than simply assuming an ``1 August`` cut-off.  It first scans
+    match dates for long gaps (``gap_days``) and treats the match following the
+    last such break as the season start.  If no significant gap is found, it
+    falls back to the conventional start ``start_month`` relative to the latest
+    played match.  Future fixtures are ignored so that upcoming games do not
+    shift the detected season prematurely.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        League match data containing a ``Date`` column.
+    start_month : int, optional
+        Month used as a fallback start when no large breaks are present.
+    gap_days : int, optional
+        Minimum number of days considered a break between seasons.
+
+    Returns
+    -------
+    tuple
+        ``(season_df, season_start)`` where ``season_df`` contains only matches
+        from the detected season.
+    """
+
     df = prepare_df(df)
-    latest_date = df['Date'].max()
-    if latest_date.month > 6:
-        season_start = pd.Timestamp(year=latest_date.year, month=8, day=1)
+
+    # Work only with past matches to avoid jumping to the next season because
+    # of fixtures far in the future.
+    today = pd.Timestamp.today().normalize()
+    df = df[df["Date"] <= today]
+
+    dates = df["Date"].drop_duplicates().sort_values().reset_index(drop=True)
+    date_diffs = dates.diff().fillna(pd.Timedelta(days=0))
+    season_breaks = dates[date_diffs > pd.Timedelta(days=gap_days)]
+
+    if not season_breaks.empty:
+        season_start = season_breaks.iloc[-1]
     else:
-        season_start = pd.Timestamp(year=latest_date.year - 1, month=8, day=1)
-    season_df = df[df['Date'] >= season_start]
+        latest_date = dates.iloc[-1]
+        if latest_date.month >= start_month:
+            season_start = pd.Timestamp(
+                year=latest_date.year, month=start_month, day=1
+            )
+        else:
+            season_start = pd.Timestamp(
+                year=latest_date.year - 1, month=start_month, day=1
+            )
+
+    season_df = df[df["Date"] >= season_start]
     return season_df, season_start
 
 
