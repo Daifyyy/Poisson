@@ -4,12 +4,17 @@ from utils.poisson_utils import detect_risk_factors, detect_positive_factors
 from utils.poisson_utils.match_style import style_team_table
 
 
-def validate_dataset(df):
-    """Zkontroluje, zda dataset obsahuje potřebné sloupce."""
+def validate_dataset(df: pd.DataFrame, min_rows: int = 1):
+    """Zkontroluje, zda dataset obsahuje potřebné sloupce a minimální počet řádků."""
     required_columns = ["Date", "HomeTeam", "AwayTeam", "FTHG", "FTAG", "HS", "AS", "HST", "AST", "HC", "AC"]
     missing_columns = [col for col in required_columns if col not in df.columns]
     if missing_columns:
         st.warning(f"Datasetu chybí následující sloupce: {missing_columns}")
+
+    if df.empty:
+        st.warning("Dataset contains no matches; please provide valid data.")
+    elif len(df) < min_rows:
+        st.warning(f"Dataset must contain at least {min_rows} rows.")
 
 
 def display_team_status_table(home_team: str, away_team: str, df: pd.DataFrame, elo_dict: dict):
