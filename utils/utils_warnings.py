@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import streamlit as st
 from itertools import product
+
+from utils.statistics import calculate_clean_sheets  # noqa: F401
 def load_data(file_path):
     df = pd.read_csv(file_path)
     df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
@@ -48,16 +50,6 @@ def calculate_points(row, is_home):
         else:
             return 0
 
-def calculate_clean_sheets(df, team):
-    """Vrací procento zápasů, kdy tým udržel čisté konto."""
-    team_matches = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)]
-    cs = 0
-    for _, row in team_matches.iterrows():
-        if row['HomeTeam'] == team and row['FTAG'] == 0:
-            cs += 1
-        elif row['AwayTeam'] == team and row['FTHG'] == 0:
-            cs += 1
-    return round(100 * cs / len(team_matches), 1) if len(team_matches) > 0 else 0
 
 def form_points_to_emoji(avg_points):
     """Vrací emoji reprezentaci podle průměrného počtu bodů na zápas."""

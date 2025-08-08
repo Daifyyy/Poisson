@@ -42,7 +42,6 @@ from .xg import (
 )
 
 from .team_analysis import (
-    calculate_clean_sheets,
     calculate_form_emojis,
     calculate_conceded_goals,
     calculate_recent_team_form,
@@ -55,8 +54,6 @@ from .team_analysis import (
     get_team_card_stats,
     generate_team_comparison,
     render_team_comparison_section
-    
-
 )
 
 from .match_style import (

@@ -5,8 +5,9 @@ from utils.poisson_utils import (
     aggregate_team_stats, calculate_team_pseudo_xg, add_btts_column,
     calculate_conceded_goals, calculate_recent_team_form,
     calculate_elo_changes, calculate_team_styles,
-    calculate_clean_sheets, intensity_score_to_emoji, compute_score_stats, compute_form_trend
+    intensity_score_to_emoji, compute_score_stats, compute_form_trend
 )
+from utils.statistics import calculate_clean_sheets
 
 def render_league_overview(season_df, league_name, gii_dict):
     query_params = st.query_params
