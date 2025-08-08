@@ -6,17 +6,6 @@ from .core import prepare_df,get_last_n_matches, calculate_points,poisson_over25
 from .xg import calculate_team_pseudo_xg
 from utils.utils_warnings import detect_overperformance_and_momentum
 
-def calculate_clean_sheets(df: pd.DataFrame, team: str) -> float:
-    """Vrací procento zápasů, kdy tým udržel čisté konto."""
-    team_matches = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)]
-    cs = 0
-    for _, row in team_matches.iterrows():
-        if row['HomeTeam'] == team and row['FTAG'] == 0:
-            cs += 1
-        elif row['AwayTeam'] == team and row['FTHG'] == 0:
-            cs += 1
-    return round(100 * cs / len(team_matches), 1) if len(team_matches) > 0 else 0
-
 def calculate_form_emojis(df: pd.DataFrame, days: int = 31) -> dict:
     """Vrací dictionary: tým -> emoji reprezentace formy."""
     from .match_style import form_points_to_emoji

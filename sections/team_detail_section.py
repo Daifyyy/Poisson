@@ -6,10 +6,12 @@ from utils.poisson_utils import (
     aggregate_team_stats, calculate_team_pseudo_xg, add_btts_column,
     calculate_conceded_goals, calculate_recent_team_form,
     calculate_elo_changes, calculate_team_styles,
-    calculate_clean_sheets, intensity_score_to_emoji, compute_score_stats, compute_form_trend,
-    merged_home_away_opponent_form,classify_team_strength,calculate_advanced_team_metrics,
-    calculate_team_extra_stats,get_team_record,analyze_team_profile,generate_team_comparison,render_team_comparison_section
+    intensity_score_to_emoji, compute_score_stats, compute_form_trend,
+    merged_home_away_opponent_form, classify_team_strength, calculate_advanced_team_metrics,
+    calculate_team_extra_stats, get_team_record, analyze_team_profile, generate_team_comparison,
+    render_team_comparison_section
 )
+from utils.statistics import calculate_clean_sheets
 
 def render_team_detail(df, season_df, team, league_name, gii_dict):
     st.sidebar.markdown("### ⏱️ Časový filtr")
