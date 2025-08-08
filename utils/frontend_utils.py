@@ -64,25 +64,9 @@ def display_team_status_table(home_team: str, away_team: str, df: pd.DataFrame, 
         "Overperformance": [overperformance_home, overperformance_away],
         "Momentum": [momentum_home, momentum_away]
     })
-
-    return style_team_table(df_status)
-
-
-    # Styling tabulky
-    def style_status(val):
-        if "Krize" in val:
-            return 'color: red; font-weight: bold;'
-        elif "Nárůst" in val:
-            return 'color: green; font-weight: bold;'
-        else:
-            return 'color: gray;'
-
-    styled = (
-        df_status.style
-        .applymap(style_status, subset=["Status"])
-    )
-
+    styled_df = style_team_table(df_status)
     st.markdown("### 📊 Porovnání týmů")
-    st.dataframe(styled, hide_index=True, use_container_width=True)
+    st.dataframe(styled_df, hide_index=True, use_container_width=True)
+    return styled_df
 
 
