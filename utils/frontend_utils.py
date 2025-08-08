@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from utils.poisson_utils import detect_risk_factors, detect_positive_factors
+from utils.poisson_utils.match_style import style_team_table
 
 
 def validate_dataset(df):
@@ -25,30 +26,6 @@ def display_team_status_table(home_team: str, away_team: str, df: pd.DataFrame, 
             return "Forma"
         else:
             return "Průměr"
-
-    def style_team_table(df):
-        def style_status(val):
-            emoji = "🟢" if val == "Forma" else "🟡" if val == "Průměr" else "🔴"
-            return f"{emoji} {val}"
-
-        def color_performance(val):
-            if "Nadprůměr" in val:
-                return "color: green"
-            elif "Nízký" in val or "Slabý" in val:
-                return "color: red"
-            return "color: black"
-
-        def color_momentum(val):
-            if "Pozitivní" in val:
-                return "background-color: #d1fae5"
-            elif "Negativní" in val:
-                return "background-color: #fee2e2"
-            return ""
-
-        styled_df = df.copy()
-        styled_df["Status"] = styled_df["Status"].apply(style_status)
-        return styled_df.style.map(color_performance, subset=["Overperformance"])\
-                              .map(color_momentum, subset=["Momentum"])
 
     # Výpočty pro oba týmy
     risk_home, pos_home = detect_risk_factors(df, home_team, elo_dict)[1], detect_positive_factors(df, home_team, elo_dict)[1]
