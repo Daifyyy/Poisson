@@ -2,8 +2,6 @@
 import pandas as pd
 import numpy as np
 from scipy.stats import poisson
-import matplotlib.pyplot as plt
-import seaborn as sns
 import streamlit as st
 from itertools import product
 
@@ -234,16 +232,6 @@ def get_top_scorelines(matrix, top_n=5):
     score_probs = [((i, j), matrix[i][j]) for i in range(matrix.shape[0]) for j in range(matrix.shape[1])]
     score_probs.sort(key=lambda x: x[1], reverse=True)
     return score_probs[:top_n]
-
-def plot_top_scorelines(score_probs, home_team, away_team):
-    labels = [f"{a}:{b}" for (a, b), _ in score_probs]
-    values = [round(p * 100, 2) for _, p in score_probs]
-    fig, ax = plt.subplots()
-    ax.bar(labels, values, color='skyblue')
-    ax.set_title(f"Top skóre: {home_team} vs {away_team}")
-    ax.set_xlabel("Skóre")
-    ax.set_ylabel("Pravděpodobnost (%)")
-    return fig
 
 def expected_team_stats_weighted_by_elo(df, home_team, away_team, stat_columns, elo_dict):
     df = prepare_df(df)
