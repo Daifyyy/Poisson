@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+from typing import Any, Dict, List, Tuple
 from utils.poisson_utils import (
     calculate_elo_ratings, expected_goals_weighted_by_elo, poisson_prediction, match_outcomes_prob,
     over_under_prob, btts_prob, calculate_expected_points, calculate_pseudo_xg_for_team,
@@ -65,78 +66,69 @@ def get_cached_tempo(df_hash, df, team, opponent_elo, is_home, elo_dict):
 
 
 
+def compute_match_inputs(
+    df: pd.DataFrame,
+    season_df: pd.DataFrame,
+    home_team: str,
+    away_team: str,
+    gii_dict: Dict[str, float],
+    elo_dict: Dict[str, float],
+) -> Dict[str, Any]:
+    """Compute and cache core inputs for a single match.
 
-
-def render_single_match_prediction(df, season_df, home_team, away_team, league_name, gii_dict, elo_dict):
-    st.header(f"🔮 {home_team} vs {away_team}")
-
-    try:
-        df_hash = hash(pd.util.hash_pandas_object(df).sum())
-        match_data = get_cached_match_inputs(df_hash, df, home_team, away_team, elo_dict)
-    except ValueError as e:
-        st.error(str(e))
-        st.stop()
-
-    home_exp = match_data["home_exp"]
-    away_exp = match_data["away_exp"]
-    matrix = match_data["matrix"]
-    outcomes = match_data["outcomes"]
-    over_under = match_data["over_under"]
-    btts = match_data["btts"]
-    xpoints = match_data["xpoints"]
-
-    # try:
-    #     elo_dict = calculate_elo_ratings(df)
-    #     home_exp, away_exp = expected_goals_weighted_by_elo(df, home_team, away_team, elo_dict)
-    # except ValueError as e:
-    #     st.error(str(e))
-    #     st.stop()
-
-    # home_expected_style = get_team_style_vs_opponent_type(df, home_team, away_team)
-    # away_expected_style = get_team_style_vs_opponent_type(df, away_team, home_team)
-
-    # # fallback pokud některý tým má málo dat
-    # if home_expected_style is None or away_expected_style is None:
-    #     expected_gii = round((gii_dict.get(home_team, 0) or 0 + gii_dict.get(away_team, 0) or 0) / 2, 2)
-    # else:
-    #     expected_gii = round((home_expected_style + away_expected_style) / 2, 2)
-
-    # matrix = poisson_prediction(home_exp, away_exp)
-    # outcomes = match_outcomes_prob(matrix)
-    # over_under = over_under_prob(matrix)
-    # btts = btts_prob(matrix)
-    # xpoints = calculate_expected_points(outcomes)
+    Returns a dictionary with expected goals, probability matrices and
+    auxiliary data used throughout the prediction pipeline.
+    """
+    df_hash = hash(pd.util.hash_pandas_object(df).sum())
+    match_data = get_cached_match_inputs(df_hash, df, home_team, away_team, elo_dict)
 
     xg_dict = cache_all_pseudo_xg(season_df)
     xg_home = xg_dict.get(home_team, {"xG_home": 0})
     xg_away = xg_dict.get(away_team, {"xG_away": 0})
 
-
-    col1, col2 = st.columns(2)
     expected_gii = round((gii_dict.get(home_team, 0) + gii_dict.get(away_team, 0)) / 2, 2)
-    expected_gii_emoji = intensity_score_to_emoji(expected_gii)
     expected_tempo = expected_match_tempo(
-        df,            # DataFrame se zápasy
-        home_team,     # Domácí tým
-        away_team,     # Hostující tým
-        elo_dict,      # Slovník s ELO hodnotami
-        home_exp,      # Očekávané góly domácích (např. z Poissona)
-        away_exp,      # Očekávané góly hostů
-        xg_home["xG_home"],      # Pseudo-xG domácích
-        xg_away["xG_away"]       # Pseudo-xG hostů
+        df,
+        home_team,
+        away_team,
+        elo_dict,
+        match_data["home_exp"],
+        match_data["away_exp"],
+        xg_home["xG_home"],
+        xg_away["xG_away"],
     )
 
+    tempo_home = get_cached_tempo(df_hash, df, home_team, elo_dict.get(away_team, 1500), True, elo_dict)
+    tempo_away = get_cached_tempo(df_hash, df, away_team, elo_dict.get(home_team, 1500), False, elo_dict)
+
+    return {
+        "df_hash": df_hash,
+        **match_data,
+        "xg_home": xg_home,
+        "xg_away": xg_away,
+        "expected_gii": expected_gii,
+        "expected_tempo": expected_tempo,
+        "tempo_home": tempo_home,
+        "tempo_away": tempo_away,
+    }
+
+
+def render_warnings(
+    df: pd.DataFrame,
+    home_team: str,
+    away_team: str,
+    matrix: np.ndarray,
+    elo_dict: Dict[str, float],
+) -> Tuple[List[Dict[str, Any]], float, float]:
+    """Render positive signals and warnings for the match."""
     form_dict = calculate_recent_form_by_matches(df)
-    style_form_warning = combined_form_tempo_warning(df, home_team, away_team, elo_dict, form_dict)
-    style_warning = conflict_style_warning(df, home_team, away_team, elo_dict)    
-
-
     positives_summary = get_all_positive_signals(df, home_team, away_team, elo_dict)
     for entry in positives_summary:
         st.success(f"✅ Pozitivní trendy u {entry['team']}: " + " ".join(entry["messages"]))
 
-
-    warnings_list, warning_index_home, warning_index_away = get_all_match_warnings(df, home_team, away_team, matrix, elo_dict, form_dict)
+    warnings_list, warning_index_home, warning_index_away = get_all_match_warnings(
+        df, home_team, away_team, matrix, elo_dict, form_dict
+    )
 
     for w in warnings_list:
         if w["level"] == "high":
@@ -146,22 +138,117 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
         elif w["level"] == "low":
             st.info(w["message"])
 
-    
+    return warnings_list, warning_index_home, warning_index_away
 
-    
 
-    form_dog_positive = len(detect_positive_factors(df, away_team if outcomes["Home Win"] > outcomes["Away Win"] else home_team, elo_dict)[0]) > 0
+def display_metrics(
+    xg_home: Dict[str, float],
+    xg_away: Dict[str, float],
+    xpoints: Dict[str, float],
+    btts: Dict[str, float],
+    over_under: Dict[str, float],
+    outcomes: Dict[str, float],
+    confidence_index: float,
+) -> None:
+    """Display key statistical metrics and outcome probabilities."""
+    st.markdown("## 📊 Klíčové metriky")
+    cols = st.columns(4)
+    cols[0].metric("xG sezóna", f"{xg_home['xG_home']} vs {xg_away['xG_away']}")
+    cols[1].metric("Oček. body (xP)", f"{xpoints['Home xP']} vs {xpoints['Away xP']}")
+    cols[2].metric("BTTS / Over 2.5", f"{btts['BTTS Yes']}% / {over_under['Over 2.5']}%")
+    cols[2].caption(
+        f"Kurzy: {1 / (btts['BTTS Yes'] / 100):.2f} / {1 / (over_under['Over 2.5'] / 100):.2f}"
+    )
 
-    tempo_home = get_cached_tempo(df_hash, df, home_team, elo_dict.get(away_team, 1500), True, elo_dict)
-    tempo_away = get_cached_tempo(df_hash, df, away_team, elo_dict.get(home_team, 1500), False, elo_dict)
+    st.markdown("## 🧠 Pravděpodobnosti výsledků")
+    cols2 = st.columns(4)
+    cols2[0].metric(
+        "🏠 Výhra domácích",
+        f"{outcomes['Home Win']}%",
+        f"{1 / (outcomes['Home Win'] / 100):.2f}",
+    )
+    cols2[1].metric(
+        "🤝 Remíza",
+        f"{outcomes['Draw']}%",
+        f"{1 / (outcomes['Draw'] / 100):.2f}",
+    )
+    cols2[2].metric(
+        "🚶‍♂️ Výhra hostů",
+        f"{outcomes['Away Win']}%",
+        f"{1 / (outcomes['Away Win'] / 100):.2f}",
+    )
+    cols2[3].metric("🔒 Confidence", f"{confidence_index} %")
+
+
+
+
+
+
+def render_single_match_prediction(df, season_df, home_team, away_team, league_name, gii_dict, elo_dict):
+    st.header(f"🔮 {home_team} vs {away_team}")
+
+    try:
+        inputs = compute_match_inputs(df, season_df, home_team, away_team, gii_dict, elo_dict)
+    except ValueError as e:
+        st.error(str(e))
+        st.stop()
+
+    home_exp = inputs["home_exp"]
+    away_exp = inputs["away_exp"]
+    matrix = inputs["matrix"]
+    outcomes = inputs["outcomes"]
+    over_under = inputs["over_under"]
+    btts = inputs["btts"]
+    xpoints = inputs["xpoints"]
+    xg_home = inputs["xg_home"]
+    xg_away = inputs["xg_away"]
+    expected_tempo = inputs["expected_tempo"]
+    tempo_home = inputs["tempo_home"]
+    tempo_away = inputs["tempo_away"]
+    expected_gii = inputs["expected_gii"]
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("### ⚽ Očekávané skóre")
+        st.markdown(
+            f"<h4 style='margin-top: -10px; font-size: 24px;'>"
+            f"<span style='color:green'>{home_team}</span> {round(home_exp, 1)} : {round(away_exp, 1)} "
+            f"<span style='color:green'>{away_team}</span>"
+            f"</h4>",
+            unsafe_allow_html=True,
+        )
+
+    with col2:
+        st.markdown("### 🎭 Očekávaný styl zápasu")
+        col2.markdown(tempo_tag(expected_tempo), unsafe_allow_html=True)
+
+    warnings_list, warning_index_home, warning_index_away = render_warnings(
+        df, home_team, away_team, matrix, elo_dict
+    )
+
+    form_dog_positive = len(
+        detect_positive_factors(
+            df,
+            away_team if outcomes["Home Win"] > outcomes["Away Win"] else home_team,
+            elo_dict,
+        )[0]
+    ) > 0
+
     tempo_home_val = tempo_home["tempo"]
     tempo_away_val = tempo_away["tempo"]
 
-    contrarian_score = calculate_contrarian_risk_score(matrix, home_exp + away_exp, tempo_home_val, tempo_away_val, warning_index_home, warning_index_away)
-    upset_score = calculate_upset_risk_score(outcomes, warning_index_home, warning_index_away, form_dog_positive)
+    contrarian_score = calculate_contrarian_risk_score(
+        matrix,
+        home_exp + away_exp,
+        tempo_home_val,
+        tempo_away_val,
+        warning_index_home,
+        warning_index_away,
+    )
+    upset_score = calculate_upset_risk_score(
+        outcomes, warning_index_home, warning_index_away, form_dog_positive
+    )
 
-    pos_score_home = detect_positive_factors(df, home_team, elo_dict)[1]
-    pos_score_away = detect_positive_factors(df, away_team, elo_dict)[1]
     _, pos_score_home = detect_positive_factors(df, home_team, elo_dict)
     _, pos_score_away = detect_positive_factors(df, away_team, elo_dict)
     _, _, form_stability_home = detect_overperformance_and_momentum(df, home_team)
@@ -169,7 +256,7 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
     form_stability_score = (form_stability_home + form_stability_away) / 2
     variance_flag = scoreline_variance_warning(matrix) is not None
     form_stability_score = 1.0  # Pokud nemáš metodu, klidně ponech 1.0
-    
+
     confidence_index = calculate_confidence_index(
         outcomes=outcomes,
         poisson_matrix=matrix,
@@ -178,78 +265,10 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
         form_stability_score=form_stability_score,
         pos_home=pos_score_home,
         pos_away=pos_score_away,
-        variance_warning=variance_flag
+        variance_warning=variance_flag,
     )
 
-
-    tempo_emoji = tempo_to_emoji(expected_tempo)
-
-    with col1:
-        st.markdown("### ⚽ Očekávané skóre")
-        st.markdown(
-            f"<h4 style='margin-top: -10px; font-size: 24px;'>"
-            f"<span style='color:green'>{home_team}</span> {round(home_exp, 1)} : {round(away_exp, 1)} "
-            f"<span style='color:green'>{away_team}</span>"
-            f"</h4>",
-            unsafe_allow_html=True
-        )
-
-    with col2:
-        st.markdown("### 🎭 Očekávaný styl zápasu")
-        # col2.markdown(f"### {tempo_emoji} ({expected_tempo})")
-        col2.markdown(tempo_tag(expected_tempo), unsafe_allow_html=True)
-
-    
-    
-
-    # Klíčové metriky
-    st.markdown("## 📊 Klíčové metriky")
-    cols = st.columns(4)
-    cols[0].metric("xG sezóna", f"{xg_home['xG_home']} vs {xg_away['xG_away']}")
-    cols[1].metric("Oček. body (xP)", f"{xpoints['Home xP']} vs {xpoints['Away xP']}")
-    cols[2].metric("BTTS / Over 2.5", f"{btts['BTTS Yes']}% / {over_under['Over 2.5']}%")
-    cols[2].caption(f"Kurzy: {1 / (btts['BTTS Yes'] / 100):.2f} / {1 / (over_under['Over 2.5'] / 100):.2f}")
-
-    # Výsledkové pravděpodobnosti
-    st.markdown("## 🧠 Pravděpodobnosti výsledků")
-    cols2 = st.columns(4)
-    cols2[0].metric("🏠 Výhra domácích", f"{outcomes['Home Win']}%", f"{1 / (outcomes['Home Win'] / 100):.2f}")
-    cols2[1].metric("🤝 Remíza", f"{outcomes['Draw']}%", f"{1 / (outcomes['Draw'] / 100):.2f}")
-    cols2[2].metric("🚶‍♂️ Výhra hostů", f"{outcomes['Away Win']}%", f"{1 / (outcomes['Away Win'] / 100):.2f}")
-    cols2[3].metric("🔒 Confidence", f"{confidence_index} %")
-    
-
-    # # Warning na přestřelkový rozptyl
-    # variance_warning = scoreline_variance_warning(matrix)
-    # if variance_warning:
-    #     st.warning(variance_warning)
-
-    # # Warning na formu + tempo
-    # form_dict = calculate_recent_form_by_matches(df)
-    # style_form_warning = combined_form_tempo_warning(df, home_team, away_team, elo_dict, form_dict)
-    # if style_form_warning:
-    #     st.warning(style_form_warning)
-
-    # for team in [home_team, away_team]:
-    #     positives, _ = detect_positive_factors(df, team, elo_dict)
-    #     if positives:
-    #         st.success(f"✅ Pozitivní trendy u {team}: " + " ".join(positives))
-
-    # warnings_home, warning_index_home = calculate_warning_index(df, home_team, elo_dict)
-    # warnings_away, warning_index_away = calculate_warning_index(df, away_team, elo_dict)
-
-    # if warnings_home:
-    #     st.error(f"⚠️ {home_team} Warning Index: {int(warning_index_home * 100)}% - " + ", ".join(warnings_home))
-    # if warnings_away:
-    #     st.error(f"⚠️ {away_team} Warning Index: {int(warning_index_away * 100)}% - " + ", ".join(warnings_away))
-
-    # style_warning = conflict_style_warning(df, home_team, away_team, elo_dict)
-    # if style_warning:
-    #     st.warning(style_warning)
-    
-    
-    
-    
+    display_metrics(xg_home, xg_away, xpoints, btts, over_under, outcomes, confidence_index)
         # Styl hry
     st.markdown("## 🎮 Styl hry")
 
