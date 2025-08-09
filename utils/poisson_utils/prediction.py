@@ -113,7 +113,7 @@ def expected_goals_vs_similar_elo_weighted(df, home_team, away_team, elo_dict, e
 
     logger.info("📘 ELO-based: Home/Away only")
     logger.info(
-        "  HomeExp: %.2f, AwayExp: %.2f → Over 2.5: %s%%",
+        "  HomeExp: %.1f, AwayExp: %.1f → Over 2.5: %s%%",
         home_exp_home,
         away_exp_away,
         poisson_over25_probability(home_exp_home, away_exp_away),
@@ -121,18 +121,18 @@ def expected_goals_vs_similar_elo_weighted(df, home_team, away_team, elo_dict, e
 
     logger.info("📘 ELO-based: All relevant matches")
     logger.info(
-        "  HomeExp: %.2f, AwayExp: %.2f → Over 2.5: %s%%",
+        "  HomeExp: %.1f, AwayExp: %.1f → Over 2.5: %s%%",
         home_exp_all,
         away_exp_all,
         poisson_over25_probability(home_exp_all, away_exp_all),
     )
 
-    combined_home = round((home_exp_home + home_exp_all) / 2, 2)
-    combined_away = round((away_exp_away + away_exp_all) / 2, 2)
+    combined_home = round((home_exp_home + home_exp_all) / 2, 1)
+    combined_away = round((away_exp_away + away_exp_all) / 2, 1)
 
     logger.info("🎯 ELO-based kombinace")
     logger.info(
-        "  FinalExp: %.2f - %.2f → Over 2.5: %s%%",
+        "  FinalExp: %.1f - %.1f → Over 2.5: %s%%",
         combined_home,
         combined_away,
         poisson_over25_probability(combined_home, combined_away),
