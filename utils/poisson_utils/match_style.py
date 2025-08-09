@@ -393,15 +393,9 @@ def calculate_team_styles(df: pd.DataFrame) -> tuple:
     return off_df, def_df
 
 def intensity_score_to_emoji(score: float | None) -> str:
-    """Převede skóre GII na emoji.
-
-    Args:
-        score: Hodnota indexu intenzity (GII) nebo ``None``.
-
-    Returns:
-        Emoji reprezentující dané skóre. Neplatné nebo chybějící
-        hodnoty (``None``, ``NaN`` či nenumerické typy) vrátí prázdný
-        řetězec místo vyhození výjimky.
+    """
+    Převede skóre GII na emoji. Pokud není k dispozici validní hodnota
+    (`None`, nenumerická hodnota nebo NaN), vrací prázdný řetězec.
     """
     if score is None:
         return ""
@@ -411,6 +405,7 @@ def intensity_score_to_emoji(score: float | None) -> str:
         return ""
     if math.isnan(score):
         return ""
+
     if score > 1.0:
         return "🔥"
     elif score > 0.3:
@@ -419,6 +414,7 @@ def intensity_score_to_emoji(score: float | None) -> str:
         return "➖"
     else:
         return "❄️"
+
 
 def form_points_to_emoji(avg_points: float) -> str:
     """Vrací emoji podle průměrného počtu bodů za zápas."""
