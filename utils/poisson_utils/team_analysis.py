@@ -663,6 +663,16 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
             desc = TEAM_COMPARISON_DESC_MAP.get(met, "")
             st.markdown(f"{icon} {met} - {desc}")
 
+    # Allow the user to pick which metrics to display to reduce clutter
+    metrics = st.multiselect(
+        "Vyber metriky k porovnání",
+        options=metrics,
+        default=metrics,
+    )
+    if not metrics:
+        st.info("Vyber alespoň jednu metriku.")
+        return
+
     tab_celkem, tab_doma, tab_venku = st.tabs(["Celkem", "Doma", "Venku"])
 
     def _build_table(df: pd.DataFrame) -> pd.DataFrame:
@@ -688,9 +698,10 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
                 "Metrika": f"{icon} {met}",
                 "team1": round(v1, 2),
                 "team2": round(v2, 2),
+                "Δ": round(v1 - v2, 2),
                 "Lepší": better,
             })
-        return pd.DataFrame(rows, columns=["Metrika", "team1", "team2", "Lepší"])
+        return pd.DataFrame(rows, columns=["Metrika", "team1", "team2", "Δ", "Lepší"])
 
     def _style_and_display(df: pd.DataFrame):
         legend_html = (
@@ -701,25 +712,29 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
         def _highlight(row):
             met = row["Metrika"].split(" ", 1)[1]
             higher_better = TEAM_COMPARISON_HIGHER_IS_BETTER.get(met, True)
-            v1, v2 = row["team1"], row["team2"]
-            color1 = color2 = ""
+            v1, v2, diff = row["team1"], row["team2"], row["Δ"]
+            color1 = color2 = diff_color = ""
             if higher_better:
                 if v1 > v2:
                     color1 = "background-color: lightgreen"
+                    diff_color = "color: green"
                 elif v2 > v1:
                     color2 = "background-color: lightgreen"
+                    diff_color = "color: red"
             else:
                 if v1 < v2:
                     color1 = "background-color: lightgreen"
+                    diff_color = "color: green"
                 elif v2 < v1:
                     color2 = "background-color: lightgreen"
-            return pd.Series([color1, color2], index=["team1", "team2"])
+                    diff_color = "color: red"
+            return pd.Series([color1, color2, diff_color], index=["team1", "team2", "Δ"])
 
         styled = (
             df.style
             .set_properties(subset=["team1"], **{"background-color": "#add8e6"})
             .set_properties(subset=["team2"], **{"background-color": "#d3d3d3"})
-            .apply(_highlight, axis=1, subset=["team1", "team2"])
+            .apply(_highlight, axis=1, subset=["team1", "team2", "Δ"])
         )
         st.dataframe(
             styled,
@@ -729,6 +744,7 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
                 "Metrika": "Metrika",
                 "team1": st.column_config.NumberColumn(team1),
                 "team2": st.column_config.NumberColumn(team2),
+                "Δ": st.column_config.NumberColumn("Δ", format="%.2f"),
                 "Lepší": "Lepší",
             },
         )
