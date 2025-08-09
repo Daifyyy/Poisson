@@ -179,7 +179,8 @@ def style_team_table(df):
     styled_df["Status"] = styled_df["Status"].apply(style_status)
 
     return styled_df.style.applymap(color_performance, subset=["Overperformance"])\
-                          .applymap(color_momentum, subset=["Momentum"])
+                          .applymap(color_momentum, subset=["Momentum"])\
+                          .format(precision=1)
 
 
 

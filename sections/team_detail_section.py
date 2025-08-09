@@ -387,7 +387,7 @@ def render_team_detail(
         color = "#d4edda" if team_goals > opp_goals else "#f8d7da" if team_goals < opp_goals else "#fff3cd"
         return [f"background-color: {color}"] * len(row)
 
-    styled_matches = match_details.style.apply(highlight_result, axis=1)
+    styled_matches = match_details.style.apply(highlight_result, axis=1).format(precision=1)
 
     # ✅ Výstup
     st.markdown("### 🕵️ Posledních 5 zápasů")
