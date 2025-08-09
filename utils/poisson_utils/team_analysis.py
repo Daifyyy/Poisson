@@ -614,33 +614,59 @@ TEAM_COMPARISON_ICON_MAP = {
     "BTTS %": "🎯",
 }
 
+TEAM_COMPARISON_DESC_MAP = {
+    "Góly": "Průměr vstřelených gólů na zápas",
+    "Obdržené góly": "Průměr inkasovaných gólů na zápas",
+    "Střely": "Průměr střel na zápas",
+    "Na branku": "Střely mířící na branku",
+    "Rohy": "Počet rozehraných rohů",
+    "Fauly": "Počet faulů",
+    "Žluté": "Žluté karty",
+    "Červené": "Červené karty",
+    "Ofenzivní efektivita": "Střely potřebné na gól (nižší je lepší)",
+    "Defenzivní efektivita": "Inkasované góly na střelu soupeře (nižší je lepší)",
+    "Přesnost střel": "Podíl střel na branku v %",
+    "Konverzní míra": "Podíl gólů ze střel v %",
+    "Čistá konta %": "Podíl zápasů bez obdrženého gólu",
+    "Over 2.5 %": "Zápasy s více než 2.5 góly",
+    "BTTS %": "Zápasy, kde skórovaly oba týmy",
+}
+
 
 def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_away):
     st.markdown(f"## 🆚 Porovnání týmů: {team1} vs {team2}")
 
     metrics = list(TEAM_COMPARISON_ICON_MAP.keys())
-
     col_celkem, col_doma, col_venku = st.columns(3)
 
     def _render_column(df, title):
         st.markdown(title)
+        # bezpečné čtení přes .loc, metrika musí být v indexu
         for met in metrics:
+            if met not in df.index:
+                continue
             icon = TEAM_COMPARISON_ICON_MAP.get(met, "")
-            val1 = df.at[met, team1] if met in df.index else 0
-            val2 = df.at[met, team2] if met in df.index else 0
+            desc = TEAM_COMPARISON_DESC_MAP.get(met, "")
+            try:
+                v1 = float(df.at[met, team1])
+                v2 = float(df.at[met, team2])
+            except KeyError:
+                # pokud některý tým v df chybí, přeskoč řádek
+                continue
             st.markdown(
-                f"{icon} **{val1:.2f}** <span style='color:gray;'>({val2:.2f})</span>",
+                f"<span title='{desc}'>{icon} <strong>{met}</strong></span><br>"
+                f"{team1}: <strong>{v1:.2f}</strong> | "
+                f"{team2}: <span style='color:gray;'>{v2:.2f}</span>",
                 unsafe_allow_html=True,
             )
 
     with col_celkem:
         _render_column(stats_total, "### Celkem")
-
     with col_doma:
         _render_column(stats_home, "### 🏠 Doma")
-
     with col_venku:
         _render_column(stats_away, "### 🚌 Venku")
+
 
 
 
