@@ -42,8 +42,8 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
     for team in team_stats.index:
         score_list, avg_goals_per_match, score_variance = compute_score_stats(season_df, team)
         trends.append(compute_form_trend(score_list))
-        avg_goals_all.append(round(avg_goals_per_match, 2))
-        score_var.append(round(score_variance, 2))
+        avg_goals_all.append(round(avg_goals_per_match, 1))
+        score_var.append(round(score_variance, 1))
 
     summary_table = pd.DataFrame({
         "Tým": team_stats.index,
@@ -53,11 +53,11 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
         "Trend formy": trends,
         "Góly celkem": avg_goals_all,
         "Rozptyl skóre": score_var,
-        "Vstřelené Góly": team_stats["Góly"].round(2),
+        "Vstřelené Góly": team_stats["Góly"].round(1),
         "Střely": team_stats["Střely"].round(1),
         "Na branku": team_stats["Na branku"].round(1),
         "Rohy": team_stats["Rohy"].round(1),
-        "Obdržené góly": team_stats["Obdržené góly"].round(2),
+        "Obdržené góly": team_stats["Obdržené góly"].round(1),
         "Čistá konta %": team_stats.index.map(lambda t: f"{calculate_clean_sheets(season_df, t)}%"),
         "Over 2.5 %": team_stats.index.map(over25).astype(str) + "%",
         "BTTS %": team_stats.index.map(btts).astype(str) + "%",

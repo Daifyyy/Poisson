@@ -58,18 +58,18 @@ def render_multi_match_predictions(session_state, home_team, away_team, league_n
 
                     cols = st.columns(3)
                     cols[0].metric("⚽ Očekávané góly", f"{home_exp:.1f} - {away_exp:.1f}")
-                    cols[1].metric("🔵 BTTS %", f"{btts['BTTS Yes']}%")
-                    cols[2].metric("📈 Over 2.5 %", f"{over_under['Over 2.5']}%")
+                    cols[1].metric("🔵 BTTS %", f"{btts['BTTS Yes']:.1f}%")
+                    cols[2].metric("📈 Over 2.5 %", f"{over_under['Over 2.5']:.1f}%")
                     # Výpočet confidence score – rozdíl mezi nejvyšší a druhou nejvyšší výstupní pravděpodobností
                     sorted_probs = sorted(outcomes.values(), reverse=True)
                     confidence_index = round(sorted_probs[0] - sorted_probs[1], 1) if len(sorted_probs) >= 2 else 0.0
 
                     st.markdown("#### 🧠 Pravděpodobnosti výsledků")
                     result_cols = st.columns(4)
-                    result_cols[0].metric("🏠 Výhra domácích", f"{outcomes['Home Win']}%", f"{prob_to_odds(outcomes['Home Win'])}")
-                    result_cols[1].metric("🤝 Remíza", f"{outcomes['Draw']}%", f"{prob_to_odds(outcomes['Draw'])}")
-                    result_cols[2].metric("🚶‍♂️ Výhra hostů", f"{outcomes['Away Win']}%", f"{prob_to_odds(outcomes['Away Win'])}")
-                    result_cols[3].metric("🔒 Confidence", f"{confidence_index} %")
+                    result_cols[0].metric("🏠 Výhra domácích", f"{outcomes['Home Win']:.1f}%", f"{prob_to_odds(outcomes['Home Win'])}")
+                    result_cols[1].metric("🤝 Remíza", f"{outcomes['Draw']:.1f}%", f"{prob_to_odds(outcomes['Draw'])}")
+                    result_cols[2].metric("🚶‍♂️ Výhra hostů", f"{outcomes['Away Win']:.1f}%", f"{prob_to_odds(outcomes['Away Win'])}")
+                    result_cols[3].metric("🔒 Confidence", f"{confidence_index:.1f} %")
                     
                     top_scores = get_top_scorelines(matrix, top_n=1)
                     if top_scores:
@@ -84,13 +84,13 @@ def render_multi_match_predictions(session_state, home_team, away_team, league_n
                         "League": match["league_name"],
                         "Home": match["home_team"],
                         "Away": match["away_team"],
-                        "Home ExpG": round(home_exp, 2),
-                        "Away ExpG": round(away_exp, 2),
-                        "BTTS %": btts['BTTS Yes'],
-                        "Over 2.5 %": over_under['Over 2.5'],
-                        "Home Win %": outcomes["Home Win"],
-                        "Draw %": outcomes["Draw"],
-                        "Away Win %": outcomes["Away Win"],
+                        "Home ExpG": round(home_exp, 1),
+                        "Away ExpG": round(away_exp, 1),
+                        "BTTS %": round(btts['BTTS Yes'], 1),
+                        "Over 2.5 %": round(over_under['Over 2.5'], 1),
+                        "Home Win %": round(outcomes["Home Win"], 1),
+                        "Draw %": round(outcomes["Draw"], 1),
+                        "Away Win %": round(outcomes["Away Win"], 1),
                         "Top Score": f"{top_scores[0][0][0]}:{top_scores[0][0][1]}",
                         "Confidence %": confidence_index
                     })

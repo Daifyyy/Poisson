@@ -1,5 +1,15 @@
 import time
 import streamlit as st
+import pandas as pd
+from pathlib import Path
+import sys
+
+# Ensure local packages are importable even when the app is launched
+# from a parent directory (e.g. `streamlit run poisson/app.py`).
+ROOT = Path(__file__).resolve().parent
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
 from sections.overview_section import render_league_overview
 from sections.match_prediction_section import render_single_match_prediction
 from sections.multi_prediction_section import render_multi_match_predictions
@@ -18,6 +28,7 @@ from utils.frontend_utils import validate_dataset
 from utils.update_data import update_all_leagues
 
 st.set_page_config(page_title="⚽ Poisson Predictor", layout="wide")
+pd.options.display.float_format = lambda x: f"{x:.1f}"
 
 # Ligové soubory
 league_files = {

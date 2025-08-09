@@ -179,7 +179,8 @@ def style_team_table(df):
     styled_df["Status"] = styled_df["Status"].apply(style_status)
 
     return styled_df.style.applymap(color_performance, subset=["Overperformance"])\
-                          .applymap(color_momentum, subset=["Momentum"])
+                          .applymap(color_momentum, subset=["Momentum"])\
+                          .format(precision=1)
 
 
 
@@ -738,12 +739,12 @@ def analyze_team_profile(
         profile_tags.append("❗ Zranitelná defenziva (gól z každé 8. střely)")
 
     if yellow_per_foul > 0.25:
-        profile_tags.append(f"🟡 Fauly často trestané žlutou ({yellow_per_foul:.2f})")
+        profile_tags.append(f"🟡 Fauly často trestané žlutou ({yellow_per_foul:.1f})")
     else:
-        profile_tags.append(f"🟢 Disciplína v normě ({yellow_per_foul:.2f})")
+        profile_tags.append(f"🟢 Disciplína v normě ({yellow_per_foul:.1f})")
 
     if red_per_foul > 0.05:
-        profile_tags.append(f"🔴 Riziko červených ({red_per_foul:.2f} na faul)")
+        profile_tags.append(f"🔴 Riziko červených ({red_per_foul:.1f} na faul)")
 
     return {
         "forma": "".join(results[:5]),

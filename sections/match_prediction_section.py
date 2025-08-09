@@ -88,7 +88,7 @@ def compute_match_inputs(
 
     gii_home = gii_dict.get(home_team)
     gii_away = gii_dict.get(away_team)
-    expected_gii = round(((gii_home or 0) + (gii_away or 0)) / 2, 2)
+    expected_gii = round(((gii_home or 0) + (gii_away or 0)) / 2, 1)
     expected_tempo = expected_match_tempo(
         df,
         home_team,
@@ -155,9 +155,9 @@ def display_metrics(
     """Display key statistical metrics and outcome probabilities."""
     st.markdown("## 📊 Klíčové metriky")
     cols = st.columns(4)
-    cols[0].metric("xG sezóna", f"{xg_home['xG_home']} vs {xg_away['xG_away']}")
-    cols[1].metric("Oček. body (xP)", f"{xpoints['Home xP']} vs {xpoints['Away xP']}")
-    cols[2].metric("BTTS / Over 2.5", f"{btts['BTTS Yes']}% / {over_under['Over 2.5']}%")
+    cols[0].metric("xG sezóna", f"{xg_home['xG_home']:.1f} vs {xg_away['xG_away']:.1f}")
+    cols[1].metric("Oček. body (xP)", f"{xpoints['Home xP']:.1f} vs {xpoints['Away xP']:.1f}")
+    cols[2].metric("BTTS / Over 2.5", f"{btts['BTTS Yes']:.1f}% / {over_under['Over 2.5']:.1f}%")
     cols[2].caption(
         f"Kurzy: {1 / (btts['BTTS Yes'] / 100):.2f} / {1 / (over_under['Over 2.5'] / 100):.2f}"
     )
@@ -166,20 +166,20 @@ def display_metrics(
     cols2 = st.columns(4)
     cols2[0].metric(
         "🏠 Výhra domácích",
-        f"{outcomes['Home Win']}%",
+        f"{outcomes['Home Win']:.1f}%",
         f"{1 / (outcomes['Home Win'] / 100):.2f}",
     )
     cols2[1].metric(
         "🤝 Remíza",
-        f"{outcomes['Draw']}%",
+        f"{outcomes['Draw']:.1f}%",
         f"{1 / (outcomes['Draw'] / 100):.2f}",
     )
     cols2[2].metric(
         "🚶‍♂️ Výhra hostů",
-        f"{outcomes['Away Win']}%",
+        f"{outcomes['Away Win']:.1f}%",
         f"{1 / (outcomes['Away Win'] / 100):.2f}",
     )
-    cols2[3].metric("🔒 Confidence", f"{confidence_index} %")
+    cols2[3].metric("🔒 Confidence", f"{confidence_index:.1f} %")
 
 
 
