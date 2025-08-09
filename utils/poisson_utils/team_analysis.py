@@ -744,7 +744,7 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
                 "Metrika": "Metrika",
                 "team1": st.column_config.NumberColumn(team1),
                 "team2": st.column_config.NumberColumn(team2),
-                "Δ": st.column_config.NumberColumn("Δ", format="%.2f"),
+                "Δ": st.column_config.NumberColumn("Δ", format="%.1f"),
                 "Lepší": "Lepší",
             },
         )

@@ -150,7 +150,7 @@ def render_team_detail(
     def compare_stat(name, team_value, league_avg):
         league_value = league_avg.get(name, 0)
         diff = team_value - league_value
-        return f" *(liga: {league_value:.2f}, Δ {diff:+.2f})*"
+        return f" *(liga: {league_value:.1f}, Δ {diff:+.1f})*"
 
     advanced_stats = calculate_advanced_team_metrics(season_df)
     league_avg_advanced = advanced_stats.mean()
@@ -253,7 +253,7 @@ def render_team_detail(
         inverse = metric_name in inverse_metrics
         
         color = "red" if (diff > 0 and inverse) or (diff < 0 and not inverse) else "green"
-        return f"<span style='color:{color}'>{arrow} {diff:+.2f}</span>"
+        return f"<span style='color:{color}'>{arrow} {diff:+.1f}</span>"
 
     # Funkce pro výpis jednoho sloupce
     # def display_metrics_block(col, title, data, adv_data, extra):
@@ -283,9 +283,9 @@ def render_team_detail(
 
             def format_metric(label, value, delta_str):
                 if show_labels:
-                    return f"**{label}:** {value:.2f} {delta_str}"
+                    return f"**{label}:** {value:.1f} {delta_str}"
                 else:
-                    return f"{value:.2f} {delta_str}"
+                    return f"{value:.1f} {delta_str}"
 
             st.markdown(format_metric("⚽ Góly", data['Góly'], colored_delta(data['Góly'], league_avg['Góly'], 'Góly')), unsafe_allow_html=True)
             st.markdown(format_metric("🥅 Obdržené góly", data['Obdržené góly'], colored_delta(data['Obdržené góly'], league_avg['Obdržené góly'], 'Obdržené góly')), unsafe_allow_html=True)
