@@ -40,7 +40,7 @@ def render_team_detail(
         ["Celá sezóna", "Posledních 5 zápasů", "Posledních 10 zápasů", "Posledních 5 doma", "Posledních 5 venku"]
     )
 
-    def _apply_time_filter(data: pd.DataFrame) -> pd.DataFrame:
+    def _apply_time_filter(data: pd.DataFrame, team_name: str) -> pd.DataFrame:
         df_sorted = data.sort_values("Date")
         df_sorted["DateDiff"] = df_sorted["Date"].diff().dt.days
         gap_threshold = 30
@@ -50,20 +50,21 @@ def render_team_detail(
         season_cutoff = data[data['Date'] >= season_start]
 
         if time_filter == "Posledních 5 zápasů":
-            matches = season_cutoff[(season_cutoff['HomeTeam'] == team) | (season_cutoff['AwayTeam'] == team)]
+            matches = season_cutoff[(season_cutoff['HomeTeam'] == team_name) | (season_cutoff['AwayTeam'] == team_name)]
             return matches.sort_values("Date", ascending=False).head(5)
         if time_filter == "Posledních 10 zápasů":
-            matches = season_cutoff[(season_cutoff['HomeTeam'] == team) | (season_cutoff['AwayTeam'] == team)]
+            matches = season_cutoff[(season_cutoff['HomeTeam'] == team_name) | (season_cutoff['AwayTeam'] == team_name)]
             return matches.sort_values("Date", ascending=False).head(10)
         if time_filter == "Posledních 5 doma":
-            matches = season_cutoff[season_cutoff['HomeTeam'] == team]
+            matches = season_cutoff[season_cutoff['HomeTeam'] == team_name]
             return matches.sort_values("Date", ascending=False).head(5)
         if time_filter == "Posledních 5 venku":
-            matches = season_cutoff[season_cutoff['AwayTeam'] == team]
+            matches = season_cutoff[season_cutoff['AwayTeam'] == team_name]
             return matches.sort_values("Date", ascending=False).head(5)
         return season_cutoff
 
-    filtered_df = _apply_time_filter(season_df)
+    original_df = season_df
+    filtered_df = _apply_time_filter(original_df, team)
 
     difficulty_filter = st.sidebar.selectbox(
         "🎯 Filtrovat podle síly soupeře:",
@@ -94,19 +95,22 @@ def render_team_detail(
         stats_home = calculate_advanced_team_metrics(home, is_home=True)
         stats_away = calculate_advanced_team_metrics(away, is_home=False)
 
-        # ⬇️ použij data po časovém filtru (bez filtrování soupeře) pro druhý tým
-        compare_home = filtered_df[filtered_df['HomeTeam'] == compare_team]
-        compare_away = filtered_df[filtered_df['AwayTeam'] == compare_team]
-
+        compare_df = _apply_time_filter(original_df, compare_team)
+        compare_home = compare_df[compare_df['HomeTeam'] == compare_team]
+        compare_away = compare_df[compare_df['AwayTeam'] == compare_team]
         compare_matches = pd.concat([compare_home, compare_away])
 
-        if team in stats_all.index and compare_team in calculate_advanced_team_metrics(compare_matches).index:
+        compare_stats_all = calculate_advanced_team_metrics(compare_matches)
+        compare_stats_home = calculate_advanced_team_metrics(compare_home, is_home=True)
+        compare_stats_away = calculate_advanced_team_metrics(compare_away, is_home=False)
+
+        if team in stats_all.index and compare_team in compare_stats_all.index:
             render_team_comparison_section(
                 team, compare_team,
                 stats_all.loc[team], stats_home.loc[team], stats_away.loc[team],
-                calculate_advanced_team_metrics(compare_matches).loc[compare_team],
-                calculate_advanced_team_metrics(compare_home, is_home=True).loc[compare_team],
-                calculate_advanced_team_metrics(compare_away, is_home=False).loc[compare_team]
+                compare_stats_all.loc[compare_team],
+                compare_stats_home.loc[compare_team],
+                compare_stats_away.loc[compare_team]
             )
             return
         else:
