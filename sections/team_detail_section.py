@@ -15,7 +15,7 @@ from utils.poisson_utils import (
 from utils.statistics import calculate_clean_sheets
 
 def render_team_detail(
-    df: pd.DataFrame,
+    _df: pd.DataFrame,
     season_df: pd.DataFrame,
     team: str,
     league_name: str,
@@ -24,7 +24,7 @@ def render_team_detail(
     """Render detailed information for a selected team.
 
     Args:
-        df: DataFrame containing match data.
+        _df: Unused historical dataset (kept for backward compatibility).
         season_df: DataFrame with season data for statistics.
         team: Team name to display.
         league_name: Name of the league.
@@ -34,7 +34,6 @@ def render_team_detail(
         None
     """
     st.sidebar.markdown("### ⏱️ Časový filtr")
-    min_date, max_date = df['Date'].min(), df['Date'].max()
 
     time_filter = st.sidebar.radio(
         "Vyber rozsah dat",
@@ -64,7 +63,7 @@ def render_team_detail(
             return matches.sort_values("Date", ascending=False).head(5)
         return season_cutoff
 
-    df = _apply_time_filter(df)
+    filtered_df = _apply_time_filter(season_df)
 
     difficulty_filter = st.sidebar.selectbox(
         "🎯 Filtrovat podle síly soupeře:",
@@ -73,18 +72,18 @@ def render_team_detail(
 
     compare_team = st.sidebar.selectbox(
         "🔄 Porovnat s jiným týmem:",
-        ["Žádný"] + sorted(df['HomeTeam'].unique().tolist())
+        ["Žádný"] + sorted(filtered_df['HomeTeam'].unique().tolist())
     )
 
     def _apply_difficulty_filter(data: pd.DataFrame) -> pd.DataFrame:
         if difficulty_filter != "Vše":
             data = data.copy()
             data["Opponent"] = data.apply(lambda row: row['AwayTeam'] if row['HomeTeam'] == team else row['HomeTeam'], axis=1)
-            data["Soupeř síla"] = data["Opponent"].apply(lambda opp: classify_team_strength(df, opp))
+            data["Soupeř síla"] = data["Opponent"].apply(lambda opp: classify_team_strength(filtered_df, opp))
             data = data[data["Soupeř síla"] == difficulty_filter]
         return data
 
-    season_df = _apply_difficulty_filter(df)
+    season_df = _apply_difficulty_filter(filtered_df)
 
     home = season_df[season_df['HomeTeam'] == team]
     away = season_df[season_df['AwayTeam'] == team]
@@ -95,9 +94,9 @@ def render_team_detail(
         stats_home = calculate_advanced_team_metrics(home, is_home=True)
         stats_away = calculate_advanced_team_metrics(away, is_home=False)
 
-        # ⬇️ použij původní df (ne season_df) pro druhý tým
-        compare_home = df[df['HomeTeam'] == compare_team]
-        compare_away = df[df['AwayTeam'] == compare_team]
+        # ⬇️ použij data po časovém filtru (bez filtrování soupeře) pro druhý tým
+        compare_home = filtered_df[filtered_df['HomeTeam'] == compare_team]
+        compare_away = filtered_df[filtered_df['AwayTeam'] == compare_team]
 
         compare_matches = pd.concat([compare_home, compare_away])
 
