@@ -395,8 +395,13 @@ def calculate_team_styles(df: pd.DataFrame) -> tuple:
 def intensity_score_to_emoji(score: float | None) -> str:
     """Převede skóre GII na emoji.
 
-    Neplatné nebo chybějící hodnoty (``None``, ``NaN`` či nenumerické typy)
-    vrátí prázdný řetězec místo vyhození výjimky.
+    Args:
+        score: Hodnota indexu intenzity (GII) nebo ``None``.
+
+    Returns:
+        Emoji reprezentující dané skóre. Neplatné nebo chybějící
+        hodnoty (``None``, ``NaN`` či nenumerické typy) vrátí prázdný
+        řetězec místo vyhození výjimky.
     """
     if score is None:
         return ""
