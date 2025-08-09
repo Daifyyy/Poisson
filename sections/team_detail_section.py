@@ -350,6 +350,9 @@ def render_team_detail(
     if difficulty_filter != "Vše":
         df_team = df_team[df_team["Soupeř síla"] == difficulty_filter]
 
+    # Remove matches without a final score to avoid processing upcoming fixtures
+    df_team = df_team.dropna(subset=["FTHG", "FTAG"])
+
     # Posledních 5 zápasů
     last_matches = df_team.sort_values("Date", ascending=False).head(5)
 
@@ -378,9 +381,9 @@ def render_team_detail(
 
     def highlight_result(row):
         score = row["Skóre"].split(":")
-        if len(score) != 2:
+        if len(score) != 2 or not all(part.isdigit() for part in score):
             return [""] * len(row)
-        team_goals, opp_goals = int(score[0]), int(score[1])
+        team_goals, opp_goals = map(int, score)
         color = "#d4edda" if team_goals > opp_goals else "#f8d7da" if team_goals < opp_goals else "#fff3cd"
         return [f"background-color: {color}"] * len(row)
 
