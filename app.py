@@ -103,6 +103,17 @@ if st.session_state.get("reload_flag"):
 
 df, season_df, gii_dict, elo_dict = load_and_prepare(league_file)
 
+# --- Date range filtering ---
+start_default = season_df["Date"].min().date()
+end_default = season_df["Date"].max().date()
+start_date = st.sidebar.date_input("📅 Začátek", start_default, min_value=start_default, max_value=end_default)
+end_date = st.sidebar.date_input("📅 Konec", end_default, min_value=start_default, max_value=end_default)
+
+df = df[(df["Date"].dt.date >= start_date) & (df["Date"].dt.date <= end_date)]
+season_df = season_df[(season_df["Date"].dt.date >= start_date) & (season_df["Date"].dt.date <= end_date)]
+gii_dict = get_team_average_gii(season_df)
+elo_dict = calculate_elo_ratings(df)
+
 if "match_list" not in st.session_state:
     st.session_state.match_list = []
 
