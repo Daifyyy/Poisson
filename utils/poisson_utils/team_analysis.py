@@ -654,7 +654,9 @@ def render_team_comparison_section(team1: str, team2: str, stats_total: pd.DataF
             v1 = float(df.at[met, "team1"])
             v2 = float(df.at[met, "team2"])
             higher_better = TEAM_COMPARISON_HIGHER_IS_BETTER.get(met, True)
-            better = team1 if (v1 > v2) == higher_better else team2 if v1 != v2 else "="
+            better = "="
+            if v1 != v2:
+                better = team1 if (v1 > v2) == higher_better else team2
             rows.append({
                 "Metrika": f"{icon} {met}",
                 team1: round(v1, 2),
