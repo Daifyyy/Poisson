@@ -143,12 +143,6 @@ if selected_team:
         st.query_params["selected_league"] = league_name
         st.rerun()
 
-
-elif home_team != away_team:
-    render_single_match_prediction(
-        df, season_df, home_team, away_team, league_name, gii_dict, elo_dict
-    )
-
 elif multi_prediction_mode:
     render_multi_match_predictions(
         st.session_state,
@@ -157,6 +151,11 @@ elif multi_prediction_mode:
         league_name,
         league_file,
         league_files
+    )
+
+elif home_team != away_team:
+    render_single_match_prediction(
+        df, season_df, home_team, away_team, league_name, gii_dict, elo_dict
     )
 
 else:
