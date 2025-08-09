@@ -637,32 +637,36 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
     st.markdown(f"## 🆚 Porovnání týmů: {team1} vs {team2}")
 
     metrics = list(TEAM_COMPARISON_ICON_MAP.keys())
-
     col_celkem, col_doma, col_venku = st.columns(3)
 
     def _render_column(df, title):
         st.markdown(title)
+        # bezpečné čtení přes .loc, metrika musí být v indexu
         for met in metrics:
             if met not in df.index:
                 continue
             icon = TEAM_COMPARISON_ICON_MAP.get(met, "")
             desc = TEAM_COMPARISON_DESC_MAP.get(met, "")
-            val1 = df.at[met, team1]
-            val2 = df.at[met, team2]
+            try:
+                v1 = float(df.at[met, team1])
+                v2 = float(df.at[met, team2])
+            except KeyError:
+                # pokud některý tým v df chybí, přeskoč řádek
+                continue
             st.markdown(
                 f"<span title='{desc}'>{icon} <strong>{met}</strong></span><br>"
-                f"{team1}: <strong>{val1:.2f}</strong> | {team2}: <span style='color:gray;'>{val2:.2f}</span>",
+                f"{team1}: <strong>{v1:.2f}</strong> | "
+                f"{team2}: <span style='color:gray;'>{v2:.2f}</span>",
                 unsafe_allow_html=True,
             )
 
     with col_celkem:
         _render_column(stats_total, "### Celkem")
-
     with col_doma:
         _render_column(stats_home, "### 🏠 Doma")
-
     with col_venku:
         _render_column(stats_away, "### 🚌 Venku")
+
 
 
 
