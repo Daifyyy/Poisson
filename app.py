@@ -159,7 +159,7 @@ elif home_team != away_team:
     )
 
 else:
-    render_league_overview(season_df, league_name, gii_dict)
+    render_league_overview(season_df, league_name, gii_dict, elo_dict)
 
 
 
