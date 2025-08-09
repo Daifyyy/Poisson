@@ -735,6 +735,7 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
             .set_properties(subset=["team1"], **{"background-color": "#add8e6"})
             .set_properties(subset=["team2"], **{"background-color": "#d3d3d3"})
             .apply(_highlight, axis=1)
+            .format(precision=1)
         )
         st.dataframe(
             styled,
@@ -742,9 +743,9 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
             use_container_width=True,
             column_config={
                 "Metrika": "Metrika",
-                "team1": st.column_config.NumberColumn(team1),
-                "team2": st.column_config.NumberColumn(team2),
-                "Δ": st.column_config.NumberColumn("Δ", format="%.2f"),
+                "team1": st.column_config.NumberColumn(team1, format="%.1f"),
+                "team2": st.column_config.NumberColumn(team2, format="%.1f"),
+                "Δ": st.column_config.NumberColumn("Δ", format="%.1f"),
                 "Lepší": "Lepší",
             },
         )
