@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from utils.poisson_utils import (
-    calculate_elo_ratings, calculate_form_emojis, calculate_expected_and_actual_points,
+    calculate_form_emojis, calculate_expected_and_actual_points,
     aggregate_team_stats, calculate_team_pseudo_xg, add_btts_column,
     calculate_conceded_goals, calculate_recent_team_form,
     calculate_elo_changes, calculate_team_styles,
@@ -9,7 +9,7 @@ from utils.poisson_utils import (
 )
 from utils.statistics import calculate_clean_sheets
 
-def render_league_overview(season_df, league_name, gii_dict):
+def render_league_overview(season_df, league_name, gii_dict, elo_dict):
     query_params = st.query_params
     if "selected_team" in query_params:
         return  # Pokud je aktivní detail týmu, sekce overview se nespustí
@@ -28,7 +28,6 @@ def render_league_overview(season_df, league_name, gii_dict):
 
     st.markdown(f"🗕️ Zápasů: {num_matches}	⚽ Průměr gólů: {avg_goals}	🤽 BTTS: {btts_pct}%	📈 Over 2.5: {over_25}%")
 
-    elo_dict = calculate_elo_ratings(season_df)
     form_emojis = calculate_form_emojis(season_df)
     points_data = calculate_expected_and_actual_points(season_df)
     team_stats = aggregate_team_stats(season_df)
