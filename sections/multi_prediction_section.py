@@ -29,16 +29,33 @@ def render_multi_match_predictions(session_state, home_team, away_team, league_n
 
     if session_state.match_list:
         export_data = []
+
+        # Pre-load datasets and ELO ratings for each league to avoid
+        # recalculating them for every match.  Dictionaries are keyed by the
+        # league's file identifier so matches from the same league reuse the
+        # cached values.
+        league_data_cache = {}
+        elo_cache = {}
+
+        for match in session_state.match_list:
+            league_code = match["league_file"]
+            if league_code not in league_data_cache:
+                df_league = load_data(league_code)
+                validate_dataset(df_league)
+                league_data_cache[league_code] = df_league
+                elo_cache[league_code] = calculate_elo_ratings(df_league)
+
         for idx, match in enumerate(session_state.match_list):
             with st.container():
                 st.markdown("---")
                 st.subheader(f"🔮 {match['home_team']} vs {match['away_team']} {match['league_name']}")
 
                 try:
-                    df_match = load_data(match["league_file"])
-                    validate_dataset(df_match)
-                    elo_dict = calculate_elo_ratings(df_match)
-                    home_exp, away_exp = expected_goals_weighted_by_elo(df_match, match["home_team"], match["away_team"], elo_dict)
+                    df_match = league_data_cache[match["league_file"]]
+                    elo_dict = elo_cache[match["league_file"]]
+                    home_exp, away_exp = expected_goals_weighted_by_elo(
+                        df_match, match["home_team"], match["away_team"], elo_dict
+                    )
                     matrix = poisson_prediction(home_exp, away_exp)
                     outcomes = match_outcomes_prob(matrix)
                     over_under = over_under_prob(matrix)
