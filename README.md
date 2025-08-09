@@ -1,54 +1,78 @@
 # ⚽ Poisson Football Match Predictor
 
-Tento projekt umožňuje predikci výsledků fotbalových zápasů pomocí **Poissonova rozdělení**. Uživatel si vybere ligu, prohlédne týmové statistiky a zvolí dva týmy, pro které se vygeneruje predikce:
+Komplexní aplikace pro odhad výsledků fotbalových zápasů pomocí **Poissonova rozdělení**. Aplikace nabízí přehled lig, detailní statistiky týmů a predikce pro jednotlivé zápasy i hromadné tiketové tipy. Data lze aktualizovat z veřejných CSV zdrojů nebo přes API-Football.
 
-- Pravděpodobnost výhry domácích, remízy a výhry hostů
-- Over / Under 2.5 gólů
-- Oba týmy skórují (BTTS)
+## ✨ Funkce
+- Predikce výsledků zápasů (pravděpodobnost 1/X/2, over/under 2.5 gólů, oba týmy skórují)
+- Hromadná predikce více zápasů s cachováním výsledků
+- Detailní profil týmu včetně ELO ratingu, xG a GII
+- Přehled ligy s tabulkou a základními statistikami
+- Aktualizace datasetů skriptem nebo API
+- Jednotkové testy pokrývající klíčové funkce
 
-## 📊 Použité datové zdroje
-Data obsahují zápasy za posledních 5 let z:
-- **Premier League (E0)**
-- **La Liga (SP1)**
+## 📊 Datové zdroje
+Základní data jsou čerpána z [football-data.co.uk](https://www.football-data.co.uk/) a doplňkově lze využít [API-Football](https://www.api-football.com/). V repozitáři jsou již připravena spojena data pro několik evropských lig:
 
-## 🚀 Spuštění aplikace
+- Premier League (E0)
+- Championship (E1)
+- Bundesliga (D1) a 2. Bundesliga (D2)
+- La Liga (SP1)
+- Serie A (I1)
+- Ligue 1 (F1)
+- Eredivisie (N1)
+- Primeira Liga (P1)
+- Jupiler League (B1)
+- Turkish Super Lig (T1)
 
-### 1. Naklonuj repozitář
+Všechny CSV soubory najdeš ve složce `data/`.
+
+## 🛠️ Instalace
 
 ```bash
 git clone https://github.com/Daifyyy/Poisson.git
 cd Poisson
-```
 
-### 2. Vytvoř virtuální prostředí (doporučeno)
-
-```bash
+# doporučeno: vytvoření virtuálního prostředí
 python -m venv venv
-source venv/bin/activate  # na Windows: venv\Scripts\activate
-```
+source venv/bin/activate  # Windows: venv\Scripts\activate
 
-### 3. Nainstaluj závislosti
-
-```bash
 pip install -r requirements.txt
 ```
 
-### 4. Spusť aplikaci
+Chceš-li stahovat data přes API-Football, vytvoř soubor `.env` s proměnnou `API_FOOTBALL_KEY`.
+
+## 🚀 Spuštění aplikace
 
 ```bash
 streamlit run app.py
+```
+
+Po spuštění otevři zobrazenou URL v prohlížeči.
+
+## 🔄 Aktualizace dat
+- **CSV z football-data.co.uk**: `python scripts/update_league_data.py`
+- **API-Football**: `python update_all_leagues_from_api.py` (vyžaduje `API_FOOTBALL_KEY`)
+
+Stažené soubory se ukládají do složky `data/`.
+
+## ✅ Testy
+
+Projekt obsahuje sadu jednotkových testů. Pro jejich spuštění použij:
+
+```bash
+pytest
 ```
 
 ## 📁 Struktura projektu
 
 ```
 Poisson/
-├── data/
-│   ├── E0_combined_full.csv
-│   └── SP1_combined_full.csv
-├── utils/
-│   └── poisson_utils.py
-├── app.py
+├── app.py                 # Streamlit aplikace
+├── data/                  # Připravená a stažená data
+├── scripts/               # Pomocné skripty pro aktualizaci dat
+├── sections/              # Oddělené sekce UI
+├── tests/                 # Unit testy
+├── utils/                 # Logika pro práci s daty a frontendem
 ├── requirements.txt
 └── README.md
 ```
