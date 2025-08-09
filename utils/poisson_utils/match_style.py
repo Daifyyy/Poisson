@@ -1,3 +1,4 @@
+import math
 import pandas as pd
 import numpy as np
 
@@ -391,8 +392,25 @@ def calculate_team_styles(df: pd.DataFrame) -> tuple:
 
     return off_df, def_df
 
-def intensity_score_to_emoji(score: float) -> str:
-    """Převede skóre GII na emoji."""
+def intensity_score_to_emoji(score: float | None) -> str:
+    """Převede skóre GII na emoji.
+
+    Args:
+        score: Hodnota indexu intenzity (GII) nebo ``None``.
+
+    Returns:
+        Emoji reprezentující dané skóre. Neplatné nebo chybějící
+        hodnoty (``None``, ``NaN`` či nenumerické typy) vrátí prázdný
+        řetězec místo vyhození výjimky.
+    """
+    if score is None:
+        return ""
+    try:
+        score = float(score)
+    except (TypeError, ValueError):
+        return ""
+    if math.isnan(score):
+        return ""
     if score > 1.0:
         return "🔥"
     elif score > 0.3:
