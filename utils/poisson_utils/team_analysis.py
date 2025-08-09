@@ -632,6 +632,25 @@ TEAM_COMPARISON_DESC_MAP = {
     "BTTS %": "Zápasy, kde skórovaly oba týmy",
 }
 
+# Určuje, zda je u dané metriky výhodnější vyšší hodnota (True), nebo nižší hodnota (False)
+TEAM_COMPARISON_HIGHER_IS_BETTER = {
+    "Góly": True,
+    "Obdržené góly": False,
+    "Střely": True,
+    "Na branku": True,
+    "Rohy": True,
+    "Fauly": False,
+    "Žluté": False,
+    "Červené": False,
+    "Ofenzivní efektivita": False,
+    "Defenzivní efektivita": False,
+    "Přesnost střel": True,
+    "Konverzní míra": True,
+    "Čistá konta %": True,
+    "Over 2.5 %": True,
+    "BTTS %": True,
+}
+
 
 def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_away):
     st.markdown(f"## 🆚 Porovnání týmů: {team1} vs {team2}")
@@ -656,12 +675,21 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
                 v2 = float(df.at[met, "team2"])
             except KeyError:
                 continue
+            higher_better = TEAM_COMPARISON_HIGHER_IS_BETTER.get(met, True)
+            if v1 == v2:
+                better = "="
+            else:
+                if higher_better:
+                    better = team1 if v1 > v2 else team2
+                else:
+                    better = team1 if v1 < v2 else team2
             rows.append({
                 "Metrika": f"{icon} {met}",
                 "team1": round(v1, 2),
                 "team2": round(v2, 2),
+                "Lepší": better,
             })
-        return pd.DataFrame(rows, columns=["Metrika", "team1", "team2"])
+        return pd.DataFrame(rows, columns=["Metrika", "team1", "team2", "Lepší"])
 
     def _style_and_display(df: pd.DataFrame):
         legend_html = (
@@ -669,10 +697,28 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
             f" &nbsp; <span style='background-color:#d3d3d3;padding:0 8px;border-radius:4px;'>&nbsp;</span> {team2}"
         )
         st.caption(legend_html, unsafe_allow_html=True)
-        styled = df.style.set_properties(
-            subset=["team1"], **{"background-color": "#add8e6"}
-        ).set_properties(
-            subset=["team2"], **{"background-color": "#d3d3d3"}
+        def _highlight(row):
+            met = row["Metrika"].split(" ", 1)[1]
+            higher_better = TEAM_COMPARISON_HIGHER_IS_BETTER.get(met, True)
+            v1, v2 = row["team1"], row["team2"]
+            color1 = color2 = ""
+            if higher_better:
+                if v1 > v2:
+                    color1 = "background-color: lightgreen"
+                elif v2 > v1:
+                    color2 = "background-color: lightgreen"
+            else:
+                if v1 < v2:
+                    color1 = "background-color: lightgreen"
+                elif v2 < v1:
+                    color2 = "background-color: lightgreen"
+            return pd.Series([color1, color2], index=["team1", "team2"])
+
+        styled = (
+            df.style
+            .set_properties(subset=["team1"], **{"background-color": "#add8e6"})
+            .set_properties(subset=["team2"], **{"background-color": "#d3d3d3"})
+            .apply(_highlight, axis=1, subset=["team1", "team2"])
         )
         st.dataframe(
             styled,
@@ -682,6 +728,7 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
                 "Metrika": "Metrika",
                 "team1": st.column_config.NumberColumn(team1),
                 "team2": st.column_config.NumberColumn(team2),
+                "Lepší": "Lepší",
             },
         )
 
