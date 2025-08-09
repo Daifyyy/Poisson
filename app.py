@@ -34,6 +34,14 @@ league_files = {
     "T1 (Super League)": "data/T1_combined_full_updated.csv",
 }
 
+# Months when each league typically starts a new season. Used as a
+# fallback when no large break between matches is detected.
+LEAGUE_START_MONTH = {
+    "B1": 7,  # Jupiler League begins in July
+    "D2": 7,  # 2. Bundesliga kicks off in July
+    # Other leagues default to August
+}
+
 # --- Sidebar: Správa dat ---
 with st.sidebar.expander("🔧 Správa dat"):
     if st.button("🔄 Aktualizovat data z webu"):
@@ -77,7 +85,9 @@ league_file = league_files[league_name]
 def load_and_prepare(file_path):
     df = load_data(file_path)
     validate_dataset(df)
-    season_df, _ = detect_current_season(df)
+    league_code = file_path.split('/')[-1].split('_')[0]
+    start_month = LEAGUE_START_MONTH.get(league_code, 8)
+    season_df, _ = detect_current_season(df, start_month=start_month)
     team_strengths, _, _ = calculate_team_strengths(df)
     season_df = calculate_gii_zscore(season_df)
     gii_dict = get_team_average_gii(season_df)

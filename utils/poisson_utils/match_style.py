@@ -391,8 +391,14 @@ def calculate_team_styles(df: pd.DataFrame) -> tuple:
 
     return off_df, def_df
 
-def intensity_score_to_emoji(score: float) -> str:
-    """Převede skóre GII na emoji."""
+def intensity_score_to_emoji(score: float | None) -> str:
+    """Převede skóre GII na emoji.
+
+    Pokud není k dispozici dostatek dat (``score`` je ``None``),
+    vrátí prázdný řetězec místo vyhazování výjimky.
+    """
+    if score is None:
+        return ""
     if score > 1.0:
         return "🔥"
     elif score > 0.3:

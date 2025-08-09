@@ -86,7 +86,9 @@ def compute_match_inputs(
     xg_home = xg_dict.get(home_team, {"xG_home": 0})
     xg_away = xg_dict.get(away_team, {"xG_away": 0})
 
-    expected_gii = round((gii_dict.get(home_team, 0) + gii_dict.get(away_team, 0)) / 2, 2)
+    gii_home = gii_dict.get(home_team)
+    gii_away = gii_dict.get(away_team)
+    expected_gii = round(((gii_home or 0) + (gii_away or 0)) / 2, 2)
     expected_tempo = expected_match_tempo(
         df,
         home_team,
