@@ -62,7 +62,7 @@ def render_league_overview(season_df, league_name, gii_dict):
         "Čistá konta %": team_stats.index.map(lambda t: f"{calculate_clean_sheets(season_df, t)}%"),
         "Over 2.5 %": team_stats.index.map(over25).astype(str) + "%",
         "BTTS %": team_stats.index.map(btts).astype(str) + "%",
-        "Intenzita": team_stats.index.map(lambda t: intensity_score_to_emoji(gii_dict.get(t, 0)))
+        "Intenzita": team_stats.index.map(lambda t: intensity_score_to_emoji(gii_dict.get(t)))
     })
 
     summary_table = summary_table.sort_values("Body", ascending=False).reset_index(drop=True)
