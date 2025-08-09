@@ -635,8 +635,14 @@ TEAM_COMPARISON_DESC_MAP = {
 
 def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_away):
     st.markdown(f"## 🆚 Porovnání týmů: {team1} vs {team2}")
-
     metrics = list(TEAM_COMPARISON_ICON_MAP.keys())
+
+    with st.expander("Legenda"):
+        for met in metrics:
+            icon = TEAM_COMPARISON_ICON_MAP.get(met, "")
+            desc = TEAM_COMPARISON_DESC_MAP.get(met, "")
+            st.markdown(f"{icon} {met} - {desc}")
+
     col_celkem, col_doma, col_venku = st.columns(3)
 
     def _build_table(df: pd.DataFrame) -> pd.DataFrame:
