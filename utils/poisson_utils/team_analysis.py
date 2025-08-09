@@ -653,7 +653,8 @@ TEAM_COMPARISON_HIGHER_IS_BETTER = {
 
 
 def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_away):
-    st.markdown(f"## 🆚 Porovnání týmů: {team1} vs {team2}")
+    st.markdown("### Porovnání týmů")
+    st.caption(f"{team1} vs {team2}")
     metrics = list(TEAM_COMPARISON_ICON_MAP.keys())
 
     with st.expander("Legenda"):
@@ -662,7 +663,7 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
             desc = TEAM_COMPARISON_DESC_MAP.get(met, "")
             st.markdown(f"{icon} {met} - {desc}")
 
-    col_celkem, col_doma, col_venku = st.columns(3)
+    tab_celkem, tab_doma, tab_venku = st.tabs(["Celkem", "Doma", "Venku"])
 
     def _build_table(df: pd.DataFrame) -> pd.DataFrame:
         rows = []
@@ -732,14 +733,11 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
             },
         )
 
-    with col_celkem:
-        st.markdown("### Celkem")
+    with tab_celkem:
         _style_and_display(_build_table(stats_total))
-    with col_doma:
-        st.markdown("### 🏠 Doma")
+    with tab_doma:
         _style_and_display(_build_table(stats_home))
-    with col_venku:
-        st.markdown("### 🚌 Venku")
+    with tab_venku:
         _style_and_display(_build_table(stats_away))
 
 
