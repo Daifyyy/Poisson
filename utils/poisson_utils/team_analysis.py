@@ -616,8 +616,8 @@ TEAM_COMPARISON_HIGHER_IS_BETTER = {
     "Fauly": False,
     "Žluté": False,
     "Červené": False,
-    "Ofenzivní efektivita": False,
-    "Defenzivní efektivita": False,
+    "Ofenzivní efektivita": False,  # méně střel na gól je lepší
+    "Defenzivní efektivita": False,  # méně inkasovaných/gólů na střelu je lepší
     "Přesnost střel": True,
     "Konverzní míra": True,
     "Čistá konta %": True,
@@ -626,18 +626,25 @@ TEAM_COMPARISON_HIGHER_IS_BETTER = {
 }
 
 
-def render_team_comparison_section(team1: str, team2: str, stats_total: pd.DataFrame, stats_home: pd.DataFrame, stats_away: pd.DataFrame) -> None:
+def render_team_comparison_section(
+    team1: str,
+    team2: str,
+    stats_total: pd.DataFrame,
+    stats_home: pd.DataFrame,
+    stats_away: pd.DataFrame,
+) -> None:
     st.markdown("### Porovnání týmů")
     st.caption(f"{team1} vs {team2}")
-    metrics = list(TEAM_COMPARISON_ICON_MAP.keys())
+
+    metrics_all = list(TEAM_COMPARISON_ICON_MAP.keys())
 
     with st.expander("Legenda"):
-        for met in metrics:
+        for met in metrics_all:
             icon = TEAM_COMPARISON_ICON_MAP.get(met, "")
             desc = TEAM_COMPARISON_DESC_MAP.get(met, "")
             st.markdown(f"{icon} {met} - {desc}")
 
-    metrics = st.multiselect("Vyber metriky k porovnání", options=metrics, default=metrics)
+    metrics = st.multiselect("Vyber metriky k porovnání", options=metrics_all, default=metrics_all)
     if not metrics:
         st.info("Vyber alespoň jednu metriku.")
         return
@@ -654,17 +661,18 @@ def render_team_comparison_section(team1: str, team2: str, stats_total: pd.DataF
             v1 = float(df.at[met, "team1"])
             v2 = float(df.at[met, "team2"])
             higher_better = TEAM_COMPARISON_HIGHER_IS_BETTER.get(met, True)
-            better = "="
-            if v1 != v2:
+            if v1 == v2:
+                better = "="
+            else:
                 better = team1 if (v1 > v2) == higher_better else team2
             rows.append({
                 "Metrika": f"{icon} {met}",
-                team1: round(v1, 2),
-                team2: round(v2, 2),
+                "team1": round(v1, 2),
+                "team2": round(v2, 2),
                 "Δ": round(v1 - v2, 2),
                 "Lepší": better,
             })
-        return pd.DataFrame(rows, columns=["Metrika", team1, team2, "Δ", "Lepší"])
+        return pd.DataFrame(rows, columns=["Metrika", "team1", "team2", "Δ", "Lepší"])
 
     def _style_and_display(df_table: pd.DataFrame):
         if df_table.empty:
@@ -678,9 +686,9 @@ def render_team_comparison_section(team1: str, team2: str, stats_total: pd.DataF
         st.caption(legend_html, unsafe_allow_html=True)
 
         def _highlight(row):
-            met = df_table.at[row.name, "Metrika"].split(" ", 1)[1]
+            met = df_table.at[row.name, "Metrika"].split(" ", 1)[1]  # sundat ikonu
             higher_better = TEAM_COMPARISON_HIGHER_IS_BETTER.get(met, True)
-            v1, v2 = row[team1], row[team2]
+            v1, v2 = row["team1"], row["team2"]
             color1 = color2 = diff_color = ""
             if higher_better:
                 if v1 > v2:
@@ -696,16 +704,15 @@ def render_team_comparison_section(team1: str, team2: str, stats_total: pd.DataF
                 elif v2 < v1:
                     color2 = "background-color: lightgreen"
                     diff_color = "color: red"
-            return pd.Series([color1, color2, diff_color], index=[team1, team2, "Δ"])
+            return pd.Series([color1, color2, diff_color], index=["team1", "team2", "Δ"])
 
         styled = (
             df_table.style
-            .set_properties(subset=[team1], **{"background-color": "#add8e6"})
-            .set_properties(subset=[team2], **{"background-color": "#d3d3d3"})
+            .set_properties(subset=["team1"], **{"background-color": "#add8e6"})
+            .set_properties(subset=["team2"], **{"background-color": "#d3d3d3"})
             .apply(_highlight, axis=1)
-            .format({team1: "{:.1f}", team2: "{:.1f}", "Δ": "{:.1f}"})
+            .format({"team1": "{:.1f}", "team2": "{:.1f}", "Δ": "{:.1f}"})
         )
-        # Pozn.: column_config zde nepoužívej – s .style se neaplikuje
         st.dataframe(styled, hide_index=True, use_container_width=True)
 
     with tab_celkem:
