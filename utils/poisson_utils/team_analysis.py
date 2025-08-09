@@ -596,49 +596,73 @@ def expected_goals_combined_homeaway_allmatches(
 
 import pandas as pd
 
-def render_team_comparison_section(team1, team2, stats_total_1, stats_home_1, stats_away_1,
-                                     stats_total_2, stats_home_2, stats_away_2):
+TEAM_COMPARISON_ICON_MAP = {
+    "Góly": "⚽",
+    "Obdržené góly": "🥅",
+    "Střely": "📸",
+    "Na branku": "🎯",
+    "Rohy": "🚩",
+    "Fauly": "⚠️",
+    "Žluté": "🟨",
+    "Červené": "🟥",
+    "Ofenzivní efektivita": "⚡",
+    "Defenzivní efektivita": "🛡️",
+    "Přesnost střel": "🎯",
+    "Konverzní míra": "🌟",
+    "Čistá konta %": "🧤",
+    "Over 2.5 %": "📈",
+    "BTTS %": "🎯",
+}
+
+TEAM_COMPARISON_DESC_MAP = {
+    "Góly": "Průměr vstřelených gólů na zápas",
+    "Obdržené góly": "Průměr inkasovaných gólů na zápas",
+    "Střely": "Průměr střel na zápas",
+    "Na branku": "Střely mířící na branku",
+    "Rohy": "Počet rozehraných rohů",
+    "Fauly": "Počet faulů",
+    "Žluté": "Žluté karty",
+    "Červené": "Červené karty",
+    "Ofenzivní efektivita": "Střely potřebné na gól (nižší je lepší)",
+    "Defenzivní efektivita": "Inkasované góly na střelu soupeře (nižší je lepší)",
+    "Přesnost střel": "Podíl střel na branku v %",
+    "Konverzní míra": "Podíl gólů ze střel v %",
+    "Čistá konta %": "Podíl zápasů bez obdrženého gólu",
+    "Over 2.5 %": "Zápasy s více než 2.5 góly",
+    "BTTS %": "Zápasy, kde skórovaly oba týmy",
+}
+
+
+def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_away):
     st.markdown(f"## 🆚 Porovnání týmů: {team1} vs {team2}")
 
-    icon_map = {
-        "Góly": "⚽", "Obdržené góly": "🥅", "Střely": "📸",
-        "Na branku": "🎯", "Rohy": "🚩", "Fauly": "⚠️",
-        "Žluté": "🟨", "Červené": "🟥", "Přesnost střel": "🎯",
-        "Konverzní míra": "🌟", "Čistá konta %": "🧤",
-        "Over 2.5 %": "📈", "BTTS %": "🎯"
-    }
-
-    metriky = [
-        "Góly", "Obdržené góly", "Střely", "Na branku", "Rohy", "Fauly",
-        "Žluté", "Červené", "Přesnost střel", "Konverzní míra",
-        "Čistá konta %", "Over 2.5 %", "BTTS %"
-    ]
+    metrics = list(TEAM_COMPARISON_ICON_MAP.keys())
 
     col_celkem, col_doma, col_venku = st.columns(3)
 
+    def _render_column(df, title):
+        st.markdown(title)
+        for met in metrics:
+            if met not in df.index:
+                continue
+            icon = TEAM_COMPARISON_ICON_MAP.get(met, "")
+            desc = TEAM_COMPARISON_DESC_MAP.get(met, "")
+            val1 = df.at[met, team1]
+            val2 = df.at[met, team2]
+            st.markdown(
+                f"<span title='{desc}'>{icon} <strong>{met}</strong></span><br>"
+                f"{team1}: <strong>{val1:.2f}</strong> | {team2}: <span style='color:gray;'>{val2:.2f}</span>",
+                unsafe_allow_html=True,
+            )
+
     with col_celkem:
-        st.markdown("### Celkem")
-        for met in metriky:
-            icon = icon_map.get(met, "")
-            val = stats_total_1.get(met, 0)
-            delta_val = stats_total_2.get(met, 0)
-            st.markdown(f"{icon} **{val:.2f}** <span style='color:gray;'>({delta_val:.2f})</span>", unsafe_allow_html=True)
+        _render_column(stats_total, "### Celkem")
 
     with col_doma:
-        st.markdown("### 🏠 Doma")
-        for met in metriky:
-            icon = icon_map.get(met, "")
-            val = stats_home_1.get(met, 0)
-            delta_val = stats_home_2.get(met, 0)
-            st.markdown(f"{icon} **{val:.2f}** <span style='color:gray;'>({delta_val:.2f})</span>", unsafe_allow_html=True)
+        _render_column(stats_home, "### 🏠 Doma")
 
     with col_venku:
-        st.markdown("### 🚌 Venku")
-        for met in metriky:
-            icon = icon_map.get(met, "")
-            val = stats_away_1.get(met, 0)
-            delta_val = stats_away_2.get(met, 0)
-            st.markdown(f"{icon} **{val:.2f}** <span style='color:gray;'>({delta_val:.2f})</span>", unsafe_allow_html=True)
+        _render_column(stats_away, "### 🚌 Venku")
 
 
 
@@ -683,34 +707,35 @@ def generate_team_comparison(df: pd.DataFrame, team1: str, team2: str) -> pd.Dat
             total_matches += 1
 
         return {
-            "⚽ Góly": goals,
-            "🥅 Obdržené góly": goals_conceded,
-            "📸 Střely": shots,
-            "🎯 Na branku": shots_on_target,
-            "🚩 Rohy": corners,
-            "⚠️ Fauly": fouls,
-            "🟨 Žluté": yellows,
-            "🟥 Červené": reds,
-            "⚡ Ofenzivní efektivita": offensive_eff,
-            "🛡️ Defenzivní efektivita": defensive_eff,
-            "🎯 Přesnost střel": accuracy * 100,
-            "🌟 Konverzní míra": conversion * 100,
-            "🧤 Čistá konta %": (clean_sheets / total_matches) * 100 if total_matches else 0,
-            "📈 Over 2.5 %": (over25 / total_matches) * 100 if total_matches else 0,
-            "🎯 BTTS %": (btts / total_matches) * 100 if total_matches else 0,
+            "Góly": goals,
+            "Obdržené góly": goals_conceded,
+            "Střely": shots,
+            "Na branku": shots_on_target,
+            "Rohy": corners,
+            "Fauly": fouls,
+            "Žluté": yellows,
+            "Červené": reds,
+            "Ofenzivní efektivita": offensive_eff,
+            "Defenzivní efektivita": defensive_eff,
+            "Přesnost střel": accuracy * 100,
+            "Konverzní míra": conversion * 100,
+            "Čistá konta %": (clean_sheets / total_matches) * 100 if total_matches else 0,
+            "Over 2.5 %": (over25 / total_matches) * 100 if total_matches else 0,
+            "BTTS %": (btts / total_matches) * 100 if total_matches else 0,
         }
 
     stats1 = team_stats(df, team1)
     stats2 = team_stats(df, team2)
 
-    metrics = list(stats1.keys())
+    metrics = sorted(set(stats1.keys()) | set(stats2.keys()))
     rows = []
     for m in metrics:
         val1 = stats1.get(m, 0)
         val2 = stats2.get(m, 0)
-        diff = val1 - val2
-        rows.append([m, round(val1, 1), round(val2, 1)])  # odstraněn rozdíl
+        rows.append([m, round(val1, 1), round(val2, 1)])
 
+    if not rows:
+        return pd.DataFrame()
 
     return pd.DataFrame(rows, columns=["Metrika", team1, team2]).set_index("Metrika")
 
