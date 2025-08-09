@@ -734,7 +734,7 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
             df.style
             .set_properties(subset=["team1"], **{"background-color": "#add8e6"})
             .set_properties(subset=["team2"], **{"background-color": "#d3d3d3"})
-            .apply(_highlight, axis=1, subset=["team1", "team2", "Δ"])
+            .apply(_highlight, axis=1)
         )
         st.dataframe(
             styled,
