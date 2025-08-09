@@ -91,31 +91,28 @@ def render_team_detail(
     all_matches = pd.concat([home, away])
 
     if compare_team and compare_team != "Žádný" and compare_team != team:
-        stats_all = calculate_advanced_team_metrics(all_matches)
-        stats_home = calculate_advanced_team_metrics(home, is_home=True)
-        stats_away = calculate_advanced_team_metrics(away, is_home=False)
-
         compare_df = _apply_time_filter(original_df, compare_team)
         compare_home = compare_df[compare_df['HomeTeam'] == compare_team]
         compare_away = compare_df[compare_df['AwayTeam'] == compare_team]
         compare_matches = pd.concat([compare_home, compare_away])
 
-        compare_stats_all = calculate_advanced_team_metrics(compare_matches)
-        compare_stats_home = calculate_advanced_team_metrics(compare_home, is_home=True)
-        compare_stats_away = calculate_advanced_team_metrics(compare_away, is_home=False)
+        total_df = pd.concat([all_matches, compare_matches])
+        home_df = pd.concat([home, compare_home])
+        away_df = pd.concat([away, compare_away])
 
-        if team in stats_all.index and compare_team in compare_stats_all.index:
-            render_team_comparison_section(
-                team, compare_team,
-                stats_all.loc[team], stats_home.loc[team], stats_away.loc[team],
-                compare_stats_all.loc[compare_team],
-                compare_stats_home.loc[compare_team],
-                compare_stats_away.loc[compare_team]
-            )
-            return
-        else:
+        stats_total = generate_team_comparison(total_df, team, compare_team)
+        stats_home = generate_team_comparison(home_df, team, compare_team)
+        stats_away = generate_team_comparison(away_df, team, compare_team)
+
+        if stats_total.empty:
             st.warning("⚠️ Jeden z týmů nemá dostupná data pro zvolený filtr.")
             return
+
+        render_team_comparison_section(
+            team, compare_team,
+            stats_total, stats_home, stats_away
+        )
+        return
 
 
 
