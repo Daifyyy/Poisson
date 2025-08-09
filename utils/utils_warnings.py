@@ -5,7 +5,6 @@ from scipy.stats import poisson
 import streamlit as st
 from itertools import product
 
-from utils.statistics import calculate_clean_sheets  # noqa: F401
 from utils.poisson_utils.stats import calculate_points
 
 def load_data(file_path):
