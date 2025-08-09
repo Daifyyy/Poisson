@@ -10,6 +10,16 @@ from utils.poisson_utils import (
 )
 from utils.frontend_utils import validate_dataset
 
+
+@st.cache_data
+def get_league_data_and_elo(league_file: str):
+    """Load league dataset and compute its ELO ratings with caching."""
+    df_league = load_data(league_file)
+    validate_dataset(df_league)
+    elo_dict = calculate_elo_ratings(df_league)
+    return df_league, elo_dict
+
+
 def render_multi_match_predictions(session_state, home_team, away_team, league_name, league_file, league_files):
     st.title("📋 Hromadné predikce zápasů")
 
@@ -30,29 +40,13 @@ def render_multi_match_predictions(session_state, home_team, away_team, league_n
     if session_state.match_list:
         export_data = []
 
-        # Pre-load datasets and ELO ratings for each league to avoid
-        # recalculating them for every match.  Dictionaries are keyed by the
-        # league's file identifier so matches from the same league reuse the
-        # cached values.
-        league_data_cache = {}
-        elo_cache = {}
-
-        for match in session_state.match_list:
-            league_code = match["league_file"]
-            if league_code not in league_data_cache:
-                df_league = load_data(league_code)
-                validate_dataset(df_league)
-                league_data_cache[league_code] = df_league
-                elo_cache[league_code] = calculate_elo_ratings(df_league)
-
         for idx, match in enumerate(session_state.match_list):
             with st.container():
                 st.markdown("---")
                 st.subheader(f"🔮 {match['home_team']} vs {match['away_team']} {match['league_name']}")
 
                 try:
-                    df_match = league_data_cache[match["league_file"]]
-                    elo_dict = elo_cache[match["league_file"]]
+                    df_match, elo_dict = get_league_data_and_elo(match["league_file"])
                     home_exp, away_exp = expected_goals_weighted_by_elo(
                         df_match, match["home_team"], match["away_team"], elo_dict
                     )
