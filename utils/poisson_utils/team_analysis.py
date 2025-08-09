@@ -2,11 +2,13 @@ import pandas as pd
 import numpy as np
 from scipy.stats import poisson
 import streamlit as st
+
 from .data import prepare_df, get_last_n_matches
 from .stats import calculate_points
-from .prediction import poisson_over25_probability, expected_goals_vs_similar_elo_weighted 
+from .prediction import poisson_over25_probability, expected_goals_vs_similar_elo_weighted
 from .xg import calculate_team_pseudo_xg
 from utils.utils_warnings import detect_overperformance_and_momentum
+
 
 def calculate_form_emojis(df: pd.DataFrame, days: int = 31) -> dict:
     """Vrací dictionary: tým -> emoji reprezentace formy."""
@@ -17,6 +19,7 @@ def calculate_form_emojis(df: pd.DataFrame, days: int = 31) -> dict:
         form_emojis[team] = form_points_to_emoji(avg_points)
     return form_emojis
 
+
 def calculate_conceded_goals(df: pd.DataFrame) -> pd.DataFrame:
     """Vrací DataFrame s průměrným počtem obdržených gólů pro každý tým."""
     teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
@@ -26,7 +29,12 @@ def calculate_conceded_goals(df: pd.DataFrame) -> pd.DataFrame:
         away = df[df['HomeTeam'] == team]
         goals_against = pd.concat([home['FTHG'], away['FTAG']]).mean()
         conceded_stats.append({"Tým": team, "Obdržené góly": round(goals_against, 2)})
-    return pd.DataFrame(conceded_stats).sort_values("Obdržené góly", ascending=False).reset_index(drop=True)
+    return (
+        pd.DataFrame(conceded_stats)
+        .sort_values("Obdržené góly", ascending=False)
+        .reset_index(drop=True)
+    )
+
 
 def calculate_recent_team_form(df: pd.DataFrame, last_n: int = 5) -> pd.DataFrame:
     """Vrací DataFrame s průměrem bodů a formou (emoji) za posledních N zápasů pro každý tým."""
@@ -34,7 +42,11 @@ def calculate_recent_team_form(df: pd.DataFrame, last_n: int = 5) -> pd.DataFram
     teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
     form_stats = []
     for team in teams:
-        recent_matches = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)].sort_values("Date").tail(last_n)
+        recent_matches = (
+            df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)]
+            .sort_values("Date")
+            .tail(last_n)
+        )
         total_points = 0
         for _, row in recent_matches.iterrows():
             is_home = row['HomeTeam'] == team
@@ -46,15 +58,12 @@ def calculate_recent_team_form(df: pd.DataFrame, last_n: int = 5) -> pd.DataFram
     form_df["Form"] = form_df["Body/zápas"].apply(form_points_to_emoji)
     return form_df.sort_values("Body/zápas").reset_index(drop=True)
 
-import numpy as np
-from scipy.stats import poisson
 
 def calculate_expected_and_actual_points(df: pd.DataFrame) -> dict:
-    """Spočítá skutečné a očekávané body týmů na základě proxy xG modelu (poměr střel na bránu ke střelám)."""
+    """Spočítá skutečné a očekávané body týmů na základě proxy xG (poměr SOT/SH)."""
     df = df.copy()
     df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
-    df = df.dropna(subset=['Date'])
-    df = df.sort_values('Date')
+    df = df.dropna(subset=['Date']).sort_values('Date')
 
     teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
     results = {}
@@ -69,18 +78,24 @@ def calculate_expected_and_actual_points(df: pd.DataFrame) -> dict:
                 "points": 0,
                 "points_per_game": 0,
                 "matches": 0,
-                "expected_points": 0
+                "expected_points": 0,
             }
             continue
 
         # Skutečné body
-        home_points = sum(3 if row['FTHG'] > row['FTAG'] else 1 if row['FTHG'] == row['FTAG'] else 0 for _, row in home.iterrows())
-        away_points = sum(3 if row['FTAG'] > row['FTHG'] else 1 if row['FTAG'] == row['FTHG'] else 0 for _, row in away.iterrows())
+        home_points = sum(
+            3 if row['FTHG'] > row['FTAG'] else 1 if row['FTHG'] == row['FTAG'] else 0
+            for _, row in home.iterrows()
+        )
+        away_points = sum(
+            3 if row['FTAG'] > row['FTHG'] else 1 if row['FTAG'] == row['FTHG'] else 0
+            for _, row in away.iterrows()
+        )
         total_points = home_points + away_points
         num_matches = len(home) + len(away)
 
-        # Expected points (xP) Calculation
-        xP = 0
+        # Očekávané body (xP) přes Poisson z proxy xG
+        xP = 0.0
         for _, row in all_matches.iterrows():
             if row['HomeTeam'] == team:
                 xg_for = (row['HST'] / row['HS']) if row['HS'] > 0 else 0.1
@@ -94,11 +109,9 @@ def calculate_expected_and_actual_points(df: pd.DataFrame) -> dict:
                 continue
 
             max_goals = 6
-            probs = [[poisson.pmf(i, xg_for) * poisson.pmf(j, xg_against) for j in range(max_goals)] for i in range(max_goals)]
-
             for i in range(max_goals):
                 for j in range(max_goals):
-                    p = probs[i][j]
+                    p = poisson.pmf(i, xg_for) * poisson.pmf(j, xg_against)
                     if team_is_home:
                         if i > j:
                             xP += 3 * p
@@ -114,14 +127,14 @@ def calculate_expected_and_actual_points(df: pd.DataFrame) -> dict:
             "points": total_points,
             "points_per_game": round(total_points / num_matches, 2) if num_matches > 0 else 0,
             "matches": num_matches,
-            "expected_points": round(xP, 2)
+            "expected_points": round(xP, 2),
         }
 
     return results
 
 
 def analyze_opponent_strength(df: pd.DataFrame, team: str, is_home: bool = True) -> dict:
-    """Analyzuje sílu soupeřů podle výsledků."""
+    """Analyzuje výkon týmu proti silným/průměrným/slabým soupeřům (proxy dle prům. gólů soupeře)."""
     df = prepare_df(df)
 
     team_col = 'HomeTeam' if is_home else 'AwayTeam'
@@ -139,7 +152,7 @@ def analyze_opponent_strength(df: pd.DataFrame, team: str, is_home: bool = True)
 
     sorted_teams = sorted(avg_goals_per_team.items(), key=lambda x: x[1], reverse=True)
     total = len(sorted_teams)
-    top_teams = set(t for t, _ in sorted_teams[:int(total * 0.3)])
+    top_teams = set(t for t, _ in sorted_teams[: int(total * 0.3)])
     bottom_teams = set(t for t, _ in sorted_teams[-int(total * 0.3):])
     middle_teams = set(avg_goals_per_team.keys()) - top_teams - bottom_teams
 
@@ -150,33 +163,33 @@ def analyze_opponent_strength(df: pd.DataFrame, team: str, is_home: bool = True)
         goals = row[goals_col]
         shots = row[shots_col]
         points = calculate_points(row, is_home)
-
-        data_point = {'goals': goals, 'shots': shots, 'points': points}
+        data_point = {"goals": goals, "shots": shots, "points": points}
 
         if opponent in top_teams:
-            performance['strong'].append(data_point)
+            performance["strong"].append(data_point)
         elif opponent in bottom_teams:
-            performance['weak'].append(data_point)
+            performance["weak"].append(data_point)
         else:
-            performance['average'].append(data_point)
+            performance["average"].append(data_point)
 
     def summarize(data):
         if not data:
-            return {'matches': 0, 'goals': 0, 'con_rate': 0, 'xP': 0}
+            return {"matches": 0, "goals": 0, "con_rate": 0, "xP": 0}
         matches = len(data)
-        goals = np.mean([d['goals'] for d in data])
-        shots = np.mean([d['shots'] for d in data])
+        goals = np.mean([d["goals"] for d in data])
+        shots = np.mean([d["shots"] for d in data])
         con_rate = round(goals / shots, 2) if shots > 0 else 0
-        xP = round(np.mean([d['points'] for d in data]), 2)
-        return {'matches': matches, 'goals': round(goals, 2), 'con_rate': con_rate, 'xP': xP}
+        xP = round(np.mean([d["points"] for d in data]), 2)
+        return {"matches": matches, "goals": round(goals, 2), "con_rate": con_rate, "xP": xP}
 
     return {
-        'vs_strong': summarize(performance['strong']),
-        'vs_average': summarize(performance['average']),
-        'vs_weak': summarize(performance['weak']),
+        "vs_strong": summarize(performance["strong"]),
+        "vs_average": summarize(performance["average"]),
+        "vs_weak": summarize(performance["weak"]),
     }
 
-def get_head_to_head_stats(df: pd.DataFrame, home_team: str, away_team: str, last_n: int = 5) -> dict:
+
+def get_head_to_head_stats(df: pd.DataFrame, home_team: str, away_team: str, last_n: int = 5) -> dict | None:
     """Vrací head-to-head statistiky za posledních N zápasů mezi dvěma týmy."""
     df = prepare_df(df)
 
@@ -195,7 +208,7 @@ def get_head_to_head_stats(df: pd.DataFrame, home_team: str, away_team: str, las
         "draws": 0,
         "avg_goals": round((h2h['FTHG'] + h2h['FTAG']).mean(), 2),
         "btts_pct": round(100 * h2h.apply(lambda r: r['FTHG'] > 0 and r['FTAG'] > 0, axis=1).mean(), 1),
-        "over25_pct": round(100 * ((h2h['FTHG'] + h2h['FTAG']) > 2.5).mean(), 1)
+        "over25_pct": round(100 * ((h2h['FTHG'] + h2h['FTAG']) > 2.5).mean(), 1),
     }
 
     for _, row in h2h.iterrows():
@@ -209,13 +222,12 @@ def get_head_to_head_stats(df: pd.DataFrame, home_team: str, away_team: str, las
 
     return results
 
-    
+
 def merged_home_away_opponent_form(df: pd.DataFrame, team: str) -> dict:
-    """Vrací kombinovanou domácí a venkovní formu týmu vůči silným, průměrným a slabým soupeřům."""
+    """Vrací kombinovanou domácí/venkovní formu týmu vůči silným/průměrným/slabým soupeřům."""
     df = df.copy()
     df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
-    df = df.dropna(subset=['Date'])
-    df = df.sort_values('Date')
+    df = df.dropna(subset=['Date']).sort_values('Date')
 
     team_avg_goals = {}
     for t in pd.concat([df['HomeTeam'], df['AwayTeam']]).unique():
@@ -224,7 +236,7 @@ def merged_home_away_opponent_form(df: pd.DataFrame, team: str) -> dict:
         team_avg_goals[t] = np.nanmean([home_g, away_g])
 
     sorted_teams = sorted(team_avg_goals.items(), key=lambda x: x[1], reverse=True)
-    top = set(t for t, _ in sorted_teams[:int(len(sorted_teams) * 0.3)])
+    top = set(t for t, _ in sorted_teams[: int(len(sorted_teams) * 0.3)])
     bottom = set(t for t, _ in sorted_teams[-int(len(sorted_teams) * 0.3):])
     middle = set(team_avg_goals.keys()) - top - bottom
 
@@ -251,11 +263,10 @@ def merged_home_away_opponent_form(df: pd.DataFrame, team: str) -> dict:
             "Na branku": round(sot.mean(), 1),
             "xG": xg,
             "Body/zápas": round(points, 2),
-            "Čistá konta %": cs_percent
+            "Čistá konta %": cs_percent,
         }
 
     result = {}
-
     for label, group in [("💪 Silní", top), ("⚖️ Průměrní", middle), ("🪶 Slabí", bottom)]:
         home_matches = df[(df['HomeTeam'] == team) & (df['AwayTeam'].isin(group))]
         away_matches = df[(df['AwayTeam'] == team) & (df['HomeTeam'].isin(group))]
@@ -271,16 +282,14 @@ def merged_home_away_opponent_form(df: pd.DataFrame, team: str) -> dict:
             "Na branku": f"{home_stats['Na branku']} / {away_stats['Na branku']}",
             "xG": f"{home_stats['xG']} / {away_stats['xG']}",
             "Body/zápas": f"{home_stats['Body/zápas']} / {away_stats['Body/zápas']}",
-            "Čistá konta %": f"{home_stats['Čistá konta %']} / {away_stats['Čistá konta %']}"
+            "Čistá konta %": f"{home_stats['Čistá konta %']} / {away_stats['Čistá konta %']}",
         }
 
     return result
 
+
 def calculate_recent_form(df: pd.DataFrame, days: int = 31) -> dict:
     """Vrací dictionary: tým -> průměr bodů za posledních N dní."""
-    from .data import prepare_df
-    from .stats import calculate_points
-
     df = prepare_df(df)
     latest_date = df['Date'].max()
     recent_df = df[df['Date'] >= latest_date - pd.Timedelta(days=days)]
@@ -290,7 +299,6 @@ def calculate_recent_form(df: pd.DataFrame, days: int = 31) -> dict:
 
     for team in teams:
         matches = recent_df[(recent_df['HomeTeam'] == team) | (recent_df['AwayTeam'] == team)]
-
         if matches.empty:
             form[team] = 0
             continue
@@ -305,17 +313,9 @@ def calculate_recent_form(df: pd.DataFrame, days: int = 31) -> dict:
 
     return form
 
-def get_team_card_stats(df, team):
-    """
-    Spočítá celkový počet žlutých a červených karet daného týmu v zadaném dataframe.
-    
-    Vrací slovník:
-    {
-        "yellow": int,
-        "red": int,
-        "fouls": int
-    }
-    """
+
+def get_team_card_stats(df: pd.DataFrame, team: str) -> dict:
+    """Vrátí celkový počet žlutých/červených karet a faulů týmu."""
     home = df[df['HomeTeam'] == team]
     away = df[df['AwayTeam'] == team]
 
@@ -323,17 +323,13 @@ def get_team_card_stats(df, team):
     total_red = home['HR'].sum() + away['AR'].sum()
     total_fouls = home['HF'].sum() + away['AF'].sum()
 
-    return {
-        "yellow": total_yellow,
-        "red": total_red,
-        "fouls": total_fouls
-    }
+    return {"yellow": total_yellow, "red": total_red, "fouls": total_fouls}
 
 
-def calculate_team_home_advantage(df, team: str) -> float:
+def calculate_team_home_advantage(df: pd.DataFrame, team: str) -> float:
     """
     Spočítá relativní domácí výhodu daného týmu vůči ligovému průměru.
-    Výstupem je upravený home advantage v rozsahu ±0.3 (většinou).
+    Výstupem je tlumený koeficient (obvykle ±0.3).
     """
     home_avg = df[df['HomeTeam'] == team]['FTHG'].mean()
     away_avg = df[df['AwayTeam'] == team]['FTAG'].mean()
@@ -348,15 +344,13 @@ def calculate_team_home_advantage(df, team: str) -> float:
 
     home_adv_ratio = team_diff / league_diff
     home_adv_scaled = league_diff * home_adv_ratio * 0.5  # tlumený koeficient
-
     return round(home_adv_scaled, 2)
 
-def expected_goals_weighted_by_home_away(df, home_team, away_team, elo_dict) -> tuple:
+
+def expected_goals_weighted_by_home_away(df, home_team, away_team, elo_dict) -> tuple[float, float]:
     """
-    Rozšířená verze výpočtu očekávaných gólů, která respektuje domácí vs venkovní výkonnost
-    a dynamicky dopočítává faktor domácí výhody pomocí funkce calculate_team_home_advantage().
+    Očekávané góly s rozlišením home/away a dynamickou domácí výhodou.
     """
-    
     df = prepare_df(df)
 
     latest_date = df['Date'].max()
@@ -420,36 +414,28 @@ def expected_goals_weighted_by_home_away(df, home_team, away_team, elo_dict) -> 
 
     return round(expected_home, 2), round(expected_away, 2)
 
-def expected_goals_vs_opponent_strength_weighted(df, team, opponent, elo_dict, is_home=True, n=20):
-    """
-    Vypočítá očekávané góly na základě toho, jak tým skóruje proti soupeřům podobné síly jako aktuální soupeř.
-    Síla soupeřů se určuje podle ELO ratingu (rozděleno do tříd: strong, average, weak).
-    """
-    df = prepare_df(df)
-    df = df.sort_values("Date")
 
-    # Filtruj posledních N zápasů týmu v dané roli
+def expected_goals_vs_opponent_strength_weighted(df, team, opponent, elo_dict, is_home=True, n=20) -> float:
+    """
+    Očekávané góly dle výkonu proti soupeřům podobné síly (ELO → weak/average/strong).
+    """
+    df = prepare_df(df).sort_values("Date")
+
     team_matches = df[df['HomeTeam'] == team] if is_home else df[df['AwayTeam'] == team]
     team_matches = team_matches.tail(n)
-
     if team_matches.empty:
         return 1.0  # fallback
 
-    # Nastav sloupce podle role
     team_col = 'HomeTeam' if is_home else 'AwayTeam'
     opp_col = 'AwayTeam' if is_home else 'HomeTeam'
     gf_col = 'FTHG' if is_home else 'FTAG'
-    ga_col = 'FTAG' if is_home else 'FTHG'
 
-    # Přidej ELO soupeřů a klasifikaci
     team_matches = team_matches.copy()
     team_matches["Opponent"] = team_matches[opp_col]
     team_matches["EloOpp"] = team_matches["Opponent"].map(elo_dict)
     team_matches = team_matches.dropna(subset=["EloOpp"])
 
     opp_elo = elo_dict.get(opponent, 1500)
-
-    # Percentilové rozdělení soupeřů v lize
     all_elos = list(elo_dict.values())
     p30 = np.percentile(all_elos, 30)
     p70 = np.percentile(all_elos, 70)
@@ -465,20 +451,17 @@ def expected_goals_vs_opponent_strength_weighted(df, team, opponent, elo_dict, i
     team_matches["OppStrength"] = team_matches["EloOpp"].apply(classify)
     current_strength = classify(opp_elo)
 
-    # Výpočet průměrů podle třídy soupeřů
     gfs = {}
     for group in ["strong", "average", "weak"]:
         sub = team_matches[team_matches["OppStrength"] == group]
         gfs[group] = sub[gf_col].mean() if not sub.empty else 1.0
 
-    # Váhy dle podobnosti aktuálního soupeře
     weights = {
         "strong": 0.6 if current_strength == "strong" else 0.2,
         "average": 0.6 if current_strength == "average" else 0.2,
-        "weak": 0.6 if current_strength == "weak" else 0.2
+        "weak": 0.6 if current_strength == "weak" else 0.2,
     }
 
-    # Vážený průměr
     expected = (
         weights["strong"] * gfs["strong"] +
         weights["average"] * gfs["average"] +
@@ -487,12 +470,13 @@ def expected_goals_vs_opponent_strength_weighted(df, team, opponent, elo_dict, i
 
     return round(expected, 2)
 
+
 def expected_goals_combined_homeaway_allmatches(
     df, home_team, away_team, elo_dict,
-    weight_homeaway=0.4,
-    weight_all=0.3,
-    weight_matchup=0.3
-):
+    weight_homeaway: float = 0.4,
+    weight_all: float = 0.3,
+    weight_matchup: float = 0.3,
+) -> tuple[float, float]:
     df = prepare_df(df)
     latest_date = df['Date'].max()
     one_year_ago = latest_date - pd.Timedelta(days=365)
@@ -545,38 +529,30 @@ def expected_goals_combined_homeaway_allmatches(
         w_away = 0.15 * e_away[0] + 0.5 * e_away[1] + 0.35 * e_away[2]
         return w_home, w_away, e_home, e_away
 
-    # 1. Home/Away přístup
+    # 1) Home/Away přístup
     ha_home, ha_away, ha_parts_home, ha_parts_away = compute_weighted(
         [df_hist, df_season, df_last5_home],
         [df_hist, df_season, df_last5_away],
         lambda d: get_home_away_exp(d, home_team, True),
-        lambda d: get_home_away_exp(d, away_team, False)
+        lambda d: get_home_away_exp(d, away_team, False),
     )
 
-    # 2. All matches přístup
+    # 2) All matches přístup
     all_home, all_away, all_parts_home, all_parts_away = compute_weighted(
         [df_hist, df_season, df_last5_all_home],
         [df_hist, df_season, df_last5_all_away],
         lambda d: get_all_matches_exp(d, home_team),
-        lambda d: get_all_matches_exp(d, away_team)
+        lambda d: get_all_matches_exp(d, away_team),
     )
 
-    # 3. Matchup přístup (proti silným/průměrným/slabým soupeřům)
+    # 3) Matchup přístup
     matchup_home = expected_goals_vs_opponent_strength_weighted(df, home_team, away_team, elo_dict, is_home=True)
     matchup_away = expected_goals_vs_opponent_strength_weighted(df, away_team, home_team, elo_dict, is_home=False)
 
-    # Kombinace všech tří přístupů
-    final_home = round(
-        weight_homeaway * ha_home +
-        weight_all * all_home +
-        weight_matchup * matchup_home, 2)
+    final_home = round(weight_homeaway * ha_home + weight_all * all_home + weight_matchup * matchup_home, 2)
+    final_away = round(weight_homeaway * ha_away + weight_all * all_away + weight_matchup * matchup_away, 2)
 
-    final_away = round(
-        weight_homeaway * ha_away +
-        weight_all * all_away +
-        weight_matchup * matchup_away, 2)
-
-    # Debug výstup
+    # Debug (stdout)
     def print_parts(label, parts_home, parts_away, combined_home, combined_away):
         print(f"{label}")
         print(f"  Historie:      {poisson_over25_probability(parts_home[0], parts_away[0])}%")
@@ -594,7 +570,6 @@ def expected_goals_combined_homeaway_allmatches(
 
     return final_home, final_away
 
-import pandas as pd
 
 TEAM_COMPARISON_ICON_MAP = {
     "Góly": "⚽",
@@ -632,7 +607,6 @@ TEAM_COMPARISON_DESC_MAP = {
     "BTTS %": "Zápasy, kde skórovaly oba týmy",
 }
 
-# Určuje, zda je u dané metriky výhodnější vyšší hodnota (True), nebo nižší hodnota (False)
 TEAM_COMPARISON_HIGHER_IS_BETTER = {
     "Góly": True,
     "Obdržené góly": False,
@@ -652,7 +626,7 @@ TEAM_COMPARISON_HIGHER_IS_BETTER = {
 }
 
 
-def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_away):
+def render_team_comparison_section(team1: str, team2: str, stats_total: pd.DataFrame, stats_home: pd.DataFrame, stats_away: pd.DataFrame) -> None:
     st.markdown("### Porovnání týmů")
     st.caption(f"{team1} vs {team2}")
     metrics = list(TEAM_COMPARISON_ICON_MAP.keys())
@@ -663,12 +637,7 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
             desc = TEAM_COMPARISON_DESC_MAP.get(met, "")
             st.markdown(f"{icon} {met} - {desc}")
 
-    # Allow the user to pick which metrics to display to reduce clutter
-    metrics = st.multiselect(
-        "Vyber metriky k porovnání",
-        options=metrics,
-        default=metrics,
-    )
+    metrics = st.multiselect("Vyber metriky k porovnání", options=metrics, default=metrics)
     if not metrics:
         st.info("Vyber alespoň jednu metriku.")
         return
@@ -690,10 +659,7 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
             if v1 == v2:
                 better = "="
             else:
-                if higher_better:
-                    better = team1 if v1 > v2 else team2
-                else:
-                    better = team1 if v1 < v2 else team2
+                better = team1 if (v1 > v2) == higher_better else team2
             rows.append({
                 "Metrika": f"{icon} {met}",
                 "team1": round(v1, 2),
@@ -703,59 +669,98 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
             })
         return pd.DataFrame(rows, columns=["Metrika", "team1", "team2", "Δ", "Lepší"])
 
-    def _style_and_display(df: pd.DataFrame):
-        legend_html = (
-            f"<span style='background-color:#add8e6;padding:0 8px;border-radius:4px;'>&nbsp;</span> {team1}"
-            f" &nbsp; <span style='background-color:#d3d3d3;padding:0 8px;border-radius:4px;'>&nbsp;</span> {team2}"
-        )
-        st.caption(legend_html, unsafe_allow_html=True)
-        def _highlight(row):
-            met = df.at[row.name, "Metrika"].split(" ", 1)[1]
-            higher_better = TEAM_COMPARISON_HIGHER_IS_BETTER.get(met, True)
-            v1, v2, diff = row["team1"], row["team2"], row["Δ"]
-            color1 = color2 = diff_color = ""
-            if higher_better:
-                if v1 > v2:
-                    color1 = "background-color: lightgreen"
-                    diff_color = "color: green"
-                elif v2 > v1:
-                    color2 = "background-color: lightgreen"
-                    diff_color = "color: red"
-            else:
-                if v1 < v2:
-                    color1 = "background-color: lightgreen"
-                    diff_color = "color: green"
-                elif v2 < v1:
-                    color2 = "background-color: lightgreen"
-                    diff_color = "color: red"
-            return pd.Series([color1, color2, diff_color], index=["team1", "team2", "Δ"])
+    def render_team_comparison_section(
+      team1: str,
+      team2: str,
+      stats_total: pd.DataFrame,
+      stats_home: pd.DataFrame,
+      stats_away: pd.DataFrame
+  ) -> None:
+      st.markdown("### Porovnání týmů")
+      st.caption(f"{team1} vs {team2}")
+      metrics = list(TEAM_COMPARISON_ICON_MAP.keys())
 
-        styled = (
-            df.style
-            .set_properties(subset=["team1"], **{"background-color": "#add8e6"})
-            .set_properties(subset=["team2"], **{"background-color": "#d3d3d3"})
-            .apply(_highlight, axis=1)
-            .format(precision=1)
-        )
-        st.dataframe(
-            styled,
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                "Metrika": "Metrika",
-                "team1": st.column_config.NumberColumn(team1, format="%.1f"),
-                "team2": st.column_config.NumberColumn(team2, format="%.1f"),
-                "Δ": st.column_config.NumberColumn("Δ", format="%.1f"),
-                "Lepší": "Lepší",
-            },
-        )
+      with st.expander("Legenda"):
+          for met in metrics:
+              icon = TEAM_COMPARISON_ICON_MAP.get(met, "")
+              desc = TEAM_COMPARISON_DESC_MAP.get(met, "")
+              st.markdown(f"{icon} {met} - {desc}")
 
-    with tab_celkem:
-        _style_and_display(_build_table(stats_total))
-    with tab_doma:
-        _style_and_display(_build_table(stats_home))
-    with tab_venku:
-        _style_and_display(_build_table(stats_away))
+      metrics = st.multiselect("Vyber metriky k porovnání", options=metrics, default=metrics)
+      if not metrics:
+          st.info("Vyber alespoň jednu metriku.")
+          return
+
+      tab_celkem, tab_doma, tab_venku = st.tabs(["Celkem", "Doma", "Venku"])
+
+      def _build_table(df: pd.DataFrame) -> pd.DataFrame:
+          rows = []
+          for met in metrics:
+              if met not in df.index:
+                  continue
+              icon = TEAM_COMPARISON_ICON_MAP.get(met, "")
+              try:
+                  v1 = float(df.at[met, "team1"])
+                  v2 = float(df.at[met, "team2"])
+              except KeyError:
+                  continue
+              higher_better = TEAM_COMPARISON_HIGHER_IS_BETTER.get(met, True)
+              better = "="
+              if v1 != v2:
+                  better = team1 if (v1 > v2) == higher_better else team2
+              rows.append({
+                  "Metrika": f"{icon} {met}",
+                  "team1": round(v1, 2),
+                  "team2": round(v2, 2),
+                  "Δ": round(v1 - v2, 2),
+                  "Lepší": better,
+              })
+          return pd.DataFrame(rows, columns=["Metrika", "team1", "team2", "Δ", "Lepší"])
+
+      def _style_and_display(df_table: pd.DataFrame):
+          legend_html = (
+              f"<span style='background-color:#add8e6;padding:0 8px;border-radius:4px;'>&nbsp;</span> {team1}"
+              f" &nbsp; <span style='background-color:#d3d3d3;padding:0 8px;border-radius:4px;'>&nbsp;</span> {team2}"
+          )
+          st.caption(legend_html, unsafe_allow_html=True)
+
+          def _highlight(row):
+              met = df_table.at[row.name, "Metrika"].split(" ", 1)[1]
+              higher_better = TEAM_COMPARISON_HIGHER_IS_BETTER.get(met, True)
+              v1, v2 = row["team1"], row["team2"]
+              color1 = color2 = diff_color = ""
+              if higher_better:
+                  if v1 > v2:
+                      color1 = "background-color: lightgreen"
+                      diff_color = "color: green"
+                  elif v2 > v1:
+                      color2 = "background-color: lightgreen"
+                      diff_color = "color: red"
+              else:
+                  if v1 < v2:
+                      color1 = "background-color: lightgreen"
+                      diff_color = "color: green"
+                  elif v2 < v1:
+                      color2 = "background-color: lightgreen"
+                      diff_color = "color: red"
+              return pd.Series([color1, color2, diff_color], index=["team1", "team2", "Δ"])
+
+          styled = (
+              df_table.style
+              .set_properties(subset=["team1"], **{"background-color": "#add8e6"})
+              .set_properties(subset=["team2"], **{"background-color": "#d3d3d3"})
+              .apply(_highlight, axis=1)
+              .format({"team1": "{:.1f}", "team2": "{:.1f}", "Δ": "{:.1f}"})
+          )
+          # Pozn.: column_config zde nepoužívej – s .style se neaplikuje
+          st.dataframe(styled, hide_index=True, use_container_width=True)
+
+      with tab_celkem:
+          _style_and_display(_build_table(stats_total))
+      with tab_doma:
+          _style_and_display(_build_table(stats_home))
+      with tab_venku:
+          _style_and_display(_build_table(stats_away))
 
 
 
@@ -832,6 +837,4 @@ def generate_team_comparison(df: pd.DataFrame, team1: str, team2: str) -> pd.Dat
         return pd.DataFrame()
 
     return pd.DataFrame(rows, columns=["Metrika", "team1", "team2"]).set_index("Metrika")
-
-
 
