@@ -710,7 +710,7 @@ def render_team_comparison_section(team1, team2, stats_total, stats_home, stats_
         )
         st.caption(legend_html, unsafe_allow_html=True)
         def _highlight(row):
-            met = row["Metrika"].split(" ", 1)[1]
+            met = df.at[row.name, "Metrika"].split(" ", 1)[1]
             higher_better = TEAM_COMPARISON_HIGHER_IS_BETTER.get(met, True)
             v1, v2, diff = row["team1"], row["team2"], row["Δ"]
             color1 = color2 = diff_color = ""
