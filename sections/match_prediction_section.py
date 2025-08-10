@@ -43,7 +43,10 @@ def get_cached_match_inputs(df_hash,df, home_team, away_team, elo_dict):
     #home_exp, away_exp = expected_goals_weighted_by_elo(df, home_team, away_team, elo_dict)
     matrix = poisson_prediction(home_exp, away_exp)
     outcomes = match_outcomes_prob(matrix)
-    over_under = over_under_prob(matrix)
+    # Compute Over/Under probabilities for multiple goal lines
+    over_under = {}
+    for thr in (1.5, 2.5, 3.5):
+        over_under.update(over_under_prob(matrix, thr))
     btts = btts_prob(matrix)
     xpoints = calculate_expected_points(outcomes)
 
@@ -157,9 +160,16 @@ def display_metrics(
     cols = st.columns(4)
     cols[0].metric("xG sezóna", f"{xg_home['xG_home']:.1f} vs {xg_away['xG_away']:.1f}")
     cols[1].metric("Oček. body (xP)", f"{xpoints['Home xP']:.1f} vs {xpoints['Away xP']:.1f}")
-    cols[2].metric("BTTS / Over 2.5", f"{btts['BTTS Yes']:.1f}% / {over_under['Over 2.5']:.1f}%")
+    cols[2].metric("BTTS", f"{btts['BTTS Yes']:.1f}%")
     cols[2].caption(
-        f"Kurzy: {1 / (btts['BTTS Yes'] / 100):.2f} / {1 / (over_under['Over 2.5'] / 100):.2f}"
+        f"Kurzy: {1 / (btts['BTTS Yes'] / 100):.2f}"
+    )
+    cols[3].metric(
+        "Over 1.5 / 2.5 / 3.5",
+        f"{over_under['Over 1.5']:.1f}% / {over_under['Over 2.5']:.1f}% / {over_under['Over 3.5']:.1f}%",
+    )
+    cols[3].caption(
+        f"Kurzy: {1 / (over_under['Over 1.5'] / 100):.2f} / {1 / (over_under['Over 2.5'] / 100):.2f} / {1 / (over_under['Over 3.5'] / 100):.2f}"
     )
 
     st.markdown("## 🧠 Pravděpodobnosti výsledků")

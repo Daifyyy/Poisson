@@ -52,14 +52,19 @@ def render_multi_match_predictions(session_state, home_team, away_team, league_n
                     )
                     matrix = poisson_prediction(home_exp, away_exp)
                     outcomes = match_outcomes_prob(matrix)
-                    over_under = over_under_prob(matrix)
+                    over_under = {}
+                    for thr in (1.5, 2.5, 3.5):
+                        over_under.update(over_under_prob(matrix, thr))
                     btts = btts_prob(matrix)
                     xpoints = calculate_expected_points(outcomes)
 
                     cols = st.columns(3)
                     cols[0].metric("⚽ Očekávané góly", f"{home_exp:.1f} - {away_exp:.1f}")
                     cols[1].metric("🔵 BTTS %", f"{btts['BTTS Yes']:.1f}%")
-                    cols[2].metric("📈 Over 2.5 %", f"{over_under['Over 2.5']:.1f}%")
+                    cols[2].metric(
+                        "📈 Over 1.5 / 2.5 / 3.5",
+                        f"{over_under['Over 1.5']:.1f}% / {over_under['Over 2.5']:.1f}% / {over_under['Over 3.5']:.1f}%",
+                    )
                     # Výpočet confidence score – rozdíl mezi nejvyšší a druhou nejvyšší výstupní pravděpodobností
                     sorted_probs = sorted(outcomes.values(), reverse=True)
                     confidence_index = round(sorted_probs[0] - sorted_probs[1], 1) if len(sorted_probs) >= 2 else 0.0
@@ -87,7 +92,9 @@ def render_multi_match_predictions(session_state, home_team, away_team, league_n
                         "Home ExpG": round(home_exp, 1),
                         "Away ExpG": round(away_exp, 1),
                         "BTTS %": round(btts['BTTS Yes'], 1),
+                        "Over 1.5 %": round(over_under['Over 1.5'], 1),
                         "Over 2.5 %": round(over_under['Over 2.5'], 1),
+                        "Over 3.5 %": round(over_under['Over 3.5'], 1),
                         "Home Win %": round(outcomes["Home Win"], 1),
                         "Draw %": round(outcomes["Draw"], 1),
                         "Away Win %": round(outcomes["Away Win"], 1),
