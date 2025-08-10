@@ -136,7 +136,9 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
     float_cols = summary_table_display.select_dtypes(include="float").columns
     format_dict = {col: "{:.1f}" for col in float_cols}
     format_dict["Tým"] = clickable_team_link
-    styled_table = summary_table_display.style.format(format_dict, escape=None)
+    styled_table = (
+        summary_table_display.style.format(format_dict, escape=None).hide(axis="index")
+    )
     st.markdown(styled_table.to_html(escape=False), unsafe_allow_html=True)
 
     st.markdown("### 🌟 Top 5 týmy")
