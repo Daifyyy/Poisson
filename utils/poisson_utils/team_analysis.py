@@ -134,7 +134,14 @@ def calculate_expected_and_actual_points(df: pd.DataFrame) -> dict:
 
 
 def calculate_strength_of_schedule(df: pd.DataFrame, metric: str = "elo") -> dict:
-    """Vrací průměrnou sílu soupeřů pro každý tým.
+    """Vrací relativní kvalitu soupeřů (sílu rozlosování) pro každý tým.
+
+    Nejprve se pro všechny týmy spočítá zvolená metrika (ELO nebo pseudo-xG)
+    a z ní se určí ligový průměr a směrodatná odchylka. U každého týmu se
+    následně spočítá průměrná hodnota soupeřů, od které se odečte ligový
+    průměr a výsledek se normalizuje dělením ligovou směrodatnou odchylkou.
+    Hodnota ``0`` značí průměrnou kvalitu soupeřů, kladné hodnoty těžší
+    rozlosování a záporné jednodušší (typicky v intervalu přibližně ``-2`` až ``2``).
 
     Parametr ``metric`` určuje, zda se počítá podle ELO ratingu
     (``"elo"``) nebo podle pseudo-xG soupeřů (``"xg"``).
@@ -154,6 +161,9 @@ def calculate_strength_of_schedule(df: pd.DataFrame, metric: str = "elo") -> dic
     else:
         raise ValueError("metric must be 'elo' or 'xg'")
 
+    league_avg = np.mean(list(metric_dict.values()))
+    league_std = np.std(list(metric_dict.values()))
+
     sos = {team: [] for team in teams}
     for _, row in df.iterrows():
         home_team = row['HomeTeam']
@@ -161,7 +171,18 @@ def calculate_strength_of_schedule(df: pd.DataFrame, metric: str = "elo") -> dic
         sos[home_team].append(metric_dict.get(away_team, 0))
         sos[away_team].append(metric_dict.get(home_team, 0))
 
-    return {team: round(np.mean(values), 1) if values else 0 for team, values in sos.items()}
+    quality_of_opponents = {}
+    for team, values in sos.items():
+        if values:
+            avg_opp = np.mean(values)
+            quality = avg_opp - league_avg
+            if league_std > 0:
+                quality /= league_std
+            quality_of_opponents[team] = round(quality, 2)
+        else:
+            quality_of_opponents[team] = 0
+
+    return quality_of_opponents
 
 
 def analyze_opponent_strength(df: pd.DataFrame, team: str, is_home: bool = True) -> dict:
