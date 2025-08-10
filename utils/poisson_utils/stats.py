@@ -5,35 +5,40 @@ import numpy as np
 def aggregate_team_stats(df: pd.DataFrame) -> pd.DataFrame:
     """Agreguje statistiky za všechny zápasy (doma i venku) pro každý tým."""
     df = df.copy()
+    # inicializace chybějících sloupců, aby je bylo možné agregovat
     for col in ["HY", "AY", "HR", "AR", "HF", "AF"]:
         if col not in df.columns:
             df[col] = 0
-    teams = pd.concat([df["HomeTeam"], df["AwayTeam"]]).unique()
-    records = []
-    for team in teams:
-        home = df[df["HomeTeam"] == team]
-        away = df[df["AwayTeam"] == team]
-        goals = pd.concat([home["FTHG"], away["FTAG"]])
-        conceded = pd.concat([home["FTAG"], away["FTHG"]])
-        shots = pd.concat([home["HS"], away["AS"]])
-        shots_on_target = pd.concat([home["HST"], away["AST"]])
-        corners = pd.concat([home["HC"], away["AC"]])
-        yellows = pd.concat([home["HY"], away["AY"]])
-        reds = pd.concat([home["HR"], away["AR"]])
-        fouls = pd.concat([home["HF"], away["AF"]])
-        records.append({
-            "Tým": team,
-            "Góly": goals.mean(),
-            "Obdržené góly": conceded.mean(),
-            "Střely": shots.mean(),
-            "Na branku": shots_on_target.mean(),
-            "Rohy": corners.mean(),
-            "Žluté": yellows.mean(),
-            "Červené": reds.mean(),
-            "Fauly": fouls.mean()
-        })
-    df_stats = pd.DataFrame(records).set_index("Tým")
-    return df_stats
+
+    # připravení dat v dlouhém formátu pro přímou agregaci
+    home_cols = {
+        "HomeTeam": "Tým",
+        "FTHG": "Góly",
+        "FTAG": "Obdržené góly",
+        "HS": "Střely",
+        "HST": "Na branku",
+        "HC": "Rohy",
+        "HY": "Žluté",
+        "HR": "Červené",
+        "HF": "Fauly",
+    }
+    away_cols = {
+        "AwayTeam": "Tým",
+        "FTAG": "Góly",
+        "FTHG": "Obdržené góly",
+        "AS": "Střely",
+        "AST": "Na branku",
+        "AC": "Rohy",
+        "AY": "Žluté",
+        "AR": "Červené",
+        "AF": "Fauly",
+    }
+
+    home_df = df[list(home_cols.keys())].rename(columns=home_cols)
+    away_df = df[list(away_cols.keys())].rename(columns=away_cols)
+    stats = pd.concat([home_df, away_df], ignore_index=True)
+
+    return stats.groupby("Tým").mean()
 
 
 def calculate_points(row: pd.Series, is_home: bool) -> int:
