@@ -20,7 +20,6 @@ import urllib.parse
 from utils.poisson_utils import (
     load_data,
     detect_current_season,
-    calculate_team_strengths,
     calculate_gii_zscore,
     calculate_elo_ratings,
     get_team_average_gii,
@@ -101,7 +100,6 @@ def load_and_prepare(file_path: str):
     season_df, _ = detect_current_season(
         df, start_month=start_month, prepared=True
     )
-    team_strengths, _, _ = calculate_team_strengths(df)  # zachováno kvůli side efektům, pokud nějaké
     season_df = calculate_gii_zscore(season_df)
 
     gii_dict = get_team_average_gii(season_df)
@@ -130,8 +128,11 @@ df = df[(df["Date"].dt.date >= start_date) & (df["Date"].dt.date <= end_date)]
 season_df = season_df[
     (season_df["Date"].dt.date >= start_date) & (season_df["Date"].dt.date <= end_date)
 ]
-gii_dict = get_team_average_gii(season_df)      # přepočet po filtru
-elo_dict = calculate_elo_ratings(df)            # přepočet po filtru
+
+# využití předpočítaných hodnot místo kompletního přepočtu
+filtered_teams = set(season_df["HomeTeam"]).union(set(season_df["AwayTeam"]))
+gii_dict = {team: gii_dict.get(team) for team in filtered_teams}
+elo_dict = {team: elo_dict.get(team) for team in filtered_teams}
 
 if "match_list" not in st.session_state:
     st.session_state.match_list = []
