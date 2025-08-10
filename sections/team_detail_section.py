@@ -71,9 +71,12 @@ def render_team_detail(
         ["Vše", "Silní", "Průměrní", "Slabí"]
     )
 
+    teams_home = original_df["HomeTeam"].unique().tolist()
+    teams_away = original_df["AwayTeam"].unique().tolist()
+    compare_options = sorted(set(teams_home + teams_away) - {team})
     compare_team = st.sidebar.selectbox(
         "🔄 Porovnat s jiným týmem:",
-        ["Žádný"] + sorted(filtered_df['HomeTeam'].unique().tolist())
+        ["Žádný"] + compare_options
     )
 
     def _apply_difficulty_filter(data: pd.DataFrame) -> pd.DataFrame:
