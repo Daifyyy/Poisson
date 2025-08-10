@@ -1,5 +1,6 @@
 import time
 import sys
+import os
 from pathlib import Path
 
 import streamlit as st
@@ -29,10 +30,14 @@ from utils.frontend_utils import validate_dataset
 from utils.update_data import update_all_leagues
 
 # --- Základní nastavení ---
+# Layout can be switched via env variable STREAMLIT_LAYOUT; defaults to "wide"
+layout = os.getenv("STREAMLIT_LAYOUT", "wide")
+if layout not in {"wide", "centered"}:
+    layout = "wide"
 st.set_page_config(
     page_title="⚽ Poisson Predictor",
     page_icon="⚽",
-    layout="centered",
+    layout=layout,
     initial_sidebar_state="collapsed",
 )
 init_responsive_layout()
