@@ -7,6 +7,7 @@ Komplexní aplikace pro odhad výsledků fotbalových zápasů pomocí **Poisson
 - Hromadná predikce více zápasů s cachováním výsledků
 - Detailní profil týmu včetně ELO ratingu, xG a GII
 - Přehled ligy s tabulkou a základními statistikami
+- Strength of Schedule (SOS) s průměrnou kvalitou soupeřů podle ELO či xG
 - Aktualizace datasetů skriptem nebo API
 - Jednotkové testy pokrývající klíčové funkce
 

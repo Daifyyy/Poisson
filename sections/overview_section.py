@@ -5,7 +5,8 @@ from utils.poisson_utils import (
     aggregate_team_stats, calculate_team_pseudo_xg, add_btts_column,
     calculate_conceded_goals, calculate_recent_team_form,
     calculate_elo_changes, calculate_team_styles,
-    intensity_score_to_emoji, compute_score_stats, compute_form_trend
+    intensity_score_to_emoji, compute_score_stats, compute_form_trend,
+    calculate_strength_of_schedule,
 )
 from utils.statistics import calculate_clean_sheets
 
@@ -34,6 +35,7 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
     over25 = season_df.groupby("HomeTeam").apply(lambda x: (x['FTHG'] + x['FTAG'] > 2.5).mean() * 100).round(0)
     btts = season_df.groupby("HomeTeam")["BTTS"].mean().mul(100).round(0)
     xg_stats = calculate_team_pseudo_xg(season_df)
+    sos_dict = calculate_strength_of_schedule(season_df, metric="elo")
 
     trends = []
     avg_goals_all = []
@@ -48,6 +50,7 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
     summary_table = pd.DataFrame({
         "Tým": team_stats.index,
         "Elo": pd.Series(team_stats.index.map(lambda t: elo_dict.get(t, 1500))).round(0).values,
+        "SOS": pd.Series(team_stats.index.map(lambda t: sos_dict.get(t, 0))).round(1).values,
         "Body": team_stats.index.map(lambda t: points_data.get(t, {}).get("points", 0)),
         "Form": team_stats.index.map(lambda t: form_emojis.get(t, "❄️❄️❄️")),
         "Trend formy": trends,
@@ -64,7 +67,12 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
         "Intenzita": team_stats.index.map(lambda t: intensity_score_to_emoji(gii_dict.get(t)))
     })
 
-    summary_table = summary_table.sort_values("Body", ascending=False).reset_index(drop=True)
+    sort_option = st.selectbox("Seřadit podle:", ["Body", "SOS"], index=0)
+    if sort_option == "SOS":
+        summary_table = summary_table.sort_values("SOS", ascending=False)
+    else:
+        summary_table = summary_table.sort_values("Body", ascending=False)
+    summary_table = summary_table.reset_index(drop=True)
     import urllib.parse
     import urllib
     def clickable_team_link(team):
@@ -74,6 +82,12 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
 
     summary_table_display = summary_table.copy()
     summary_table_display["Tým"] = summary_table_display["Tým"].apply(clickable_team_link)
+
+    top_idx = summary_table['SOS'].nlargest(3).index
+    bottom_idx = summary_table['SOS'].nsmallest(3).index
+    summary_table_display["SOS"] = summary_table_display["SOS"].round(1).astype(str)
+    summary_table_display.loc[top_idx, "SOS"] += " 🔥"
+    summary_table_display.loc[bottom_idx, "SOS"] += " 🍀"
 
     st.markdown("""
     <style>
