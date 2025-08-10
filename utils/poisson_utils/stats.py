@@ -57,7 +57,7 @@ def calculate_points(row: pd.Series, is_home: bool) -> int:
 def add_btts_column(df: pd.DataFrame) -> pd.DataFrame:
     """Přidá sloupec 'BTTS' indikující, zda oba týmy skórovaly."""
     df = df.copy()
-    df['BTTS'] = df.apply(lambda row: int(row['FTHG'] > 0 and row['FTAG'] > 0), axis=1)
+    df['BTTS'] = ((df['FTHG'] > 0) & (df['FTAG'] > 0)).astype(int)
     return df
 
 
