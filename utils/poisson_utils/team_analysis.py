@@ -133,6 +133,37 @@ def calculate_expected_and_actual_points(df: pd.DataFrame) -> dict:
     return results
 
 
+def calculate_strength_of_schedule(df: pd.DataFrame, metric: str = "elo") -> dict:
+    """Vrací průměrnou sílu soupeřů pro každý tým.
+
+    Parametr ``metric`` určuje, zda se počítá podle ELO ratingu
+    (``"elo"``) nebo podle pseudo-xG soupeřů (``"xg"``).
+    """
+    df = prepare_df(df)
+    teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
+
+    if metric == "elo":
+        from .elo import calculate_elo_ratings
+
+        metric_dict = calculate_elo_ratings(df)
+    elif metric == "xg":
+        from .xg import calculate_team_pseudo_xg
+
+        xg_dict = calculate_team_pseudo_xg(df)
+        metric_dict = {team: vals.get("xg", 0) for team, vals in xg_dict.items()}
+    else:
+        raise ValueError("metric must be 'elo' or 'xg'")
+
+    sos = {team: [] for team in teams}
+    for _, row in df.iterrows():
+        home_team = row['HomeTeam']
+        away_team = row['AwayTeam']
+        sos[home_team].append(metric_dict.get(away_team, 0))
+        sos[away_team].append(metric_dict.get(home_team, 0))
+
+    return {team: round(np.mean(values), 1) if values else 0 for team, values in sos.items()}
+
+
 def analyze_opponent_strength(df: pd.DataFrame, team: str, is_home: bool = True) -> dict:
     """Analyzuje výkon týmu proti silným/průměrným/slabým soupeřům (proxy dle prům. gólů soupeře)."""
     df = prepare_df(df)
