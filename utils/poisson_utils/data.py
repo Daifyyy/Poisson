@@ -63,7 +63,11 @@ def load_data(file_path: str) -> pd.DataFrame:
 
 
 def detect_current_season(
-    df: pd.DataFrame, *, start_month: int = 8, gap_days: int = 30
+    df: pd.DataFrame,
+    *,
+    start_month: int = 8,
+    gap_days: int = 30,
+    prepared: bool = False,
 ) -> tuple:
     """Return matches belonging to the current season.
 
@@ -83,6 +87,9 @@ def detect_current_season(
         Month used as a fallback start when no large breaks are present.
     gap_days : int, optional
         Minimum number of days considered a break between seasons.
+    prepared : bool, optional
+        Set to ``True`` if ``df`` has already been processed by
+        :func:`prepare_df` to avoid running it twice.
 
     Returns
     -------
@@ -91,7 +98,8 @@ def detect_current_season(
         from the detected season.
     """
 
-    df = prepare_df(df)
+    if not prepared:
+        df = prepare_df(df)
 
     # Work only with past matches to avoid jumping to the next season because
     # of fixtures far in the future.
