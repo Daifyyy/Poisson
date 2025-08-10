@@ -52,7 +52,7 @@ def render_multi_match_predictions(session_state, home_team, away_team, league_n
                     )
                     matrix = poisson_prediction(home_exp, away_exp)
                     outcomes = match_outcomes_prob(matrix)
-                    over_under = over_under_prob(matrix)
+                    over_under = over_under_prob(matrix, 2.5)
                     btts = btts_prob(matrix)
                     xpoints = calculate_expected_points(outcomes)
 

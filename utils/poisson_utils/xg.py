@@ -188,16 +188,6 @@ def poisson_prediction_matrix(home_xg: float, away_xg: float, max_goals: int = 6
     """Vrací Poissonovu predikční matici výsledků."""
     return poisson_prediction(home_xg, away_xg, max_goals)
 
-def over_under_prob(df: pd.DataFrame, home_team: str, away_team: str, elo_dict: dict) -> dict:
-    """Spočítá pravděpodobnosti Over/Under 2.5 gólů."""
-    home_xg, away_xg = expected_goals_weighted_by_elo(df, home_team, away_team, elo_dict)
-    matrix = poisson_prediction_matrix(home_xg, away_xg)
-
-    over_2_5_prob = matrix[np.triu_indices_from(matrix, k=3)].sum()
-    under_2_5_prob = 1 - over_2_5_prob
-
-    return {"over_2.5": over_2_5_prob, "under_2.5": under_2_5_prob}
-
 def bt_btts_prob(df: pd.DataFrame, home_team: str, away_team: str, elo_dict: dict) -> dict:
     """Spočítá pravděpodobnosti BTTS (Both Teams To Score)."""
     home_xg, away_xg = expected_goals_weighted_by_elo(df, home_team, away_team, elo_dict)
@@ -219,21 +209,29 @@ def match_outcomes_prob(df: pd.DataFrame, home_team: str, away_team: str, elo_di
 
     return {"home_win": home_win, "draw": draw, "away_win": away_win}
 
-def over_under_prob(matrix: np.ndarray) -> dict:
-    """Vrací pravděpodobnosti Over/Under 2.5 gólů z Poisson matice."""
-    over_2_5 = 0.0
-    under_2_5 = 0.0
+def over_under_prob(matrix: np.ndarray, threshold: float) -> dict:
+    """Compute probabilities for an Over/Under goal line.
 
-    for i in range(matrix.shape[0]):
-        for j in range(matrix.shape[1]):
-            if (i + j) > 2:
-                over_2_5 += matrix[i, j]
-            else:
-                under_2_5 += matrix[i, j]
+    Parameters
+    ----------
+    matrix : np.ndarray
+        Poisson probability matrix for scorelines.
+    threshold : float
+        Goal threshold (e.g. 2.5 for the classic line).
+
+    Returns
+    -------
+    dict
+        Percentage probabilities for going over or under the threshold.
+    """
+
+    goals = np.add.outer(np.arange(matrix.shape[0]), np.arange(matrix.shape[1]))
+    over = float(matrix[goals > threshold].sum())
+    under = float(matrix[goals <= threshold].sum())
 
     return {
-        "Over 2.5": round(over_2_5 * 100, 1),
-        "Under 2.5": round(under_2_5 * 100, 1)
+        f"Over {threshold}": round(over * 100, 1),
+        f"Under {threshold}": round(under * 100, 1),
     }
 
 
