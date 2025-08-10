@@ -29,7 +29,12 @@ from utils.frontend_utils import validate_dataset
 from utils.update_data import update_all_leagues
 
 # --- Základní nastavení ---
-st.set_page_config(page_title="⚽ Poisson Predictor", layout="wide")
+st.set_page_config(
+    page_title="⚽ Poisson Predictor",
+    page_icon="⚽",
+    layout="centered",
+    initial_sidebar_state="collapsed",
+)
 init_responsive_layout()
 pd.options.display.float_format = lambda x: f"{x:.1f}"
 
