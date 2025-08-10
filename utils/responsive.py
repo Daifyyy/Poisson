@@ -9,6 +9,9 @@ def init_responsive_layout() -> None:
         @media (max-width: 600px) {
           div[data-testid="column"] { flex: 1 1 100% !important; }
         }
+        @media (min-width: 601px) {
+          div[data-testid="column"] { flex: initial; }
+        }
         </style>
         """,
         unsafe_allow_html=True,
