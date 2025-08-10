@@ -53,8 +53,8 @@ def render_multi_match_predictions(session_state, home_team, away_team, league_n
                     matrix = poisson_prediction(home_exp, away_exp)
                     outcomes = match_outcomes_prob(matrix)
                     over_under = {}
-                    for thr in (1.5, 2.5, 3.5):
-                        over_under.update(over_under_prob(matrix, thr))
+                    for threshold in (1.5, 2.5, 3.5):
+                        over_under.update(over_under_prob(matrix, threshold))
                     btts = btts_prob(matrix)
                     xpoints = calculate_expected_points(outcomes)
 
