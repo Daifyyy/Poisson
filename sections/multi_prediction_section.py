@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 from io import BytesIO
+from utils.responsive import responsive_columns
 from utils.poisson_utils import (
     load_data, calculate_elo_ratings,
     expected_goals_weighted_by_elo, poisson_prediction, match_outcomes_prob,
@@ -61,7 +62,7 @@ def render_multi_match_predictions(session_state, home_team, away_team, league_n
                     btts = btts_prob(matrix)
                     xpoints = calculate_expected_points(outcomes)
 
-                    cols = st.columns(3)
+                    cols = responsive_columns(3)
                     cols[0].metric("⚽ Očekávané góly", f"{home_exp:.1f} - {away_exp:.1f}")
                     cols[1].metric("🔵 BTTS %", f"{btts['BTTS Yes']:.1f}%")
                     cols[2].metric(
@@ -74,7 +75,7 @@ def render_multi_match_predictions(session_state, home_team, away_team, league_n
                     confidence_index = round(sorted_probs[0] - sorted_probs[1], 1) if len(sorted_probs) >= 2 else 0.0
 
                     st.markdown("#### 🧠 Pravděpodobnosti výsledků")
-                    result_cols = st.columns(4)
+                    result_cols = responsive_columns(4)
                     result_cols[0].metric("🏠 Výhra domácích", f"{outcomes['Home Win']:.1f}%", f"{prob_to_odds(outcomes['Home Win'])}")
                     result_cols[1].metric("🤝 Remíza", f"{outcomes['Draw']:.1f}%", f"{prob_to_odds(outcomes['Draw'])}")
                     result_cols[2].metric("🚶‍♂️ Výhra hostů", f"{outcomes['Away Win']:.1f}%", f"{prob_to_odds(outcomes['Away Win'])}")

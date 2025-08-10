@@ -4,6 +4,7 @@ from pathlib import Path
 
 import streamlit as st
 import pandas as pd
+from utils.responsive import init_responsive_layout
 
 # Umožní import lokálních balíčků i při spuštění z nadřazeného adresáře
 # (např. `streamlit run poisson/app.py`)
@@ -29,6 +30,7 @@ from utils.update_data import update_all_leagues
 
 # --- Základní nastavení ---
 st.set_page_config(page_title="⚽ Poisson Predictor", layout="wide")
+init_responsive_layout()
 pd.options.display.float_format = lambda x: f"{x:.1f}"
 
 # --- Cesty k ligovým souborům ---
