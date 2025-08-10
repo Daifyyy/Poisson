@@ -376,7 +376,7 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
         
         df_disp = pd.DataFrame(data).T
         df_disp = df_disp[["Zápasy", "Góly", "Obdržené", "Střely", "Na branku", "xG", "Body/zápas", "Čistá konta %"]]
-        st.dataframe(df_disp)
+        st.dataframe(df_disp, use_container_width=True)
 
     display_merged_table(merged_home_away_opponent_form(df, home_team), home_team, strength_home)
     display_merged_table(merged_home_away_opponent_form(df, away_team), away_team, strength_away)
