@@ -82,7 +82,6 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
         return f'<a href="?selected_team={encoded_team}&selected_league={encoded_league}">🔍 {team}</a>'
 
     summary_table_display = summary_table.copy()
-    summary_table_display["Tým"] = summary_table_display["Tým"].apply(clickable_team_link)
 
     top_idx = summary_table['SOS'].nlargest(3).index
     bottom_idx = summary_table['SOS'].nsmallest(3).index
@@ -97,7 +96,8 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
     """, unsafe_allow_html=True)
 
     st.markdown("Kliknutím na tým zobrazíš jeho detail:")
-    st.write(summary_table_display.to_html(escape=False, index=False), unsafe_allow_html=True)
+    styled_table = summary_table_display.style.format({"Tým": clickable_team_link}, escape=None)
+    st.dataframe(styled_table, use_container_width=True, hide_index=True)
 
     st.markdown("### 🌟 Top 5 týmy")
     cols = responsive_columns(4)
