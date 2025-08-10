@@ -84,3 +84,9 @@ from .match_style import (
     get_team_record,
     analyze_team_profile,
 )
+
+from .corners import (
+    expected_corners,
+    poisson_corner_matrix,
+    corner_over_under_prob,
+)
