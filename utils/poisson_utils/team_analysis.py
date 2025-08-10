@@ -526,7 +526,7 @@ def expected_goals_combined_homeaway_allmatches(
 
     def safe_stat(series, default=1.0):
         val = series.mean()
-        return val if not np.isnan(val) else default
+        return val if not pd.isna(val) else default
 
     def get_home_away_exp(sub, team, is_home):
         df_team = sub[sub['HomeTeam'] == team] if is_home else sub[sub['AwayTeam'] == team]
