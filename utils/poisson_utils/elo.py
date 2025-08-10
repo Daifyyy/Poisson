@@ -33,6 +33,52 @@ def calculate_elo_ratings(df: pd.DataFrame, k: int = 20) -> dict:
 
     return elo
 
+
+def elo_history(df: pd.DataFrame, team: str, k: int = 20) -> pd.DataFrame:
+    """Return ELO rating progression for ``team`` after each match.
+
+    The function processes matches chronologically and updates ELO ratings
+    after every game. It returns a DataFrame with the ELO value of the given
+    team following each match it participated in.
+
+    Args:
+        df: DataFrame containing match results.
+        team: Team for which the ELO history should be computed.
+        k:   K-factor used in the ELO update formula.
+
+    Returns:
+        DataFrame with columns ``Date`` and ``ELO`` sorted by date.
+    """
+
+    df = prepare_df(df).sort_values("Date")
+    teams = pd.concat([df["HomeTeam"], df["AwayTeam"]]).unique()
+    elo = {t: 1500 for t in teams}
+    history = []
+
+    for _, row in df.iterrows():
+        home_team = row["HomeTeam"]
+        away_team = row["AwayTeam"]
+        home_goals = row["FTHG"]
+        away_goals = row["FTAG"]
+
+        expected_home = 1 / (1 + 10 ** ((elo[away_team] - elo[home_team]) / 400))
+        expected_away = 1 / (1 + 10 ** ((elo[home_team] - elo[away_team]) / 400))
+
+        if home_goals > away_goals:
+            result_home, result_away = 1, 0
+        elif home_goals < away_goals:
+            result_home, result_away = 0, 1
+        else:
+            result_home = result_away = 0.5
+
+        elo[home_team] += k * (result_home - expected_home)
+        elo[away_team] += k * (result_away - expected_away)
+
+        if home_team == team or away_team == team:
+            history.append({"Date": row["Date"], "ELO": elo[team]})
+
+    return pd.DataFrame(history)
+
 def calculate_elo_changes(df: pd.DataFrame) -> pd.DataFrame:
     """Vrací DataFrame změn ELO ratingů mezi začátkem a koncem sezóny."""
     df = prepare_df(df)
