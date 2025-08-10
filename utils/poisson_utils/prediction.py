@@ -85,21 +85,37 @@ def expected_goals_vs_similar_elo_weighted(df, home_team, away_team, elo_dict, e
     ga_away = weighted_stat(df_away_relevant['FTHG'], df_away_relevant['weight'])
 
     gf_home_all = weighted_stat(
-        df_home_all.apply(lambda row: row['FTHG'] if row['HomeTeam'] == home_team else row['FTAG'], axis=1),
-        df_home_all['weight']
+        np.where(
+            df_home_all['HomeTeam'] == home_team,
+            df_home_all['FTHG'],
+            df_home_all['FTAG'],
+        ),
+        df_home_all['weight'],
     )
     ga_home_all = weighted_stat(
-        df_home_all.apply(lambda row: row['FTAG'] if row['HomeTeam'] == home_team else row['FTHG'], axis=1),
-        df_home_all['weight']
+        np.where(
+            df_home_all['HomeTeam'] == home_team,
+            df_home_all['FTAG'],
+            df_home_all['FTHG'],
+        ),
+        df_home_all['weight'],
     )
 
     gf_away_all = weighted_stat(
-        df_away_all.apply(lambda row: row['FTAG'] if row['AwayTeam'] == away_team else row['FTHG'], axis=1),
-        df_away_all['weight']
+        np.where(
+            df_away_all['AwayTeam'] == away_team,
+            df_away_all['FTAG'],
+            df_away_all['FTHG'],
+        ),
+        df_away_all['weight'],
     )
     ga_away_all = weighted_stat(
-        df_away_all.apply(lambda row: row['FTHG'] if row['AwayTeam'] == away_team else row['FTAG'], axis=1),
-        df_away_all['weight']
+        np.where(
+            df_away_all['AwayTeam'] == away_team,
+            df_away_all['FTHG'],
+            df_away_all['FTAG'],
+        ),
+        df_away_all['weight'],
     )
 
     def compute_expected(gf, ga_opp, l_home, l_away):
