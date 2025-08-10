@@ -27,6 +27,7 @@ from .prediction import (
 
 from .elo import (
     calculate_elo_ratings,
+    elo_history,
     calculate_elo_changes,
     detect_risk_factors,
     detect_positive_factors,
