@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from typing import Dict
 from utils.poisson_utils import (
-    calculate_elo_ratings, elo_history, calculate_form_emojis, calculate_expected_and_actual_points,
+    elo_history, calculate_form_emojis, calculate_expected_and_actual_points,
     aggregate_team_stats, calculate_team_pseudo_xg, add_btts_column,
     calculate_conceded_goals, calculate_recent_team_form,
     calculate_elo_changes, calculate_team_styles,
@@ -165,18 +165,6 @@ def render_team_detail(
     #card_stats = get_team_card_stats(season_df, team)
     # stats['Žluté'] = card_stats['yellow']
     # stats['Červené'] = card_stats['red']
-    elo_dict = calculate_elo_ratings(season_df)
-
-    # 📈 ELO rating progression
-    elo_prog = elo_history(season_df, team)
-    if not elo_prog.empty:
-        fig, ax = plt.subplots()
-        ax.plot(elo_prog["Date"], elo_prog["ELO"], marker="o")
-        ax.set_title("Vývoj ELO ratingu")
-        ax.set_xlabel("Datum")
-        ax.set_ylabel("ELO")
-        plt.xticks(rotation=45)
-        st.pyplot(fig)
 
     # ✅ Kontrola rozsahu dat a počtu zápasů
     st.caption(f"Počet zápasů v aktuálním datasetu: {len(season_df)}")
@@ -478,6 +466,19 @@ def render_team_detail(
             st.markdown("### 🧩 Další pozorování")
             for tag in profile["profilové hodnocení"]:
                 st.markdown(f"- {tag}")
+
+
+    # 📈 ELO rating progression
+    elo_prog = elo_history(season_df, team)
+    if not elo_prog.empty:
+        fig, ax = plt.subplots(figsize=(3.2, 2.4))
+        ax.plot(elo_prog["Date"], elo_prog["ELO"], marker="o")
+        ax.set_title("Vývoj ELO ratingu")
+        ax.set_xlabel("Datum")
+        ax.set_ylabel("ELO")
+        plt.xticks(rotation=45)
+        cols = st.columns(4)
+        cols[0].pyplot(fig)
 
     
     # def extract_match_stats(row):
