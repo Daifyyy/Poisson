@@ -10,7 +10,8 @@ from utils.poisson_utils import (
     detect_risk_factors, detect_positive_factors, calculate_warning_index,
     expected_team_stats_weighted_by_elo, classify_team_strength, merged_home_away_opponent_form,
     get_head_to_head_stats, calculate_match_tempo,get_team_style_vs_opponent_type,calculate_elo_ratings,
-    expected_goals_combined_homeaway_allmatches,expected_goals_weighted_by_home_away
+    expected_goals_combined_homeaway_allmatches,expected_goals_weighted_by_home_away,
+    expected_corners, poisson_corner_matrix, corner_over_under_prob
 
 )
 from utils.frontend_utils import display_team_status_table
@@ -89,6 +90,8 @@ def compute_match_inputs(
     xg_home = xg_dict.get(home_team, {"xG_home": 0})
     xg_away = xg_dict.get(away_team, {"xG_away": 0})
 
+    corner_home, corner_away = expected_corners(df, home_team, away_team)
+
     gii_home = gii_dict.get(home_team)
     gii_away = gii_dict.get(away_team)
     expected_gii = round(((gii_home or 0) + (gii_away or 0)) / 2, 1)
@@ -115,6 +118,8 @@ def compute_match_inputs(
         "expected_tempo": expected_tempo,
         "tempo_home": tempo_home,
         "tempo_away": tempo_away,
+        "corner_home_exp": corner_home,
+        "corner_away_exp": corner_away,
     }
 
 
@@ -218,6 +223,8 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
     tempo_home = inputs["tempo_home"]
     tempo_away = inputs["tempo_away"]
     expected_gii = inputs["expected_gii"]
+    corner_home_exp = inputs["corner_home_exp"]
+    corner_away_exp = inputs["corner_away_exp"]
 
     col1, col2 = st.columns(2)
     with col1:
@@ -281,6 +288,20 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
     )
 
     display_metrics(xg_home, xg_away, xpoints, btts, over_under, outcomes, confidence_index)
+
+    corner_line = st.sidebar.slider("Rohová hranice", 5.5, 15.5, 9.5, 0.5)
+    corner_matrix = poisson_corner_matrix(corner_home_exp, corner_away_exp)
+    corner_probs = corner_over_under_prob(corner_matrix, corner_line)
+    st.markdown("## 🛎️ Rohy")
+    corner_cols = st.columns(2)
+    corner_cols[0].metric("Průměrné rohy", f"{corner_home_exp:.1f} vs {corner_away_exp:.1f}")
+    over_key = f"Over {corner_line}"
+    corner_cols[1].metric(
+        over_key,
+        f"{corner_probs[over_key]:.1f}%",
+        f"{1 / (corner_probs[over_key] / 100):.2f}"
+    )
+    corner_cols[1].caption(f"Under: {corner_probs[f'Under {corner_line}']:.1f}%")
         # Styl hry
     st.markdown("## 🎮 Styl hry")
 

@@ -10,7 +10,7 @@ from utils.poisson_utils import (
     intensity_score_to_emoji, compute_score_stats, compute_form_trend,
     merged_home_away_opponent_form, classify_team_strength, calculate_advanced_team_metrics,
     calculate_team_extra_stats, get_team_record, analyze_team_profile, generate_team_comparison,
-    render_team_comparison_section
+    render_team_comparison_section, poisson_corner_matrix, corner_over_under_prob
 )
 from utils.statistics import calculate_clean_sheets
 
@@ -242,7 +242,23 @@ def render_team_detail(
     extra_home = calculate_team_extra_stats(home, team)
     extra_away = calculate_team_extra_stats(away, team)
 
-    
+    team_corners_for = metrics_all["Rohy"]
+    corners_against = pd.concat([
+        season_df[season_df['HomeTeam'] == team]['AC'],
+        season_df[season_df['AwayTeam'] == team]['HC']
+    ]).mean()
+    corner_line = st.sidebar.slider("Rohová hranice", 5.5, 15.5, 9.5, 0.5)
+    corner_matrix = poisson_corner_matrix(team_corners_for, corners_against)
+    corner_probs = corner_over_under_prob(corner_matrix, corner_line)
+
+    st.markdown("### 🛎️ Rohy")
+    corn_cols = st.columns(2)
+    corn_cols[0].metric("Průměrné rohy", f"{team_corners_for:.1f} vs {corners_against:.1f}")
+    over_key = f"Over {corner_line}"
+    corn_cols[1].metric(over_key, f"{corner_probs[over_key]:.1f}%")
+    corn_cols[1].caption(f"Under: {corner_probs[f'Under {corner_line}']:.1f}%")
+
+
     st.markdown("### 📊 Průměrné statistiky – Celkem / Doma / Venku")
     col_all, col_home, col_away = st.columns(3)
 
