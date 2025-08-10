@@ -16,10 +16,49 @@ def load_data(file_path: str) -> pd.DataFrame:
     """Načte CSV soubor a připraví ho."""
     df = pd.read_csv(file_path)
     df = prepare_df(df)
-    required_columns = ["Date", "HomeTeam", "AwayTeam", "FTHG", "FTAG", "HS", "AS", "HST", "AST", "HC", "AC"]
+    required_columns = [
+        "Date",
+        "HomeTeam",
+        "AwayTeam",
+        "FTHG",
+        "FTAG",
+        "HS",
+        "AS",
+        "HST",
+        "AST",
+        "HC",
+        "AC",
+        "FTR",
+        "HY",
+        "AY",
+        "HR",
+        "AR",
+        "HF",
+        "AF",
+    ]
     for col in required_columns:
         if col not in df.columns:
             raise ValueError(f"Missing column: {col}")
+
+    numeric_columns = [
+        "FTHG",
+        "FTAG",
+        "HS",
+        "AS",
+        "HST",
+        "AST",
+        "HC",
+        "AC",
+        "HY",
+        "AY",
+        "HR",
+        "AR",
+        "HF",
+        "AF",
+    ]
+    for col in numeric_columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
+
     return df
 
 

@@ -6,7 +6,26 @@ from utils.poisson_utils.match_style import style_team_table
 
 def validate_dataset(df: pd.DataFrame, min_rows: int = 1):
     """Zkontroluje, zda dataset obsahuje potřebné sloupce a minimální počet řádků."""
-    required_columns = ["Date", "HomeTeam", "AwayTeam", "FTHG", "FTAG", "HS", "AS", "HST", "AST", "HC", "AC"]
+    required_columns = [
+        "Date",
+        "HomeTeam",
+        "AwayTeam",
+        "FTHG",
+        "FTAG",
+        "HS",
+        "AS",
+        "HST",
+        "AST",
+        "HC",
+        "AC",
+        "FTR",
+        "HY",
+        "AY",
+        "HR",
+        "AR",
+        "HF",
+        "AF",
+    ]
     missing_columns = [col for col in required_columns if col not in df.columns]
     if missing_columns:
         st.warning(f"Datasetu chybí následující sloupce: {missing_columns}")

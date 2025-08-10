@@ -27,6 +27,12 @@ Základní data jsou čerpána z [football-data.co.uk](https://www.football-data
 
 Všechny CSV soubory najdeš ve složce `data/`.
 
+Základní CSV musí obsahovat alespoň tyto sloupce:
+
+```
+Date, HomeTeam, AwayTeam, FTHG, FTAG, FTR, HS, AS, HST, AST, HC, AC, HY, AY, HR, AR, HF, AF
+```
+
 ## 🛠️ Instalace
 
 ```bash
