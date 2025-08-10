@@ -63,21 +63,21 @@ def add_btts_column(df: pd.DataFrame) -> pd.DataFrame:
 
 def calculate_team_strengths(df: pd.DataFrame) -> tuple:
     """Spočítá útočnou a obrannou sílu týmů na základě gólů."""
-    teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
-    attack_strength = {}
-    defense_strength = {}
-    for team in teams:
-        home_scored = df[df['HomeTeam'] == team]['FTHG'].mean()
-        away_scored = df[df['AwayTeam'] == team]['FTAG'].mean()
-        home_conceded = df[df['HomeTeam'] == team]['FTAG'].mean()
-        away_conceded = df[df['AwayTeam'] == team]['FTHG'].mean()
-
-        attack_strength[team] = np.nanmean([home_scored, away_scored])
-        defense_strength[team] = np.nanmean([home_conceded, away_conceded])
-
-    league_attack_avg = np.nanmean(list(attack_strength.values()))
-    league_defense_avg = np.nanmean(list(defense_strength.values()))
-
+    home_stats = (
+        df.groupby("HomeTeam")[["FTHG", "FTAG"]].mean()
+        .rename(columns={"FTHG": "scored_home", "FTAG": "conceded_home"})
+    )
+    away_stats = (
+        df.groupby("AwayTeam")[["FTAG", "FTHG"]].mean()
+        .rename(columns={"FTAG": "scored_away", "FTHG": "conceded_away"})
+    )
+    stats = home_stats.join(away_stats, how="outer")
+    stats["attack"] = stats[["scored_home", "scored_away"]].mean(axis=1)
+    stats["defense"] = stats[["conceded_home", "conceded_away"]].mean(axis=1)
+    league_attack_avg = stats["attack"].mean()
+    league_defense_avg = stats["defense"].mean()
+    attack_strength = stats["attack"].to_dict()
+    defense_strength = stats["defense"].to_dict()
     return attack_strength, defense_strength, (league_attack_avg, league_defense_avg)
 
 
