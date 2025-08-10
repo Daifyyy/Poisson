@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 from typing import Dict
+from utils.responsive import responsive_columns
 from utils.poisson_utils import (
     elo_history, calculate_form_emojis, calculate_expected_and_actual_points,
     aggregate_team_stats, calculate_team_pseudo_xg, add_btts_column,
@@ -251,7 +252,7 @@ def render_team_detail(
     corner_probs = corner_over_under_prob(corner_matrix, corner_line)
 
     st.markdown("### 🛎️ Rohy")
-    corn_cols = st.columns(2)
+    corn_cols = responsive_columns(2)
     corn_cols[0].metric("Průměrné rohy", f"{team_corners_for:.1f} vs {corners_against:.1f}")
     over_key = f"Over {corner_line}"
     corn_cols[1].metric(over_key, f"{corner_probs[over_key]:.1f}%")
@@ -259,7 +260,7 @@ def render_team_detail(
 
 
     st.markdown("### 📊 Průměrné statistiky – Celkem / Doma / Venku")
-    col_all, col_home, col_away = st.columns(3)
+    col_all, col_home, col_away = responsive_columns(3)
 
     # Funkce pro delta barvy
     def colored_delta(value, league_avg, metric_name):
@@ -477,7 +478,7 @@ def render_team_detail(
         ax.set_xlabel("Datum")
         ax.set_ylabel("ELO")
         plt.xticks(rotation=45)
-        cols = st.columns(4)
+        cols = responsive_columns(4)
         cols[0].pyplot(fig)
 
     
