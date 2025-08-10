@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from utils.responsive import responsive_columns
 from utils.poisson_utils import (
     calculate_form_emojis, calculate_expected_and_actual_points,
     aggregate_team_stats, calculate_team_pseudo_xg, add_btts_column,
@@ -99,7 +100,7 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
     st.write(summary_table_display.to_html(escape=False, index=False), unsafe_allow_html=True)
 
     st.markdown("### 🌟 Top 5 týmy")
-    cols = st.columns(4)
+    cols = responsive_columns(4)
     cols[0].markdown("🔮 **Nejvíc gólů**")
     cols[0].dataframe(summary_table.sort_values("Vstřelené Góly", ascending=False).head(5)[["Tým", "Vstřelené Góly"]], hide_index=True)
 
@@ -119,7 +120,7 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
     elo_drop_df = elo_df.sort_values("Změna").head(5).reset_index(drop=True)
     off_df, def_df = calculate_team_styles(season_df)
 
-    cols2 = st.columns(4)
+    cols2 = responsive_columns(4)
     cols2[0].markdown("📈 **ELO zlepšení**")
     cols2[0].dataframe(elo_df.head(5), hide_index=True)
     cols2[1].markdown("📉 **ELO poklesy**")

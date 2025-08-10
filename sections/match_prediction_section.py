@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from typing import Any, Dict, List, Tuple
+from utils.responsive import responsive_columns
 from utils.poisson_utils import (
     calculate_elo_ratings, expected_goals_weighted_by_elo, poisson_prediction, match_outcomes_prob,
     over_under_prob, btts_prob, calculate_expected_points, calculate_pseudo_xg_for_team,
@@ -162,7 +163,7 @@ def display_metrics(
 ) -> None:
     """Display key statistical metrics and outcome probabilities."""
     st.markdown("## 📊 Klíčové metriky")
-    cols = st.columns(4)
+    cols = responsive_columns(4)
     cols[0].metric("xG sezóna", f"{xg_home['xG_home']:.1f} vs {xg_away['xG_away']:.1f}")
     cols[1].metric("Oček. body (xP)", f"{xpoints['Home xP']:.1f} vs {xpoints['Away xP']:.1f}")
     cols[2].metric("BTTS", f"{btts['BTTS Yes']:.1f}%")
@@ -178,7 +179,7 @@ def display_metrics(
     )
 
     st.markdown("## 🧠 Pravděpodobnosti výsledků")
-    cols2 = st.columns(4)
+    cols2 = responsive_columns(4)
     cols2[0].metric(
         "🏠 Výhra domácích",
         f"{outcomes['Home Win']:.1f}%",
@@ -226,7 +227,7 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
     corner_home_exp = inputs["corner_home_exp"]
     corner_away_exp = inputs["corner_away_exp"]
 
-    col1, col2 = st.columns(2)
+    col1, col2 = responsive_columns(2)
     with col1:
         st.markdown("### ⚽ Očekávané skóre")
         st.markdown(
@@ -293,7 +294,7 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
     corner_matrix = poisson_corner_matrix(corner_home_exp, corner_away_exp)
     corner_probs = corner_over_under_prob(corner_matrix, corner_line)
     st.markdown("## 🛎️ Rohy")
-    corner_cols = st.columns(2)
+    corner_cols = responsive_columns(2)
     corner_cols[0].metric("Průměrné rohy", f"{corner_home_exp:.1f} vs {corner_away_exp:.1f}")
     over_key = f"Over {corner_line}"
     corner_cols[1].metric(
@@ -305,7 +306,7 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
         # Styl hry
     st.markdown("## 🎮 Styl hry")
 
-    cols = st.columns(2)
+    cols = responsive_columns(2)
     for i, (team, tempo) in enumerate([(home_team, tempo_home), (away_team, tempo_away)]):
         over, momentum, _= detect_overperformance_and_momentum(df, team)
         team_status = classify_team_strength(df, team)
@@ -320,7 +321,7 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
 
         with cols[i]:
             st.markdown(f"### {'🏠' if i == 0 else '🚶‍♂️'} {team}")
-            left_col, right_col = st.columns(2)
+            left_col, right_col = responsive_columns(2)
 
             with left_col:
                 st.markdown(f"<p style='font-size:15px'>⚡ Tempo zápasu:</p>", unsafe_allow_html=True)
@@ -343,7 +344,7 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
                 st.markdown(f"<p style='font-size:20px'>{momentum}</p>", unsafe_allow_html=True)
 
     st.markdown("## 🎲 Riziko nečekaného průběhu")
-    col1, col2 = st.columns(2)
+    col1, col2 = responsive_columns(2)
     col1.markdown(colored_risk_tag("🎭 Přestřelka místo nudy", contrarian_score), unsafe_allow_html=True)
     col2.markdown(colored_risk_tag("🧨 Překvapení outsidera", upset_score), unsafe_allow_html=True)
 
@@ -386,7 +387,7 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
     h2h = get_head_to_head_stats(df, home_team, away_team)
 
     if h2h:
-        h2h_cols = st.columns(6)
+        h2h_cols = responsive_columns(6)
 
         h2h_cols[0].markdown("🆚 **Zápasy**")
         h2h_cols[0].markdown(f"<h3 style='margin-top:-5px'>{h2h['matches']}</h3>", unsafe_allow_html=True)
@@ -423,7 +424,7 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
         for (a, b), p in top_scores
     ])
 
-    col1, col2 = st.columns(2)
+    col1, col2 = responsive_columns(2)
     col1.markdown("### 🏅 Nejpravděpodobnější výsledky")
     col1.dataframe(top_df, use_container_width=True, hide_index=True)
     col2.markdown("### 🎯 Šance na počet vstřelených gólů")
