@@ -108,38 +108,26 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
         summary_table = summary_table.sort_values("Body", ascending=False)
     summary_table = summary_table.reset_index(drop=True)
     import urllib.parse
-    import urllib
 
-    def clickable_team_link(team):
+    def team_detail_link(team: str) -> str:
         encoded_team = urllib.parse.quote_plus(team)
         encoded_league = urllib.parse.quote_plus(league_name)
-        return f'<a href="?selected_team={encoded_team}&selected_league={encoded_league}">🔍 {team}</a>'
+        return f"?selected_team={encoded_team}&selected_league={encoded_league}"
 
     summary_table_display = summary_table.copy()
-
-    top_idx = summary_table["SOS"].nlargest(3).index
-    bottom_idx = summary_table["SOS"].nsmallest(3).index
-    summary_table_display["SOS"] = summary_table_display["SOS"].round(1).astype(str)
-    summary_table_display.loc[top_idx, "SOS"] += " 🔥"
-    summary_table_display.loc[bottom_idx, "SOS"] += " 🍀"
-
-    st.markdown(
-        """
-    <style>
-        .stDataFrame tbody tr td:first-child { white-space: nowrap; }
-    </style>
-    """,
-        unsafe_allow_html=True,
+    summary_table_display.insert(
+        1, "Detail", summary_table_display["Tým"].map(team_detail_link)
     )
 
-    st.markdown("Kliknutím na tým zobrazíš jeho detail:")
-    float_cols = summary_table_display.select_dtypes(include="float").columns
-    format_dict = {col: "{:.1f}" for col in float_cols}
-    format_dict["Tým"] = clickable_team_link
-    styled_table = (
-        summary_table_display.style.format(format_dict, escape=None).hide(axis="index")
+    st.markdown("Kliknutím na ikonu lupy zobrazíš detail týmu:")
+    st.dataframe(
+        summary_table_display,
+        column_config={
+            "Detail": st.column_config.LinkColumn("Detail", display_text="🔍"),
+        },
+        hide_index=True,
+        use_container_width=True,
     )
-    st.markdown(styled_table.to_html(escape=False), unsafe_allow_html=True)
 
     st.markdown("### 🌟 Top 5 týmy")
     cols = responsive_columns(4)
