@@ -98,7 +98,9 @@ def load_and_prepare(file_path: str):
     league_code = file_path.split("/")[-1].split("_")[0]
     start_month = LEAGUE_START_MONTH.get(league_code, 8)
 
-    season_df, _ = detect_current_season(df, start_month=start_month)
+    season_df, _ = detect_current_season(
+        df, start_month=start_month, prepared=True
+    )
     team_strengths, _, _ = calculate_team_strengths(df)  # zachováno kvůli side efektům, pokud nějaké
     season_df = calculate_gii_zscore(season_df)
 
