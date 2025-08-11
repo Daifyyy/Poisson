@@ -233,38 +233,6 @@ def render_team_detail(
 
     st.markdown("### 📊 Průměrné statistiky – Celkem / Doma / Venku")
 
-    def colored_delta(value, league_avg, metric_name):
-        diff = value - league_avg
-        arrow = "⬆️" if diff > 0 else "⬇️"
-        inverse_metrics = ["Obdržené góly", "Fauly", "Žluté", "Červené"]
-        inverse = metric_name in inverse_metrics
-        color = "red" if (diff > 0 and inverse) or (diff < 0 and not inverse) else "green"
-        return f"<span style='color:{color}'>{arrow} {diff:+.1f}</span>"
-
-    def display_metrics_block(col, title, data, advanced, extra, show_labels=True):
-        with col:
-            st.markdown(f"### {title}")
-
-            def format_metric(label, value, delta_str):
-                if show_labels:
-                    return f"**{label}:** {value:.1f} {delta_str}"
-                else:
-                    return f"{value:.1f} {delta_str}"
-
-            st.markdown(format_metric("⚽ Góly", data['Góly'], colored_delta(data['Góly'], league_avg['Góly'], 'Góly')), unsafe_allow_html=True)
-            st.markdown(format_metric("🥅 Obdržené góly", data['Obdržené góly'], colored_delta(data['Obdržené góly'], league_avg['Obdržené góly'], 'Obdržené góly')), unsafe_allow_html=True)
-            st.markdown(format_metric("📸 Střely", data['Střely'], colored_delta(data['Střely'], league_avg['Střely'], 'Střely')), unsafe_allow_html=True)
-            st.markdown(format_metric("🎯 Na branku", data['Na branku'], colored_delta(data['Na branku'], league_avg['Na branku'], 'Na branku')), unsafe_allow_html=True)
-            st.markdown(format_metric("⚠️ Fauly", data['Fauly'], colored_delta(data['Fauly'], league_avg['Fauly'], 'Fauly')), unsafe_allow_html=True)
-            st.markdown(format_metric("🟨 Žluté", data['Žluté'], colored_delta(data['Žluté'], league_avg['Žluté'], 'Žluté')), unsafe_allow_html=True)
-            st.markdown(format_metric("🟥 Červené", data['Červené'], colored_delta(data['Červené'], league_avg['Červené'], 'Červené')), unsafe_allow_html=True)
-
-            st.markdown("---")
-            st.markdown(format_metric("🎯 Přesnost střel", advanced["Přesnost střel"], colored_delta(advanced["Přesnost střel"], league_avg_advanced["Přesnost střel"], "Přesnost střel")), unsafe_allow_html=True)
-            st.markdown(format_metric("🌟 Konverzní míra", advanced["Konverzní míra"], colored_delta(advanced["Konverzní míra"], league_avg_advanced["Konverzní míra"], "Konverzní míra")), unsafe_allow_html=True)
-            st.markdown(format_metric("🧤 Čistá konta", extra["Čistá konta %"], ""), unsafe_allow_html=True)
-            st.markdown(format_metric("🎯 BTTS %", extra["BTTS %"], ""), unsafe_allow_html=True)
-
     home_adv = calculate_advanced_team_metrics(home)
     away_adv = calculate_advanced_team_metrics(away)
 
