@@ -864,7 +864,8 @@ def calculate_match_style_score_per_match(df):
     # Výpočty
     df["Tempo"] = df["HS"] + df["AS"] + df["HC"] + df["AC"] + df["HF"] + df["AF"]
     df["Goly"] = df["FTHG"] + df["FTAG"]
-    df["Konverze"] = (df["FTHG"] + df["FTAG"]) / (df["HST"] + df["AST"]).replace(0, 0.1)
+    shots_on_target = (df["HST"] + df["AST"]).astype(float).replace(0, 0.1)
+    df["Konverze"] = (df["FTHG"] + df["FTAG"]) / shots_on_target
     df["Agrese"] = df["HY"] + df["AY"] + 2 * (df["HR"] + df["AR"]) + df["HF"] + df["AF"]
 
     # Normalizace
