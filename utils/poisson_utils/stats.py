@@ -88,23 +88,21 @@ def calculate_team_strengths(df: pd.DataFrame) -> tuple:
 
 def classify_team_strength(df: pd.DataFrame, team: str) -> str:
     """Klasifikuje tým podle průměrného počtu gólů (silný, průměrný, slabý)."""
-    avg_goals = {}
-    for t in pd.concat([df['HomeTeam'], df['AwayTeam']]).unique():
-        home_avg = df[df['HomeTeam'] == t]['FTHG'].mean()
-        away_avg = df[df['AwayTeam'] == t]['FTAG'].mean()
-        avg_goals[t] = np.nanmean([home_avg, away_avg])
+    # průměrné góly z domácích a venkovních zápasů v jednom DataFrame
+    home_goals = df[["HomeTeam", "FTHG"]].rename(columns={"HomeTeam": "team", "FTHG": "goals"})
+    away_goals = df[["AwayTeam", "FTAG"]].rename(columns={"AwayTeam": "team", "FTAG": "goals"})
+    goals = pd.concat([home_goals, away_goals], ignore_index=True)
+    avg_goals = goals.groupby("team")["goals"].mean()
 
-    sorted_teams = sorted(avg_goals.items(), key=lambda x: x[1], reverse=True)
-    total = len(sorted_teams)
-    top_30 = set([t for t, _ in sorted_teams[:int(total * 0.3)]])
-    bottom_30 = set([t for t, _ in sorted_teams[-int(total * 0.3):]])
+    n = int(len(avg_goals) * 0.3)
+    top_30 = set(avg_goals.nlargest(n).index)
+    bottom_30 = set(avg_goals.nsmallest(n).index)
 
     if team in top_30:
         return "Silní"
-    elif team in bottom_30:
+    if team in bottom_30:
         return "Slabí"
-    else:
-        return "Průměrní"
+    return "Průměrní"
 
 
 def compute_form_trend(score_list):
