@@ -51,26 +51,29 @@ def poisson_over25_probability(home_exp, away_exp):
 
 def expected_goals_vs_similar_elo_weighted(df, home_team, away_team, elo_dict, elo_tolerance=50):
     df = prepare_df(df)
-    df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
-    df = df.dropna(subset=['Date'])
 
     elo_home = elo_dict.get(home_team, 1500)
     elo_away = elo_dict.get(away_team, 1500)
 
     today = df['Date'].max()
-    df['HomeELO'] = df['HomeTeam'].map(elo_dict)
-    df['AwayELO'] = df['AwayTeam'].map(elo_dict)
-    df['days_ago'] = (today - df['Date']).dt.days
-    df['weight'] = 1 / (df['days_ago'] + 1)
+    df = df.assign(
+        HomeELO=df['HomeTeam'].map(elo_dict),
+        AwayELO=df['AwayTeam'].map(elo_dict),
+        days_ago=lambda x: (today - x['Date']).dt.days,
+        weight=lambda x: 1 / (x['days_ago'] + 1),
+    )
 
-    df_home_relevant = df[(df['HomeTeam'] == home_team) & (abs(df['AwayELO'] - elo_away) <= elo_tolerance)].copy()
-    df_away_relevant = df[(df['AwayTeam'] == away_team) & (abs(df['HomeELO'] - elo_home) <= elo_tolerance)].copy()
+    home_mask = df['HomeTeam'] == home_team
+    away_mask = df['AwayTeam'] == away_team
 
-    df_home_all = df[((df['HomeTeam'] == home_team) | (df['AwayTeam'] == home_team)) &
-                     ((abs(df['AwayELO'] - elo_away) <= elo_tolerance) | (abs(df['HomeELO'] - elo_away) <= elo_tolerance))].copy()
+    df_home_relevant = df[home_mask & (abs(df['AwayELO'] - elo_away) <= elo_tolerance)]
+    df_away_relevant = df[away_mask & (abs(df['HomeELO'] - elo_home) <= elo_tolerance)]
 
-    df_away_all = df[((df['HomeTeam'] == away_team) | (df['AwayTeam'] == away_team)) &
-                     ((abs(df['HomeELO'] - elo_home) <= elo_tolerance) | (abs(df['AwayELO'] - elo_home) <= elo_tolerance))].copy()
+    df_home_all = df[(home_mask | (df['AwayTeam'] == home_team)) &
+                     ((abs(df['AwayELO'] - elo_away) <= elo_tolerance) | (abs(df['HomeELO'] - elo_away) <= elo_tolerance))]
+
+    df_away_all = df[((df['HomeTeam'] == away_team) | away_mask) &
+                     ((abs(df['HomeELO'] - elo_home) <= elo_tolerance) | (abs(df['AwayELO'] - elo_home) <= elo_tolerance))]
 
     league_avg_home = df['FTHG'].mean()
     league_avg_away = df['FTAG'].mean()
