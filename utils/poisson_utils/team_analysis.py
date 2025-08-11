@@ -753,10 +753,9 @@ def render_team_comparison_section(
                 "Metrika": f"{icon} {met}",
                 "team1": round(v1, 2),
                 "team2": round(v2, 2),
-                "Δ": round(v1 - v2, 2),
                 "Lepší": better,
             })
-        return pd.DataFrame(rows, columns=["Metrika", "team1", "team2", "Δ", "Lepší"])
+        return pd.DataFrame(rows, columns=["Metrika", "team1", "team2", "Lepší"])
 
     def _style_and_display(df_table: pd.DataFrame):
         if df_table.empty:
@@ -773,29 +772,25 @@ def render_team_comparison_section(
             met = df_table.at[row.name, "Metrika"].split(" ", 1)[1]  # sundat ikonu
             higher_better = TEAM_COMPARISON_HIGHER_IS_BETTER.get(met, True)
             v1, v2 = row["team1"], row["team2"]
-            color1 = color2 = diff_color = ""
+            color1 = color2 = ""
             if higher_better:
                 if v1 > v2:
                     color1 = "background-color: lightgreen"
-                    diff_color = "color: green"
                 elif v2 > v1:
                     color2 = "background-color: lightgreen"
-                    diff_color = "color: red"
             else:
                 if v1 < v2:
                     color1 = "background-color: lightgreen"
-                    diff_color = "color: green"
                 elif v2 < v1:
                     color2 = "background-color: lightgreen"
-                    diff_color = "color: red"
-            return pd.Series([color1, color2, diff_color], index=["team1", "team2", "Δ"])
+            return pd.Series([color1, color2], index=["team1", "team2"])
 
         styled = (
             df_table.style
             .set_properties(subset=["team1"], **{"background-color": "#add8e6"})
             .set_properties(subset=["team2"], **{"background-color": "#d3d3d3"})
             .apply(_highlight, axis=1)
-            .format({"team1": "{:.1f}", "team2": "{:.1f}", "Δ": "{:.1f}"})
+            .format({"team1": "{:.1f}", "team2": "{:.1f}"})
         )
         st.dataframe(styled, hide_index=True, use_container_width=True)
 
