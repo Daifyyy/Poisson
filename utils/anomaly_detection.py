@@ -4,7 +4,6 @@ def calculate_contrarian_risk_score(matrix, expected_goals, tempo_home, tempo_aw
     """
     Vyhodnotí riziko, že zápas nebude odpovídat očekávanému (např. místo nudného zápasu přestřelka).
     """
-    import numpy as np
 
     risk_score = 0.0
 
