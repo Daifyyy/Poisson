@@ -65,6 +65,12 @@ LEAGUE_START_MONTH = {
     # ostatní implicitně 8
 }
 
+# --- Sidebar: Navigation ---
+if st.sidebar.button("🏠 Home"):
+    st.session_state.clear()
+    st.query_params.clear()
+    st.rerun()
+
 # --- Sidebar: Správa dat ---
 with st.sidebar.expander("🔧 Správa dat"):
     if st.button("🔄 Aktualizovat data z webu"):
