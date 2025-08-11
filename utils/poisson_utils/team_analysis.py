@@ -241,14 +241,26 @@ def analyze_opponent_strength(df: pd.DataFrame, team: str, is_home: bool = True)
     }
 
 
-def get_head_to_head_stats(df: pd.DataFrame, home_team: str, away_team: str, last_n: int = 5) -> dict | None:
-    """Vrací head-to-head statistiky za posledních N zápasů mezi dvěma týmy."""
+def get_head_to_head_stats(
+    df: pd.DataFrame,
+    home_team: str,
+    away_team: str,
+    last_n: int | None = 5,
+) -> dict | None:
+    """Vrací head-to-head statistiky za posledních ``last_n`` zápasů.
+
+    Pokud je ``last_n`` ``None``, použijí se všechna dostupná utkání z
+    poskytnutého datasetu.
+    """
     df = prepare_df(df)
 
     h2h = df[
         ((df['HomeTeam'] == home_team) & (df['AwayTeam'] == away_team)) |
         ((df['HomeTeam'] == away_team) & (df['AwayTeam'] == home_team))
-    ].sort_values('Date', ascending=False).head(last_n)
+    ].sort_values('Date', ascending=False)
+
+    if last_n is not None:
+        h2h = h2h.head(last_n)
 
     if h2h.empty:
         return None
