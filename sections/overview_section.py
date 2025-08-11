@@ -19,18 +19,10 @@ from utils.poisson_utils import (
 from utils.statistics import calculate_clean_sheets
 
 
-def render_league_overview(season_df, league_name, gii_dict, elo_dict):
-    query_params = st.query_params
-    if "selected_team" in query_params:
-        return  # Pokud je aktivní detail týmu, sekce overview se nespustí
-
-    st.header(f"🏆 {league_name}")
-
+@st.cache_data
+def compute_league_summary(season_df, gii_dict, elo_dict):
+    """Return precomputed league metrics and summary table."""
     num_matches = len(season_df)
-    if num_matches == 0:
-        st.info("No match data available for this league.")
-        return
-
     avg_goals = round((season_df["FTHG"] + season_df["FTAG"]).mean(), 1)
     season_df = add_btts_column(season_df)
     btts_pct = round(100 * season_df["BTTS"].mean(), 1)
@@ -39,10 +31,6 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
         * season_df[(season_df["FTHG"] + season_df["FTAG"]) > 2.5].shape[0]
         / num_matches,
         1,
-    )
-
-    st.markdown(
-        f"🗕️ Zápasů: {num_matches}	⚽ Průměr gólů: {avg_goals}	🤽 BTTS: {btts_pct}%	📈 Over 2.5: {over_25}%"
     )
 
     form_emojis = calculate_form_emojis(season_df)
@@ -54,7 +42,7 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
         .round(0)
     )
     btts = season_df.groupby("HomeTeam")["BTTS"].mean().mul(100).round(0)
-    xg_stats = calculate_team_pseudo_xg(season_df)
+    calculate_team_pseudo_xg(season_df)
     sos_dict = calculate_strength_of_schedule(season_df, metric="elo")
 
     trends = []
@@ -99,6 +87,32 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
                 lambda t: intensity_score_to_emoji(gii_dict.get(t))
             ),
         }
+    )
+
+    return summary_table, num_matches, avg_goals, btts_pct, over_25
+
+
+def render_league_overview(season_df, league_name, gii_dict, elo_dict):
+    query_params = st.query_params
+    if "selected_team" in query_params:
+        return  # Pokud je aktivní detail týmu, sekce overview se nespustí
+
+    st.header(f"🏆 {league_name}")
+
+    if season_df.empty:
+        st.info("No match data available for this league.")
+        return
+
+    (
+        summary_table,
+        num_matches,
+        avg_goals,
+        btts_pct,
+        over_25,
+    ) = compute_league_summary(season_df, gii_dict, elo_dict)
+
+    st.markdown(
+        f"🗕️ Zápasů: {num_matches}       ⚽ Průměr gólů: {avg_goals}     🤽 BTTS: {btts_pct}%    📈 Over 2.5: {over_25}%"
     )
 
     sort_options = [col for col in summary_table.columns if col != "Tým"]
