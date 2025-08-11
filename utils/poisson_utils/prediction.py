@@ -41,12 +41,20 @@ def calculate_expected_points(outcomes: dict) -> dict:
     }
 
 
-def poisson_over25_probability(home_exp, away_exp):
-    matrix = np.zeros((7, 7))
-    for i in range(7):
-        for j in range(7):
-            matrix[i][j] = poisson.pmf(i, home_exp) * poisson.pmf(j, away_exp)
-    prob_over = sum(matrix[i][j] for i in range(7) for j in range(7) if i + j > 2.5)
+def poisson_over25_probability(home_exp: float, away_exp: float, max_goals: int = 6) -> float:
+    """Calculate probability of more than 2.5 total goals.
+
+    Args:
+        home_exp: Expected home goals.
+        away_exp: Expected away goals.
+        max_goals: Maximum number of goals to consider per team.
+
+    Returns:
+        Probability (in %) that total goals exceed 2.5.
+    """
+    goals = np.arange(0, max_goals + 1)
+    matrix = np.outer(poisson.pmf(goals, home_exp), poisson.pmf(goals, away_exp))
+    prob_over = matrix[np.triu_indices_from(matrix, k=3)].sum()
     return round(prob_over * 100, 2)
 
 
