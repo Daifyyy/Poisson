@@ -751,11 +751,12 @@ def render_team_comparison_section(
                 better = team1 if (v1 > v2) == higher_better else team2
             rows.append({
                 "Metrika": f"{icon} {met}",
+                "Metric": met,
                 "team1": round(v1, 2),
                 "team2": round(v2, 2),
                 "Lepší": better,
             })
-        return pd.DataFrame(rows, columns=["Metrika", "team1", "team2", "Lepší"])
+        return pd.DataFrame(rows, columns=["Metrika", "Metric", "team1", "team2", "Lepší"])
 
     def _style_and_display(df_table: pd.DataFrame):
         if df_table.empty:
@@ -769,7 +770,7 @@ def render_team_comparison_section(
         st.caption(legend_html, unsafe_allow_html=True)
 
         def _highlight(row):
-            met = df_table.at[row.name, "Metrika"].split(" ", 1)[1]  # sundat ikonu
+            met = df_table.at[row.name, "Metric"]
             higher_better = TEAM_COMPARISON_HIGHER_IS_BETTER.get(met, True)
             v1, v2 = row["team1"], row["team2"]
             color1 = color2 = ""
@@ -785,8 +786,9 @@ def render_team_comparison_section(
                     color2 = "background-color: lightgreen"
             return pd.Series([color1, color2], index=["team1", "team2"])
 
+        df_display = df_table.drop(columns=["Metric"])
         styled = (
-            df_table.style
+            df_display.style
             .set_properties(subset=["team1"], **{"background-color": "#add8e6"})
             .set_properties(subset=["team2"], **{"background-color": "#d3d3d3"})
             .apply(_highlight, axis=1)
@@ -794,12 +796,47 @@ def render_team_comparison_section(
         )
         st.dataframe(styled, hide_index=True, use_container_width=True)
 
+    def _category_summary(df_table: pd.DataFrame) -> pd.DataFrame:
+        if df_table.empty:
+            return pd.DataFrame()
+        rows = []
+        for cat in selected_categories:
+            metrics_in_cat = TEAM_COMPARISON_CATEGORY_MAP.get(cat, [])
+            subset = df_table[df_table["Metric"].isin(metrics_in_cat)]
+            if subset.empty:
+                continue
+            count1 = int((subset["Lepší"] == team1).sum())
+            count2 = int((subset["Lepší"] == team2).sum())
+            if count1 == count2:
+                leader = "="
+            else:
+                leader = team1 if count1 > count2 else team2
+            rows.append({
+                "Kategorie": cat,
+                team1: count1,
+                team2: count2,
+                "Vede": leader,
+            })
+        return pd.DataFrame(rows, columns=["Kategorie", team1, team2, "Vede"])
+
+    def _display_summary(df_summary: pd.DataFrame):
+        if df_summary.empty:
+            return
+        st.markdown("#### Shrnutí kategorií")
+        st.dataframe(df_summary, hide_index=True, use_container_width=True)
+
     with tab_celkem:
-        _style_and_display(_build_table(stats_total))
+        _df = _build_table(stats_total)
+        _style_and_display(_df)
+        _display_summary(_category_summary(_df))
     with tab_doma:
-        _style_and_display(_build_table(stats_home))
+        _df = _build_table(stats_home)
+        _style_and_display(_df)
+        _display_summary(_category_summary(_df))
     with tab_venku:
-        _style_and_display(_build_table(stats_away))
+        _df = _build_table(stats_away)
+        _style_and_display(_df)
+        _display_summary(_category_summary(_df))
 
 def generate_team_comparison(df: pd.DataFrame, team1: str, team2: str) -> pd.DataFrame:
     def team_stats(df, team):
