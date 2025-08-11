@@ -5,10 +5,6 @@ import numpy as np
 def aggregate_team_stats(df: pd.DataFrame) -> pd.DataFrame:
     """Agreguje statistiky za všechny zápasy (doma i venku) pro každý tým."""
     df = df.copy()
-    # inicializace chybějících sloupců, aby je bylo možné agregovat
-    for col in ["HY", "AY", "HR", "AR", "HF", "AF"]:
-        if col not in df.columns:
-            df[col] = 0
 
     # připravení dat v dlouhém formátu pro přímou agregaci
     home_cols = {
@@ -33,6 +29,12 @@ def aggregate_team_stats(df: pd.DataFrame) -> pd.DataFrame:
         "AR": "Červené",
         "AF": "Fauly",
     }
+
+    # zajistí existenci všech požadovaných sloupců
+    required_cols = (
+        df.columns.union(home_cols.keys()).union(away_cols.keys())
+    )
+    df = df.reindex(columns=required_cols, fill_value=0)
 
     home_df = df[list(home_cols.keys())].rename(columns=home_cols)
     away_df = df[list(away_cols.keys())].rename(columns=away_cols)
