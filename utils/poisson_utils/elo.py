@@ -10,11 +10,15 @@ def calculate_elo_ratings(df: pd.DataFrame, k: int = 20) -> dict:
     teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
     elo = {team: 1500 for team in teams}
 
-    for _, row in df.iterrows():
-        home_team = row['HomeTeam']
-        away_team = row['AwayTeam']
-        home_goals = row['FTHG']
-        away_goals = row['FTAG']
+    # ``itertuples`` provides a significant speed-up compared to ``iterrows``
+    # because it avoids building a Series for each row.  Using ``index=False``
+    # keeps the tuple structure minimal while still allowing attribute access
+    # by column name.
+    for row in df.itertuples(index=False):
+        home_team = row.HomeTeam
+        away_team = row.AwayTeam
+        home_goals = row.FTHG
+        away_goals = row.FTAG
 
         expected_home = 1 / (1 + 10 ** ((elo[away_team] - elo[home_team]) / 400))
         expected_away = 1 / (1 + 10 ** ((elo[home_team] - elo[away_team]) / 400))
