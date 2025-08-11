@@ -52,26 +52,46 @@ def calculate_team_pseudo_xg(df):
     xG = 0.1 * střely + 0.3 * střely na branku
     xGA = stejný výpočet na základě střel soupeře
     """
-    teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
-    result = {}
-    for team in teams:
-        home_matches = df[df['HomeTeam'] == team]
-        away_matches = df[df['AwayTeam'] == team]
-        total_matches = len(home_matches) + len(away_matches)
 
-        shots_for = home_matches['HS'].sum() + away_matches['AS'].sum()
-        shots_on_target_for = home_matches['HST'].sum() + away_matches['AST'].sum()
-        shots_against = home_matches['AS'].sum() + away_matches['HS'].sum()
-        shots_on_target_against = home_matches['AST'].sum() + away_matches['HST'].sum()
-
-        xg = 0.1 * shots_for + 0.3 * shots_on_target_for
-        xga = 0.1 * shots_against + 0.3 * shots_on_target_against
-
-        result[team] = {
-            "xg": round(xg / max(total_matches, 1), 2),
-            "xga": round(xga / max(total_matches, 1), 2)
+    # vytvoření společného DataFrame pro domácí i venkovní týmy
+    home = df[['HomeTeam', 'HS', 'HST', 'AS', 'AST']].rename(
+        columns={
+            'HomeTeam': 'Team',
+            'HS': 'shots_for',
+            'HST': 'shots_on_target_for',
+            'AS': 'shots_against',
+            'AST': 'shots_on_target_against',
         }
-    return result
+    )
+    away = df[['AwayTeam', 'AS', 'AST', 'HS', 'HST']].rename(
+        columns={
+            'AwayTeam': 'Team',
+            'AS': 'shots_for',
+            'AST': 'shots_on_target_for',
+            'HS': 'shots_against',
+            'HST': 'shots_on_target_against',
+        }
+    )
+    combined = pd.concat([home, away], ignore_index=True)
+
+    # agregace statistik pro každý tým v jednom průchodu
+    totals = combined.groupby('Team').agg(
+        shots_for=('shots_for', 'sum'),
+        shots_on_target_for=('shots_on_target_for', 'sum'),
+        shots_against=('shots_against', 'sum'),
+        shots_on_target_against=('shots_on_target_against', 'sum'),
+        matches=('shots_for', 'size'),
+    )
+
+    # výpočet pseudo xG a xGA
+    totals['xg'] = 0.1 * totals['shots_for'] + 0.3 * totals['shots_on_target_for']
+    totals['xga'] = 0.1 * totals['shots_against'] + 0.3 * totals['shots_on_target_against']
+
+    # přepočet na průměr na zápas a převod na slovník
+    totals['xg'] = (totals['xg'] / totals['matches']).round(2)
+    totals['xga'] = (totals['xga'] / totals['matches']).round(2)
+
+    return totals[['xg', 'xga']].to_dict('index')
 
 
 def expected_goals_weighted_by_elo(df: pd.DataFrame, home_team: str, away_team: str, elo_dict: dict) -> tuple:
