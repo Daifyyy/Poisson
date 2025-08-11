@@ -36,9 +36,9 @@ def load_data(file_path: str) -> pd.DataFrame:
         "HF",
         "AF",
     ]
-    for col in required_columns:
-        if col not in df.columns:
-            raise ValueError(f"Missing column: {col}")
+    missing_columns = set(required_columns) - set(df.columns)
+    if missing_columns:
+        raise ValueError(f"Missing columns: {', '.join(sorted(missing_columns))}")
 
     numeric_columns = [
         "FTHG",
@@ -56,8 +56,7 @@ def load_data(file_path: str) -> pd.DataFrame:
         "HF",
         "AF",
     ]
-    for col in numeric_columns:
-        df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
+    df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors="coerce").astype("Int64")
 
     return df
 
