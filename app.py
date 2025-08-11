@@ -133,13 +133,15 @@ if st.session_state.get("reload_flag"):
 df, season_df, gii_dict, elo_dict = load_and_prepare(league_file)
 
 # --- Date range filtr ---
-start_default = season_df["Date"].min().date()
-end_default = season_df["Date"].max().date()
+overall_start = df["Date"].min().date()
+overall_end = df["Date"].max().date()
+season_start = season_df["Date"].min().date()
+season_end = season_df["Date"].max().date()
 start_date = st.sidebar.date_input(
-    "📅 Začátek", start_default, min_value=start_default, max_value=end_default
+    "📅 Začátek", season_start, min_value=overall_start, max_value=overall_end
 )
 end_date = st.sidebar.date_input(
-    "📅 Konec", end_default, min_value=start_default, max_value=end_default
+    "📅 Konec", season_end, min_value=overall_start, max_value=overall_end
 )
 
 df = df[(df["Date"].dt.date >= start_date) & (df["Date"].dt.date <= end_date)]
