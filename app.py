@@ -131,6 +131,8 @@ if st.session_state.get("reload_flag"):
     del st.session_state["reload_flag"]
 
 df, season_df, gii_dict, elo_dict = load_and_prepare(league_file)
+# Zachováme kompletní dataset pro historické statistiky (H2H apod.)
+full_df = df.copy()
 
 # --- Date range filtr ---
 overall_start = df["Date"].min().date()
@@ -205,7 +207,14 @@ elif multi_prediction_mode:
 
 elif home_team != away_team:
     render_single_match_prediction(
-        df, season_df, home_team, away_team, league_name, gii_dict, elo_dict
+        df,
+        season_df,
+        full_df,
+        home_team,
+        away_team,
+        league_name,
+        gii_dict,
+        elo_dict,
     )
 
 else:

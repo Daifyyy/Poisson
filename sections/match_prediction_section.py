@@ -202,7 +202,16 @@ def display_metrics(
 
 
 
-def render_single_match_prediction(df, season_df, home_team, away_team, league_name, gii_dict, elo_dict):
+def render_single_match_prediction(
+    df,
+    season_df,
+    full_df,
+    home_team,
+    away_team,
+    league_name,
+    gii_dict,
+    elo_dict,
+):
     st.header(f"🔮 {home_team} vs {away_team}")
 
     try:
@@ -378,13 +387,21 @@ def render_single_match_prediction(df, season_df, home_team, away_team, league_n
         df_disp = df_disp[["Zápasy", "Góly", "Obdržené", "Střely", "Na branku", "xG", "Body/zápas", "Čistá konta %"]]
         st.dataframe(df_disp, use_container_width=True)
 
-    display_merged_table(merged_home_away_opponent_form(df, home_team), home_team, strength_home)
-    display_merged_table(merged_home_away_opponent_form(df, away_team), away_team, strength_away)
+    display_merged_table(
+        merged_home_away_opponent_form(full_df, home_team),
+        home_team,
+        strength_home,
+    )
+    display_merged_table(
+        merged_home_away_opponent_form(full_df, away_team),
+        away_team,
+        strength_away,
+    )
 
     # Head-to-head statistiky
     # Head-to-Head – kompaktní přehled
     st.markdown("## 💬 Head-to-Head")
-    h2h = get_head_to_head_stats(df, home_team, away_team)
+    h2h = get_head_to_head_stats(full_df, home_team, away_team, last_n=None)
 
     if h2h:
         h2h_cols = responsive_columns(6)
