@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pandas as pd
 
 
@@ -14,7 +16,31 @@ def prepare_df(df: pd.DataFrame) -> pd.DataFrame:
 
 def load_data(file_path: str) -> pd.DataFrame:
     """Načte CSV soubor a připraví ho."""
-    df = pd.read_csv(file_path)
+    numeric_columns = [
+        "FTHG",
+        "FTAG",
+        "HS",
+        "AS",
+        "HST",
+        "AST",
+        "HC",
+        "AC",
+        "HY",
+        "AY",
+        "HR",
+        "AR",
+        "HF",
+        "AF",
+    ]
+
+    file_path = Path(file_path)
+    parquet_path = file_path.with_suffix(".parquet")
+    if parquet_path.exists():
+        df = pd.read_parquet(parquet_path)
+    else:
+        dtype_mapping = {col: "Int64" for col in numeric_columns}
+        df = pd.read_csv(file_path, dtype=dtype_mapping, parse_dates=["Date"])
+
     df = prepare_df(df)
     required_columns = [
         "Date",
@@ -39,24 +65,6 @@ def load_data(file_path: str) -> pd.DataFrame:
     missing_columns = set(required_columns) - set(df.columns)
     if missing_columns:
         raise ValueError(f"Missing columns: {', '.join(sorted(missing_columns))}")
-
-    numeric_columns = [
-        "FTHG",
-        "FTAG",
-        "HS",
-        "AS",
-        "HST",
-        "AST",
-        "HC",
-        "AC",
-        "HY",
-        "AY",
-        "HR",
-        "AR",
-        "HF",
-        "AF",
-    ]
-    df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors="coerce").astype("Int64")
 
     return df
 
