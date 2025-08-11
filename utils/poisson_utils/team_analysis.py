@@ -623,6 +623,27 @@ def expected_goals_combined_homeaway_allmatches(
     return final_home, final_away
 
 
+TEAM_COMPARISON_CATEGORY_MAP = {
+    "Offense": [
+        "Góly",
+        "Střely",
+        "Na branku",
+        "Rohy",
+        "Ofenzivní efektivita",
+        "Přesnost střel",
+        "Konverzní míra",
+        "Over 2.5 %",
+        "BTTS %",
+    ],
+    "Defense": [
+        "Obdržené góly",
+        "Defenzivní efektivita",
+        "Čistá konta %",
+    ],
+    "Discipline": ["Fauly", "Žluté", "Červené"],
+}
+
+
 TEAM_COMPARISON_ICON_MAP = {
     "Góly": "⚽",
     "Obdržené góly": "🥅",
@@ -689,17 +710,28 @@ def render_team_comparison_section(
     st.caption(f"{team1} vs {team2}")
 
     metrics_all = list(TEAM_COMPARISON_ICON_MAP.keys())
+    category_options = list(TEAM_COMPARISON_CATEGORY_MAP.keys())
+    selected_categories = st.multiselect(
+        "Vyber kategorie", options=category_options, default=category_options
+    )
+    if not selected_categories:
+        st.info("Vyber alespoň jednu kategorii.")
+        return
+
+    metrics = []
+    for cat in selected_categories:
+        metrics.extend(TEAM_COMPARISON_CATEGORY_MAP.get(cat, []))
+    metrics = [m for m in metrics if m in metrics_all]
+    metrics = list(dict.fromkeys(metrics))
+    if not metrics:
+        st.info("Pro vybrané kategorie nejsou dostupné metriky.")
+        return
 
     with st.expander("Legenda"):
-        for met in metrics_all:
+        for met in metrics:
             icon = TEAM_COMPARISON_ICON_MAP.get(met, "")
             desc = TEAM_COMPARISON_DESC_MAP.get(met, "")
             st.markdown(f"{icon} {met} - {desc}")
-
-    metrics = st.multiselect("Vyber metriky k porovnání", options=metrics_all, default=metrics_all)
-    if not metrics:
-        st.info("Vyber alespoň jednu metriku.")
-        return
 
     tab_celkem, tab_doma, tab_venku = st.tabs(["Celkem", "Doma", "Venku"])
 
