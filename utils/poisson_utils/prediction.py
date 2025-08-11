@@ -11,9 +11,10 @@ logger = logging.getLogger(__name__)
 
 def poisson_prediction(home_exp_goals: float, away_exp_goals: float, max_goals: int = 6) -> np.ndarray:
     """Vrací Poissonovu pravděpodobnost výsledků do maximálního počtu gólů."""
-    home_goals_probs = [poisson_pmf(home_exp_goals, i) for i in range(max_goals + 1)]
-    away_goals_probs = [poisson_pmf(away_exp_goals, i) for i in range(max_goals + 1)]
-    matrix = np.outer(home_goals_probs, away_goals_probs)
+    goals = np.arange(max_goals + 1)
+    home_probs = poisson.pmf(goals, home_exp_goals)
+    away_probs = poisson.pmf(goals, away_exp_goals)
+    matrix = np.outer(home_probs, away_probs)
     return matrix
 
 
