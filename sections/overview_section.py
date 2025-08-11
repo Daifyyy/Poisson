@@ -101,11 +101,20 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
         }
     )
 
-    sort_option = st.selectbox("Seřadit podle:", ["Body", "SOS"], index=0)
-    if sort_option == "SOS":
-        summary_table = summary_table.sort_values("SOS", ascending=False)
+    sort_options = [col for col in summary_table.columns if col != "Tým"]
+    default_index = sort_options.index("Body") if "Body" in sort_options else 0
+    sort_option = st.selectbox("Seřadit podle:", sort_options, index=default_index)
+
+    numeric_series = pd.to_numeric(summary_table[sort_option], errors="coerce")
+    if numeric_series.notna().any():
+        summary_table = summary_table.sort_values(
+            by=sort_option,
+            key=lambda col: pd.to_numeric(col, errors="coerce"),
+            ascending=False,
+        )
     else:
-        summary_table = summary_table.sort_values("Body", ascending=False)
+        summary_table = summary_table.sort_values(sort_option, ascending=False)
+
     summary_table = summary_table.reset_index(drop=True)
     import urllib.parse
 
