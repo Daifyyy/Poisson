@@ -91,3 +91,5 @@ from .corners import (
     poisson_corner_matrix,
     corner_over_under_prob,
 )
+
+from .whoscored_api import get_whoscored_xg
