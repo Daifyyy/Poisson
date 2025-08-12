@@ -1,14 +1,17 @@
 @echo off
 setlocal enableextensions enabledelayedexpansion
 
-rem === Step 0: Change to project folder ===
+set LOGFILE=bat_log.txt
+echo === START %DATE% %TIME% === > %LOGFILE%
+
 cd /d C:\Projekt\Poisson || (
-    echo [ERROR] Could not find folder: C:\Projekt\Poisson
+    echo [ERROR] Could not find folder: C:\Projekt\Poisson >> %LOGFILE%
+    echo Failed to change directory. >> %LOGFILE%
+    type %LOGFILE%
     pause
     exit /b 1
 )
 
-rem === Step 1: Select Python interpreter ===
 if exist .venv\Scripts\python.exe (
     set "PY=.venv\Scripts\python.exe"
 ) else if exist venv\Scripts\python.exe (
@@ -17,41 +20,39 @@ if exist .venv\Scripts\python.exe (
     set "PY=python"
 )
 
-rem === Step 2: Git stash and pull ===
-echo [INFO] Stashing local changes...
-git stash push -m "auto-stash before pull"
-IF %ERRORLEVEL% NEQ 0 (
-    echo [WARN] Git stash failed.
-)
+echo [INFO] Stashing local changes... >> %LOGFILE%
+git stash push -m "auto-stash before pull" >> %LOGFILE% 2>&1
 
-echo [INFO] Pulling changes from remote...
-git pull --rebase
+echo [INFO] Pulling from remote... >> %LOGFILE%
+git pull --rebase >> %LOGFILE% 2>&1
 IF %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] Git pull failed.
+    echo [ERROR] Git pull failed. >> %LOGFILE%
+    type %LOGFILE%
     pause
     exit /b 1
 )
 
-echo [INFO] Applying stashed changes...
-git stash pop
+echo [INFO] Re-applying stash... >> %LOGFILE%
+git stash pop >> %LOGFILE% 2>&1
 
-rem === Step 3: Update CSV files ===
-echo [STEP 1/3] Running update_league_data.py...
-%PY% update_league_data.py
+echo [STEP 1/3] Running clean_existing_csvs.py... >> %LOGFILE%
+%PY% clean_existing_csvs.py >> %LOGFILE% 2>&1
 IF %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] Data update failed.
+    echo [ERROR] CSV cleaning failed. >> %LOGFILE%
+    type %LOGFILE%
     pause
     exit /b 1
 )
 
-rem === Step 4: Commit & push changes ===
-echo [STEP 2/3] Committing and pushing changes...
-%PY% commit_and_push.py
+echo [STEP 2/3] Running commit_and_push.py... >> %LOGFILE%
+%PY% commit_and_push.py >> %LOGFILE% 2>&1
 IF %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] Commit and push failed.
+    echo [ERROR] Commit & push failed. >> %LOGFILE%
+    type %LOGFILE%
     pause
     exit /b 1
 )
 
-echo [DONE] All operations completed successfully.
+echo [DONE] All tasks completed successfully. >> %LOGFILE%
+type %LOGFILE%
 pause

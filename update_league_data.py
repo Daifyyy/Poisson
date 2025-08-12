@@ -124,9 +124,14 @@ def read_csv_safely(content: bytes, expected_div: str, content_type: str = "") -
         log("Missing 'Div' column - returning empty DataFrame.")
         return pd.DataFrame()
 
+    # Robust Date parsing
     if "Date" in df.columns:
         df["Date"] = pd.to_datetime(df["Date"], dayfirst=True, errors="coerce")
-    df = df.dropna(how="all")
+        df = df[~df["Date"].isna()]  # remove invalid or missing dates
+        df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")  # enforce consistent format
+    else:
+        log("Missing 'Date' column – skipping file.")
+        return pd.DataFrame()
     return df
 
 def generate_key(df: pd.DataFrame) -> pd.Series:
