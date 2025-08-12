@@ -1,13 +1,19 @@
-"""Utility for fetching and caching team-level xG data from WhoScored.
+"""Utility for fetching and caching team-level xG/xGA data from WhoScored.
 
-The module provides a single public function ``get_whoscored_xg`` which
-retrieves the expected goals (xG) value for a given team.  Results are cached on
- disk to avoid hitting the remote service repeatedly.  Basic retry logic with
-exponential backoff is implemented to gracefully handle rate limits.
+The module exposes two public helpers:
+
+``get_whoscored_xg``
+    Returns only the expected goals (xG) value for backwards compatibility.
+
+``get_whoscored_xg_xga``
+    Returns a dictionary with both ``xg`` and ``xga`` for a given team.  The
+    results are cached on disk to avoid hitting the remote service repeatedly
+    and basic retry logic with exponential backoff is implemented to gracefully
+    handle rate limits.
 
 The WhoScored API is not publicly documented; this utility expects an endpoint
-that returns JSON data containing an ``xG`` field.  If the endpoint changes or
- returns unexpected data, the function will simply return ``float('nan')``.
+that returns JSON data containing ``xG`` and ``xGA`` fields.  If the endpoint
+changes or returns unexpected data, ``float('nan')`` values are used.
 """
 from __future__ import annotations
 
@@ -27,8 +33,9 @@ CACHE_FILE = Path(__file__).with_name("whoscored_xg_cache.json")
 # WhoScored changes their API.
 API_URL = "https://www.whoscored.com/api/team/{team}/xg"
 
-# In-memory cache loaded from disk.  Keys are lower-case team names.
-_cache: Dict[str, float] = {}
+# In-memory cache loaded from disk.  Keys are lower-case team names and map to
+# dictionaries with ``xg`` and ``xga`` values.
+_cache: Dict[str, Dict[str, float]] = {}
 
 
 def _load_cache() -> None:
@@ -36,8 +43,23 @@ def _load_cache() -> None:
     global _cache
     if CACHE_FILE.exists():
         try:
-            _cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+            data = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
+            data = {}
+
+        # Older versions stored just floats.  Convert to the new structure.
+        if isinstance(data, dict):
+            converted = {}
+            for key, val in data.items():
+                if isinstance(val, dict):
+                    converted[key] = {
+                        "xg": float(val.get("xg", float("nan"))),
+                        "xga": float(val.get("xga", float("nan"))),
+                    }
+                else:  # old format ``team -> xg``
+                    converted[key] = {"xg": float(val), "xga": float("nan")}
+            _cache = converted
+        else:
             _cache = {}
     else:
         _cache = {}
@@ -57,12 +79,12 @@ def _save_cache() -> None:
 _load_cache()
 
 
-def _fetch_xg_from_api(team_name: str) -> float:
-    """Fetch xG for ``team_name`` from the remote WhoScored API.
+def _fetch_xg_xga_from_api(team_name: str) -> Dict[str, float]:
+    """Fetch xG and xGA for ``team_name`` from the remote WhoScored API.
 
     If the API responds with HTTP 429 (rate limit) the request is retried up to
     three times with exponential backoff.  Any network error or missing data
-    results in ``float('nan')`` being returned.
+    results in ``float('nan')`` values being returned.
     """
     url = API_URL.format(team=team_name)
     backoff = 1
@@ -70,7 +92,7 @@ def _fetch_xg_from_api(team_name: str) -> float:
         try:
             response = requests.get(url, timeout=10)
         except requests.RequestException:
-            return float("nan")
+            return {"xg": float("nan"), "xga": float("nan")}
 
         if response.status_code == 429:
             time.sleep(backoff)
@@ -78,31 +100,45 @@ def _fetch_xg_from_api(team_name: str) -> float:
             continue
 
         if response.status_code != 200:
-            return float("nan")
+            return {"xg": float("nan"), "xga": float("nan")}
 
         try:
             data = response.json()
         except ValueError:
-            return float("nan")
+            return {"xg": float("nan"), "xga": float("nan")}
 
-        xg = data.get("xG")
-        return float(xg) if xg is not None else float("nan")
+        xg = data.get("xG") or data.get("xg")
+        xga = data.get("xGA") or data.get("xga")
+        return {
+            "xg": float(xg) if xg is not None else float("nan"),
+            "xga": float(xga) if xga is not None else float("nan"),
+        }
 
-    return float("nan")
+    return {"xg": float("nan"), "xga": float("nan")}
 
 
-def get_whoscored_xg(team_name: str) -> float:
-    """Return the xG value for ``team_name`` fetched from WhoScored.
+def get_whoscored_xg_xga(team_name: str) -> Dict[str, float]:
+    """Return a dictionary with ``xg`` and ``xga`` for ``team_name``.
 
-    The result is cached to reduce network requests.  If the data is unavailable
-    or an error occurs, ``float('nan')`` is returned.
+    The result is cached to avoid repeated network calls.  Missing values are
+    represented as ``float('nan')``.
     """
     key = team_name.lower()
     if key in _cache:
         return _cache[key]
 
-    xg = _fetch_xg_from_api(team_name)
-    _cache[key] = xg
+    stats = _fetch_xg_xga_from_api(team_name)
+    _cache[key] = stats
     _save_cache()
-    return xg
+    return stats
+
+
+def get_whoscored_xg(team_name: str) -> float:
+    """Return only the xG value for ``team_name``.
+
+    This is a thin wrapper around :func:`get_whoscored_xg_xga` kept for
+    backwards compatibility with existing code that expects a single float.
+    """
+    stats = get_whoscored_xg_xga(team_name)
+    return stats.get("xg", float("nan"))
 

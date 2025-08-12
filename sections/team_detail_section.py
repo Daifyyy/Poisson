@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 from typing import Dict
 from utils.responsive import responsive_columns
 from utils.poisson_utils import (
     elo_history, calculate_form_emojis, calculate_expected_and_actual_points,
-    aggregate_team_stats, calculate_team_pseudo_xg, add_btts_column,
+    aggregate_team_stats, calculate_team_pseudo_xg, get_whoscored_xg_xga,
     calculate_conceded_goals, calculate_recent_team_form,
     calculate_elo_changes, calculate_team_styles,
     intensity_score_to_emoji, compute_score_stats, compute_form_trend,
@@ -172,17 +173,41 @@ def render_team_detail(
     st.caption(f"Počet zápasů v aktuálním datasetu: {len(season_df)}")
     st.caption(f"Rozsah dat: {season_df['Date'].min().date()} až {season_df['Date'].max().date()}")
 
-    # ✅ xG a xGA – kontrola struktury + fallback
-    # Výpočet xG / xGA se zarovnáním názvu týmu
-    from utils.poisson_utils.xg import calculate_team_pseudo_xg
-    xg_dict = calculate_team_pseudo_xg(season_df)
-    # klíče bez mezer a lowercase (normalize)
-    normalized_xg_dict = {k.strip().lower(): v for k, v in xg_dict.items()}
-    normalized_team = team.strip().lower()
+    # ✅ xG a xGA – primárně z WhoScored, fallback na pseudo-xG
+    ws_stats = get_whoscored_xg_xga(team)
+    pseudo_dict = calculate_team_pseudo_xg(season_df)
+    pseudo_stats = pseudo_dict.get(team, {})
 
-    team_xg_data = normalized_xg_dict.get(normalized_team, {})
-    team_xg = team_xg_data.get("xg", 0)
-    team_xga = team_xg_data.get("xga", 0)
+    team_xg = ws_stats.get("xg", np.nan)
+    team_xga = ws_stats.get("xga", np.nan)
+    if np.isnan(team_xg):
+        team_xg = pseudo_stats.get("xg", 0)
+    if np.isnan(team_xga):
+        team_xga = pseudo_stats.get("xga", 0)
+
+    # Fallback values for home/away splits using pseudo-xG
+    def _pseudo_xg_split(df_home: pd.DataFrame, df_away: pd.DataFrame):
+        coeff_shot = 0.1
+        coeff_on = 0.3
+        xg_h = (
+            (df_home['HS'] * coeff_shot + df_home['HST'] * coeff_on).mean()
+            if not df_home.empty else 0.0
+        )
+        xga_h = (
+            (df_home['AS'] * coeff_shot + df_home['AST'] * coeff_on).mean()
+            if not df_home.empty else 0.0
+        )
+        xg_a = (
+            (df_away['AS'] * coeff_shot + df_away['AST'] * coeff_on).mean()
+            if not df_away.empty else 0.0
+        )
+        xga_a = (
+            (df_away['HS'] * coeff_shot + df_away['HST'] * coeff_on).mean()
+            if not df_away.empty else 0.0
+        )
+        return xg_h, xga_h, xg_a, xga_a
+
+    home_xg, home_xga, away_xg, away_xga = _pseudo_xg_split(home, away)
 
     #card_stats = get_team_card_stats(season_df, team)
     # yellow_per_foul = card_stats["yellow"] / card_stats["fouls"] if card_stats["fouls"] else 0
@@ -245,6 +270,8 @@ def render_team_detail(
 
     data_table = {
         "Celkem": {
+            "xG": team_xg,
+            "xGA": team_xga,
             **metrics_all,
             "Přesnost střel %": adv_value(advanced_stats, "Přesnost střel"),
             "Konverzní míra %": adv_value(advanced_stats, "Konverzní míra"),
@@ -252,6 +279,8 @@ def render_team_detail(
             "BTTS %": extra_all["BTTS %"],
         },
         "Doma": {
+            "xG": home_xg,
+            "xGA": home_xga,
             **metrics_home,
             "Přesnost střel %": adv_value(home_adv, "Přesnost střel"),
             "Konverzní míra %": adv_value(home_adv, "Konverzní míra"),
@@ -259,6 +288,8 @@ def render_team_detail(
             "BTTS %": extra_home["BTTS %"],
         },
         "Venku": {
+            "xG": away_xg,
+            "xGA": away_xga,
             **metrics_away,
             "Přesnost střel %": adv_value(away_adv, "Přesnost střel"),
             "Konverzní míra %": adv_value(away_adv, "Konverzní míra"),
@@ -269,6 +300,8 @@ def render_team_detail(
 
     metrics_df = pd.DataFrame(data_table)
     metrics_df = metrics_df.reindex([
+        "xG",
+        "xGA",
         "Góly",
         "Obdržené góly",
         "Střely",
@@ -284,6 +317,7 @@ def render_team_detail(
     ])
 
     icon_map = TEAM_COMPARISON_ICON_MAP.copy()
+    icon_map["xGA"] = "🚫"
     icon_map["Přesnost střel %"] = icon_map.pop("Přesnost střel", "")
     icon_map["Konverzní míra %"] = icon_map.pop("Konverzní míra", "")
 
@@ -292,6 +326,7 @@ def render_team_detail(
 
     with st.expander("Legenda"):
         desc_map = TEAM_COMPARISON_DESC_MAP.copy()
+        desc_map["xGA"] = "Očekávané obdržené góly podle WhoScored"
         desc_map["Přesnost střel %"] = desc_map.pop("Přesnost střel", "")
         desc_map["Konverzní míra %"] = desc_map.pop("Konverzní míra", "")
         for key in metrics_df.index:
