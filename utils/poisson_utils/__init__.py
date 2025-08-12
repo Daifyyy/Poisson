@@ -92,4 +92,4 @@ from .corners import (
     corner_over_under_prob,
 )
 
-from .whoscored_api import get_whoscored_xg
+from .whoscored_api import get_whoscored_xg, get_whoscored_xg_xga
