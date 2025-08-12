@@ -15,6 +15,7 @@ from utils.poisson_utils import (
     compute_score_stats,
     compute_form_trend,
     calculate_strength_of_schedule,
+    get_whoscored_xg_xga,
 )
 from utils.statistics import calculate_clean_sheets
 
@@ -42,12 +43,14 @@ def compute_league_summary(season_df, gii_dict, elo_dict):
         .round(0)
     )
     btts = season_df.groupby("HomeTeam")["BTTS"].mean().mul(100).round(0)
-    calculate_team_pseudo_xg(season_df)
+    pseudo_dict = calculate_team_pseudo_xg(season_df)
     sos_dict = calculate_strength_of_schedule(season_df, metric="elo")
 
     trends = []
     avg_goals_all = []
     score_var = []
+    xg_vals = []
+    xga_vals = []
 
     for team in team_stats.index:
         score_list, avg_goals_per_match, score_variance = compute_score_stats(
@@ -56,6 +59,17 @@ def compute_league_summary(season_df, gii_dict, elo_dict):
         trends.append(compute_form_trend(score_list))
         avg_goals_all.append(round(avg_goals_per_match, 1))
         score_var.append(round(score_variance, 1))
+
+        ws_stats = get_whoscored_xg_xga(team)
+        pseudo_stats = pseudo_dict.get(team, {})
+        team_xg = ws_stats.get("xg")
+        team_xga = ws_stats.get("xga")
+        if pd.isna(team_xg):
+            team_xg = pseudo_stats.get("xg", 0)
+        if pd.isna(team_xga):
+            team_xga = pseudo_stats.get("xga", 0)
+        xg_vals.append(round(team_xg, 2))
+        xga_vals.append(round(team_xga, 2))
 
     summary_table = pd.DataFrame(
         {
@@ -73,6 +87,8 @@ def compute_league_summary(season_df, gii_dict, elo_dict):
             "Trend formy": trends,
             "Góly celkem": avg_goals_all,
             "Rozptyl skóre": score_var,
+            "xG": xg_vals,
+            "xGA": xga_vals,
             "Vstřelené Góly": team_stats["Góly"].round(1),
             "Střely": team_stats["Střely"].round(1),
             "Na branku": team_stats["Na branku"].round(1),
@@ -173,6 +189,18 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
     cols[3].markdown("📈 **Nejlepší forma**")
     cols[3].dataframe(
         summary_table.sort_values("Form", ascending=False).head(5)[["Tým", "Form"]],
+        hide_index=True,
+    )
+
+    cols_xg = responsive_columns(2)
+    cols_xg[0].markdown("🎯 **Nejvyšší xG**")
+    cols_xg[0].dataframe(
+        summary_table.sort_values("xG", ascending=False).head(5)[["Tým", "xG"]],
+        hide_index=True,
+    )
+    cols_xg[1].markdown("🚫 **Nejvyšší xGA**")
+    cols_xg[1].dataframe(
+        summary_table.sort_values("xGA", ascending=False).head(5)[["Tým", "xGA"]],
         hide_index=True,
     )
 
