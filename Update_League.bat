@@ -42,7 +42,7 @@ git stash pop
 
 rem === Spuštění čištění CSV ===
 echo [KROK 1/3] Čistím CSV...
-%PY% Data\clean_existing_csvs.py
+%PY% clean_existing_csvs.py
 IF %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Čištění CSV selhalo.
     pause
