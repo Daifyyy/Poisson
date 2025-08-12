@@ -307,19 +307,42 @@ def merged_home_away_opponent_form(df: pd.DataFrame, team: str) -> dict:
 
     def summarize(matches, is_home):
         if matches.empty:
-            return {"Z": 0, "G": 0, "OG": 0, "S": 0, "SOT": 0, "xG": 0, "PTS": 0, "CS": 0}
+            return {
+                "Z": 0,
+                "G": 0,
+                "OG": 0,
+                "S": 0,
+                "SOT": 0,
+                "xG": 0,
+                "xGA": 0,
+                "PTS": 0,
+                "CS": 0,
+            }
+
         goals_for = matches["FTHG"] if is_home else matches["FTAG"]
         goals_against = matches["FTAG"] if is_home else matches["FTHG"]
+
         shots = matches["HS"] if is_home else matches["AS"]
         sot = matches["HST"] if is_home else matches["AST"]
+
+        opp_sot = matches["AST"] if is_home else matches["HST"]
+
         conv = goals_for.mean() / sot.mean() if sot.mean() > 0 else 0
         xg = round(sot.mean() * conv, 2)
+
+        conv_against = goals_against.mean() / opp_sot.mean() if opp_sot.mean() > 0 else 0
+        xga = round(opp_sot.mean() * conv_against, 2)
+
         points = matches.apply(
-            lambda r: 3 if (r["FTHG"] > r["FTAG"] if is_home else r["FTAG"] > r["FTHG"]) else 1 if r["FTHG"] == r["FTAG"] else 0,
-            axis=1
+            lambda r: 3
+            if (r["FTHG"] > r["FTAG"] if is_home else r["FTAG"] > r["FTHG"])
+            else 1 if r["FTHG"] == r["FTAG"] else 0,
+            axis=1,
         ).mean()
+
         clean_sheets = (goals_against == 0).sum()
         cs_percent = round(100 * clean_sheets / len(matches), 1)
+
         return {
             "Zápasy": len(matches),
             "Góly": round(goals_for.mean(), 2),
@@ -327,6 +350,7 @@ def merged_home_away_opponent_form(df: pd.DataFrame, team: str) -> dict:
             "Střely": round(shots.mean(), 1),
             "Na branku": round(sot.mean(), 1),
             "xG": xg,
+            "xGA": xga,
             "Body/zápas": round(points, 2),
             "Čistá konta %": cs_percent,
         }
@@ -346,6 +370,7 @@ def merged_home_away_opponent_form(df: pd.DataFrame, team: str) -> dict:
             "Střely": f"{home_stats['Střely']} / {away_stats['Střely']}",
             "Na branku": f"{home_stats['Na branku']} / {away_stats['Na branku']}",
             "xG": f"{home_stats['xG']} / {away_stats['xG']}",
+            "xGA": f"{home_stats['xGA']} / {away_stats['xGA']}",
             "Body/zápas": f"{home_stats['Body/zápas']} / {away_stats['Body/zápas']}",
             "Čistá konta %": f"{home_stats['Čistá konta %']} / {away_stats['Čistá konta %']}",
         }
