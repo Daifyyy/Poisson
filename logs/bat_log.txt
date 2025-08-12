@@ -1,0 +1,17 @@
+=== START 12.08.2025 21:18:57,99 === 
+[INFO] Checking for uncommitted changes... 
+[ERROR] You have unstaged changes. Please commit or stash them manually. 
+On branch master
+Your branch is up to date with 'origin/master'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   Update_League.bat
+	modified:   bat_log.txt
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	logs/
+
+no changes added to commit (use "git add" and/or "git commit -a")
