@@ -1,9 +1,0 @@
-=== START 12.08.2025 21:16:53,50 === 
-[INFO] Stashing local changes... 
-Saved working directory and index state On master: auto-stash before pull
-error: unable to unlink old 'bat_log.txt': Invalid argument
-fatal: Could not reset index file to revision 'HEAD'.
-[INFO] Pulling from remote... 
-error: cannot pull with rebase: You have unstaged changes.
-error: Please commit or stash them.
-[ERROR] Git pull failed. 
