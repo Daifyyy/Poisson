@@ -488,6 +488,8 @@ def expected_match_tempo(
     away_exp: float,
     xg_home: float,
     xg_away: float,
+    xga_home: float,
+    xga_away: float,
     last_n: int = 10
 ) -> float:
     """
@@ -506,6 +508,7 @@ def expected_match_tempo(
     # Gólové ukazatele
     goal_potential = home_exp + away_exp
     xg_potential = xg_home + xg_away
+    xga_potential = xga_home + xga_away
 
     # Bonus za extrémní gólový potenciál
     high_scoring_bonus = 5 if goal_potential >= 3.0 else 0
@@ -513,8 +516,9 @@ def expected_match_tempo(
     # Kombinace složek (násobení pro větší rozptyl)
     combined_score = (
         base_tempo * 0.3 +
-        goal_potential * 20 * 0.35 +
-        xg_potential * 20 * 0.35 +
+        goal_potential * 20 * 0.3 +
+        xg_potential * 20 * 0.2 +
+        xga_potential * 20 * 0.2 +
         high_scoring_bonus
     )
 
