@@ -4,6 +4,41 @@
 import pandas as pd
 import streamlit as st
 from io import BytesIO
+from typing import Any
+
+
+def _coerce_xg(value: Any, dict_key: str) -> float:
+    """Extract a numeric xG value from various container types.
+
+    Parameters
+    ----------
+    value: Any
+        Source value which may be a dict, list/tuple/Series or a raw number.
+    dict_key: str
+        Preferred key to look up when ``value`` is a dictionary.
+
+    Returns
+    -------
+    float
+        Best effort float representation of the xG value. ``NaN`` is returned
+        when no numeric value can be extracted.
+    """
+
+    # If provided as a dict, try multiple key variants.
+    if isinstance(value, dict):
+        for key in (dict_key, dict_key.lower(), "xg", "xG"):
+            if key in value:
+                value = value[key]
+                break
+
+    # For list/tuple/Series, take the first element.
+    if isinstance(value, (list, tuple, pd.Series)):
+        value = value[0] if len(value) > 0 else float("nan")
+
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float("nan")
 
 def generate_excel_analysis_export(
     league_name, home_team, away_team,
@@ -21,8 +56,8 @@ def generate_excel_analysis_export(
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
 
         # Match Overview
-        xg_home_val = xg_home.get('xG_home') if isinstance(xg_home, dict) else xg_home
-        xg_away_val = xg_away.get('xG_away') if isinstance(xg_away, dict) else xg_away
+        xg_home_val = _coerce_xg(xg_home, "xG_home")
+        xg_away_val = _coerce_xg(xg_away, "xG_away")
 
         df_main = pd.DataFrame({
             "League": [league_name],
