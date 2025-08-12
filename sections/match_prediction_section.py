@@ -4,16 +4,37 @@ import numpy as np
 from typing import Any, Dict, List, Tuple
 from utils.responsive import responsive_columns
 from utils.poisson_utils import (
-    calculate_elo_ratings, expected_goals_weighted_by_elo, poisson_prediction, match_outcomes_prob,
-    over_under_prob, btts_prob, calculate_expected_points, calculate_pseudo_xg_for_team,
-    analyze_opponent_strength, expected_match_style_score, intensity_score_to_emoji,
-    expected_match_tempo, tempo_to_emoji, get_top_scorelines, get_goal_probabilities,
-    detect_risk_factors, detect_positive_factors, calculate_warning_index,
-    expected_team_stats_weighted_by_elo, classify_team_strength, merged_home_away_opponent_form,
-    get_head_to_head_stats, calculate_match_tempo,get_team_style_vs_opponent_type,calculate_elo_ratings,
-    expected_goals_combined_homeaway_allmatches,expected_goals_weighted_by_home_away,
-    expected_corners, poisson_corner_matrix, corner_over_under_prob
-
+    calculate_elo_ratings,
+    expected_goals_weighted_by_elo,
+    poisson_prediction,
+    match_outcomes_prob,
+    over_under_prob,
+    btts_prob,
+    calculate_expected_points,
+    calculate_pseudo_xg_for_team,
+    analyze_opponent_strength,
+    expected_match_style_score,
+    intensity_score_to_emoji,
+    expected_match_tempo,
+    tempo_to_emoji,
+    get_top_scorelines,
+    get_goal_probabilities,
+    detect_risk_factors,
+    detect_positive_factors,
+    calculate_warning_index,
+    expected_team_stats_weighted_by_elo,
+    classify_team_strength,
+    merged_home_away_opponent_form,
+    get_head_to_head_stats,
+    calculate_match_tempo,
+    get_team_style_vs_opponent_type,
+    calculate_elo_ratings,
+    expected_goals_combined_homeaway_allmatches,
+    expected_goals_weighted_by_home_away,
+    expected_corners,
+    poisson_corner_matrix,
+    corner_over_under_prob,
+    get_whoscored_xg,
 )
 from utils.frontend_utils import display_team_status_table
 from utils.poisson_utils.match_style import tempo_tag
@@ -153,6 +174,8 @@ def render_warnings(
 
 
 def display_metrics(
+    home_team: str,
+    away_team: str,
     xg_home: Dict[str, float],
     xg_away: Dict[str, float],
     xpoints: Dict[str, float],
@@ -164,7 +187,13 @@ def display_metrics(
     """Display key statistical metrics and outcome probabilities."""
     st.markdown("## 📊 Klíčové metriky")
     cols = responsive_columns(4)
-    cols[0].metric("xG sezóna", f"{xg_home['xG_home']:.1f} vs {xg_away['xG_away']:.1f}")
+
+    home_ws_xg = get_whoscored_xg(home_team)
+    away_ws_xg = get_whoscored_xg(away_team)
+    home_xg_val = home_ws_xg if not np.isnan(home_ws_xg) else xg_home.get("xG_home", 0)
+    away_xg_val = away_ws_xg if not np.isnan(away_ws_xg) else xg_away.get("xG_away", 0)
+
+    cols[0].metric("xG sezóna", f"{home_xg_val:.1f} vs {away_xg_val:.1f}")
     cols[1].metric("Oček. body (xP)", f"{xpoints['Home xP']:.1f} vs {xpoints['Away xP']:.1f}")
     cols[2].metric("BTTS", f"{btts['BTTS Yes']:.1f}%")
     cols[2].caption(
@@ -297,7 +326,17 @@ def render_single_match_prediction(
         variance_warning=variance_flag,
     )
 
-    display_metrics(xg_home, xg_away, xpoints, btts, over_under, outcomes, confidence_index)
+    display_metrics(
+        home_team,
+        away_team,
+        xg_home,
+        xg_away,
+        xpoints,
+        btts,
+        over_under,
+        outcomes,
+        confidence_index,
+    )
 
     corner_line = st.sidebar.slider("Rohová hranice", 5.5, 15.5, 9.5, 0.5)
     corner_matrix = poisson_corner_matrix(corner_home_exp, corner_away_exp)
