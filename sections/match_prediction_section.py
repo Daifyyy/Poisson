@@ -4,14 +4,12 @@ import numpy as np
 from typing import Any, Dict, List, Tuple
 from utils.responsive import responsive_columns
 from utils.poisson_utils import (
-    calculate_elo_ratings,
     expected_goals_weighted_by_elo,
     poisson_prediction,
     match_outcomes_prob,
     over_under_prob,
     btts_prob,
     calculate_expected_points,
-    calculate_pseudo_xg_for_team,
     analyze_opponent_strength,
     expected_match_style_score,
     intensity_score_to_emoji,
@@ -28,13 +26,13 @@ from utils.poisson_utils import (
     get_head_to_head_stats,
     calculate_match_tempo,
     get_team_style_vs_opponent_type,
-    calculate_elo_ratings,
     expected_goals_combined_homeaway_allmatches,
     expected_goals_weighted_by_home_away,
     expected_corners,
     poisson_corner_matrix,
     corner_over_under_prob,
-    get_whoscored_xg,
+    calculate_team_pseudo_xg,
+    get_whoscored_xg_xga,
 )
 from utils.frontend_utils import display_team_status_table
 from utils.poisson_utils.match_style import tempo_tag
@@ -83,9 +81,8 @@ def get_cached_match_inputs(df_hash,df, home_team, away_team, elo_dict):
         "xpoints": xpoints
     }
 @st.cache_data
-def cache_all_pseudo_xg(season_df):
-    teams = sorted(set(season_df['HomeTeam']).union(season_df['AwayTeam']))
-    return {t: calculate_pseudo_xg_for_team(season_df, t) for t in teams}
+def cache_team_pseudo_xg_xga(season_df):
+    return calculate_team_pseudo_xg(season_df)
 @st.cache_data
 def get_cached_tempo(df_hash, df, team, opponent_elo, is_home, elo_dict):
     return calculate_match_tempo(df, team, opponent_elo, is_home, elo_dict)
@@ -108,9 +105,26 @@ def compute_match_inputs(
     df_hash = hash(pd.util.hash_pandas_object(df).sum())
     match_data = get_cached_match_inputs(df_hash, df, home_team, away_team, elo_dict)
 
-    xg_dict = cache_all_pseudo_xg(season_df)
-    xg_home = xg_dict.get(home_team, {"xG_home": 0})
-    xg_away = xg_dict.get(away_team, {"xG_away": 0})
+    ws_home = get_whoscored_xg_xga(home_team)
+    ws_away = get_whoscored_xg_xga(away_team)
+
+    pseudo_dict = cache_team_pseudo_xg_xga(season_df)
+    pseudo_home = pseudo_dict.get(home_team, {"xg": 0.0, "xga": 0.0})
+    pseudo_away = pseudo_dict.get(away_team, {"xg": 0.0, "xga": 0.0})
+
+    xg_home = ws_home.get("xg", float("nan"))
+    xga_home = ws_home.get("xga", float("nan"))
+    xg_away = ws_away.get("xg", float("nan"))
+    xga_away = ws_away.get("xga", float("nan"))
+
+    if np.isnan(xg_home):
+        xg_home = pseudo_home["xg"]
+    if np.isnan(xga_home):
+        xga_home = pseudo_home["xga"]
+    if np.isnan(xg_away):
+        xg_away = pseudo_away["xg"]
+    if np.isnan(xga_away):
+        xga_away = pseudo_away["xga"]
 
     corner_home, corner_away = expected_corners(df, home_team, away_team)
 
@@ -124,8 +138,10 @@ def compute_match_inputs(
         elo_dict,
         match_data["home_exp"],
         match_data["away_exp"],
-        xg_home["xG_home"],
-        xg_away["xG_away"],
+        xg_home,
+        xg_away,
+        xga_home,
+        xga_away,
     )
 
     tempo_home = get_cached_tempo(df_hash, df, home_team, elo_dict.get(away_team, 1500), True, elo_dict)
@@ -135,7 +151,9 @@ def compute_match_inputs(
         "df_hash": df_hash,
         **match_data,
         "xg_home": xg_home,
+        "xga_home": xga_home,
         "xg_away": xg_away,
+        "xga_away": xga_away,
         "expected_gii": expected_gii,
         "expected_tempo": expected_tempo,
         "tempo_home": tempo_home,
@@ -176,8 +194,10 @@ def render_warnings(
 def display_metrics(
     home_team: str,
     away_team: str,
-    xg_home: Dict[str, float],
-    xg_away: Dict[str, float],
+    xg_home: float,
+    xga_home: float,
+    xg_away: float,
+    xga_away: float,
     xpoints: Dict[str, float],
     btts: Dict[str, float],
     over_under: Dict[str, float],
@@ -188,12 +208,10 @@ def display_metrics(
     st.markdown("## 📊 Klíčové metriky")
     cols = responsive_columns(4)
 
-    home_ws_xg = get_whoscored_xg(home_team)
-    away_ws_xg = get_whoscored_xg(away_team)
-    home_xg_val = home_ws_xg if not np.isnan(home_ws_xg) else xg_home.get("xG_home", 0)
-    away_xg_val = away_ws_xg if not np.isnan(away_ws_xg) else xg_away.get("xG_away", 0)
-
-    cols[0].metric("xG sezóna", f"{home_xg_val:.1f} vs {away_xg_val:.1f}")
+    cols[0].metric(
+        "xG/xGA sezóna",
+        f"{xg_home:.1f}/{xga_home:.1f} vs {xg_away:.1f}/{xga_away:.1f}"
+    )
     cols[1].metric("Oček. body (xP)", f"{xpoints['Home xP']:.1f} vs {xpoints['Away xP']:.1f}")
     cols[2].metric("BTTS", f"{btts['BTTS Yes']:.1f}%")
     cols[2].caption(
@@ -257,7 +275,9 @@ def render_single_match_prediction(
     btts = inputs["btts"]
     xpoints = inputs["xpoints"]
     xg_home = inputs["xg_home"]
+    xga_home = inputs["xga_home"]
     xg_away = inputs["xg_away"]
+    xga_away = inputs["xga_away"]
     expected_tempo = inputs["expected_tempo"]
     tempo_home = inputs["tempo_home"]
     tempo_away = inputs["tempo_away"]
@@ -330,7 +350,9 @@ def render_single_match_prediction(
         home_team,
         away_team,
         xg_home,
+        xga_home,
         xg_away,
+        xga_away,
         xpoints,
         btts,
         over_under,
