@@ -665,16 +665,26 @@ def merged_home_away_opponent_form(df, team):
 
     def summarize(matches, is_home):
         if matches.empty:
-            return {"Z": 0, "G": 0, "OG": 0, "S": 0, "SOT": 0, "xG": 0, "PTS": 0, "CS": 0}
+            return {"Z": 0, "G": 0, "OG": 0, "S": 0, "SOT": 0, "xG": 0, "xGA": 0, "PTS": 0, "CS": 0}
+
         goals_for = matches["FTHG"] if is_home else matches["FTAG"]
         goals_against = matches["FTAG"] if is_home else matches["FTHG"]
+
         shots = matches["HS"] if is_home else matches["AS"]
         sot = matches["HST"] if is_home else matches["AST"]
-        conv = goals_for.mean() / sot.mean() if sot.mean() > 0 else 0
-        xg = round(sot.mean() * conv, 2)
+
+        opp_sot = matches["AST"] if is_home else matches["HST"]
+
+        conv_for = goals_for.mean() / sot.mean() if sot.mean() > 0 else 0
+        conv_against = goals_against.mean() / opp_sot.mean() if opp_sot.mean() > 0 else 0
+
+        xg = round(sot.mean() * conv_for, 2)
+        xga = round(opp_sot.mean() * conv_against, 2)
+
         points = matches.apply(lambda r: calculate_points(r, is_home), axis=1).mean()
         clean_sheets = (goals_against == 0).sum()
         cs_percent = round(100 * clean_sheets / len(matches), 1)
+
         return {
             "Z": len(matches),
             "G": round(goals_for.mean(), 2),
@@ -682,8 +692,9 @@ def merged_home_away_opponent_form(df, team):
             "S": round(shots.mean(), 1),
             "SOT": round(sot.mean(), 1),
             "xG": xg,
+            "xGA": xga,
             "PTS": round(points, 2),
-            "CS": cs_percent
+            "CS": cs_percent,
         }
 
     def generate_table():
@@ -700,6 +711,7 @@ def merged_home_away_opponent_form(df, team):
                 "Střely": f"{home_stats['S']} / {away_stats['S']}",
                 "Na branku": f"{home_stats['SOT']} / {away_stats['SOT']}",
                 "xG": f"{home_stats['xG']} / {away_stats['xG']}",
+                "xGA": f"{home_stats['xGA']} / {away_stats['xGA']}",
                 "Body/zápas": f"{home_stats['PTS']} / {away_stats['PTS']}",
                 "Čistá konta %": f"{home_stats['CS']} / {away_stats['CS']}"
             }
