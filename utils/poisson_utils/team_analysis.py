@@ -7,7 +7,7 @@ from .data import prepare_df, get_last_n_matches
 from .stats import calculate_points
 from .prediction import poisson_over25_probability, expected_goals_vs_similar_elo_weighted
 from .xg import calculate_team_pseudo_xg
-from .whoscored_api import get_whoscored_xg
+from .whoscored_api import get_whoscored_xg_xga
 from utils.utils_warnings import detect_overperformance_and_momentum
 
 
@@ -676,6 +676,7 @@ TEAM_COMPARISON_CATEGORY_MAP = {
     ],
     "Defense": [
         "Obdržené góly",
+        "xGA",
         "Defenzivní efektivita",
         "Čistá konta %",
     ],
@@ -685,6 +686,7 @@ TEAM_COMPARISON_CATEGORY_MAP = {
 
 TEAM_COMPARISON_ICON_MAP = {
     "xG": "🔮",
+    "xGA": "🛑",
     "Góly": "⚽",
     "Obdržené góly": "🥅",
     "Střely": "📸",
@@ -704,6 +706,7 @@ TEAM_COMPARISON_ICON_MAP = {
 
 TEAM_COMPARISON_DESC_MAP = {
     "xG": "Očekávané góly podle WhoScored",
+    "xGA": "Očekávané obdržené góly podle WhoScored",
     "Góly": "Průměr vstřelených gólů na zápas",
     "Obdržené góly": "Průměr inkasovaných gólů na zápas",
     "Střely": "Průměr střel na zápas",
@@ -723,6 +726,7 @@ TEAM_COMPARISON_DESC_MAP = {
 
 TEAM_COMPARISON_HIGHER_IS_BETTER = {
     "xG": True,
+    "xGA": False,
     "Góly": True,
     "Obdržené góly": False,
     "Střely": True,
@@ -905,8 +909,11 @@ def generate_team_comparison(df: pd.DataFrame, team1: str, team2: str) -> pd.Dat
         accuracy = shots_on_target / shots if shots else 0
         conversion = goals / shots if shots else 0
 
-        ws_xg = get_whoscored_xg(team)
+        ws_stats = get_whoscored_xg_xga(team)
+        ws_xg = ws_stats.get("xg")
+        ws_xga = ws_stats.get("xga")
         xg = ws_xg if not np.isnan(ws_xg) else xg_dict.get(team, {}).get("xg", np.nan)
+        xga = ws_xga if not np.isnan(ws_xga) else xg_dict.get(team, {}).get("xga", np.nan)
 
         clean_sheets = 0
         total_matches = 0
@@ -927,6 +934,7 @@ def generate_team_comparison(df: pd.DataFrame, team1: str, team2: str) -> pd.Dat
 
         return {
             "xG": xg,
+            "xGA": xga,
             "Góly": goals,
             "Obdržené góly": goals_conceded,
             "Střely": shots,
