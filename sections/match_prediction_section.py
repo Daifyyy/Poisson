@@ -445,7 +445,19 @@ def render_single_match_prediction(
         st.markdown(f"### {team_name} {icon} ")
         
         df_disp = pd.DataFrame(data).T
-        df_disp = df_disp[["Zápasy", "Góly", "Obdržené", "Střely", "Na branku", "xG", "Body/zápas", "Čistá konta %"]]
+        df_disp = df_disp[
+            [
+                "Zápasy",
+                "Góly",
+                "Obdržené",
+                "Střely",
+                "Na branku",
+                "xG",
+                "xGA",
+                "Body/zápas",
+                "Čistá konta %",
+            ]
+        ]
         st.dataframe(df_disp, use_container_width=True)
 
     display_merged_table(
