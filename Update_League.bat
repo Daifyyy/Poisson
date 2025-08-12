@@ -1,57 +1,57 @@
 @echo off
 setlocal enableextensions enabledelayedexpansion
 
-rem === 0) Přechod do složky projektu ===
+rem === Step 0: Change to project folder ===
 cd /d C:\Projekt\Poisson || (
-    echo ❌ Nelze najít složku C:\Projekt\Poisson
+    echo [ERROR] Could not find folder: C:\Projekt\Poisson
     pause
     exit /b 1
 )
 
-rem === 1) Zvol Python ===
+rem === Step 1: Select Python interpreter ===
 if exist .venv\Scripts\python.exe (
-  set "PY=.venv\Scripts\python.exe"
+    set "PY=.venv\Scripts\python.exe"
 ) else if exist venv\Scripts\python.exe (
-  set "PY=venv\Scripts\python.exe"
+    set "PY=venv\Scripts\python.exe"
 ) else (
-  set "PY=python"
+    set "PY=python"
 )
 
-rem === 2) Git stash a pull ===
-echo 🔄 Ukládám necommitnuté změny...
-git stash push -m "auto-stash před pull"
+rem === Step 2: Git stash and pull ===
+echo [INFO] Stashing local changes...
+git stash push -m "auto-stash before pull"
 IF %ERRORLEVEL% NEQ 0 (
-    echo ⚠️ Git stash selhal.
+    echo [WARN] Git stash failed.
 )
 
-echo 🔄 Stahuji změny z GitHubu...
+echo [INFO] Pulling changes from remote...
 git pull --rebase
 IF %ERRORLEVEL% NEQ 0 (
-    echo ❌ Git pull selhal.
+    echo [ERROR] Git pull failed.
     pause
     exit /b 1
 )
 
-echo 🔄 Obnovuji změny...
+echo [INFO] Applying stashed changes...
 git stash pop
 
-rem === 3) Aktualizace CSV ===
-echo === 1/3: Spouštím update_league_data.py ===
+rem === Step 3: Update CSV files ===
+echo [STEP 1/3] Running update_league_data.py...
 %PY% update_league_data.py
 IF %ERRORLEVEL% NEQ 0 (
-    echo ❌ Selhala aktualizace dat.
+    echo [ERROR] Data update failed.
     pause
     exit /b 1
 )
 
-rem === 4) Commit & Push ===
-echo === 2/3: Commit & Push ===
+rem === Step 4: Commit & push changes ===
+echo [STEP 2/3] Committing and pushing changes...
 %PY% commit_and_push.py
 IF %ERRORLEVEL% NEQ 0 (
-    echo ❌ Commit & push selhal.
+    echo [ERROR] Commit and push failed.
     pause
     exit /b 1
 )
 
-echo ✅ Všechno hotovo. Zavřete okno nebo stiskněte klávesu.
+echo [DONE] All operations completed successfully.
 pause

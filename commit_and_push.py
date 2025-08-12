@@ -3,7 +3,7 @@ import datetime
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent  # uprav, pokud skript není v kořeni repa
+REPO_ROOT = Path(__file__).resolve().parent  # adjust if this script is not in the repo root
 
 def run(cmd, check=True):
     return subprocess.run(cmd, cwd=REPO_ROOT, check=check, text=True, capture_output=True)
@@ -18,7 +18,7 @@ def has_upstream():
 
 def upstream_state():
     """
-    Vrátí jeden z: 'uptodate', 'ahead', 'behind', 'diverged', 'noupstream'
+    Returns one of: 'uptodate', 'ahead', 'behind', 'diverged', 'noupstream'
     """
     if not has_upstream():
         return "noupstream"
@@ -36,55 +36,54 @@ def upstream_state():
         return "diverged"
 
 def ensure_rebased():
-    # stáhni nové reference
     run(["git", "fetch", "--all", "--prune"])
     state = upstream_state()
     if state in ("behind", "diverged"):
-        print("🔄 Na vzdálené větvi jsou novější commity – provádím rebase…")
+        print("🔄 Remote branch has new commits – performing rebase...")
         pull = run(["git", "pull", "--rebase", "--autostash"], check=False)
         if pull.returncode != 0:
-            print("❌ Rebase/pull selhal:")
+            print("❌ Rebase failed:")
             print(pull.stderr or pull.stdout)
             sys.exit(pull.returncode)
-        print("✅ Rebase hotový, pokračuji.")
+        print("✅ Rebase successful, continuing.")
     elif state == "uptodate":
-        print("✔️ Větev je aktuální vůči upstreamu.")
+        print("✔️ Branch is up-to-date with upstream.")
     elif state == "ahead":
-        print("ℹ️ Lokální větev je napřed před upstreamem (OK).")
+        print("ℹ️ Local branch is ahead of upstream (OK).")
     else:
-        print("ℹ️ Upstream není nastaven – přeskočím pull.")
+        print("ℹ️ No upstream configured – skipping pull.")
 
 def main():
-    # 1) srovnat lokální stav s remote (případný rebase)
+    # Step 1: Sync with remote (rebase if needed)
     ensure_rebased()
 
-    # 2) na-stage-ovat všechno (tracked i untracked)
+    # Step 2: Stage all changes (tracked and untracked)
     run(["git", "add", "-A"])
 
-    # 3) pokud není co commitnout, skonči
+    # Step 3: Check if there is anything to commit
     status = run(["git", "status", "--porcelain"])
     if not status.stdout.strip():
-        print("ℹ️ Není žádná změna k commitnutí.")
+        print("ℹ️ No changes to commit.")
         return
 
-    # 4) commit
-    commit_message = f"Aktualizace – {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    # Step 4: Commit
+    commit_message = f"Update – {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}"
     run(["git", "commit", "-m", commit_message])
 
-    # 5) push
+    # Step 5: Push
     branch = get_current_branch()
     if has_upstream():
         run(["git", "push"])
     else:
-        print(f"ℹ️ Větev '{branch}' zatím nemá upstream – nastavím 'origin/{branch}'.")
+        print(f"ℹ️ Branch '{branch}' has no upstream – setting 'origin/{branch}'.")
         run(["git", "push", "--set-upstream", "origin", branch])
 
-    print("✅ Změny byly úspěšně commitnuty a odeslány.")
+    print("✅ Changes committed and pushed successfully.")
 
 if __name__ == "__main__":
     try:
         main()
     except subprocess.CalledProcessError as e:
-        print("❌ Git chyba:")
+        print("❌ Git error:")
         print(e.stderr or e.stdout)
         sys.exit(e.returncode)

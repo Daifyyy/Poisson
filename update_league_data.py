@@ -14,9 +14,9 @@ LEAGUE_CODES = ["E0", "E1", "D1", "D2", "SP1", "I1", "F1", "N1", "P1", "B1"]
 LEAGUES = {code: f"https://www.football-data.co.uk/mmz4281/{season_code}/{code}.csv" for code in LEAGUE_CODES}
 
 EXPECTED_COLS = [
-    "Div","Date","Time","HomeTeam","AwayTeam","FTHG","FTAG","FTR",
-    "HTHG","HTAG","HTR","HS","AS","HST","AST","HF","AF","HC","AC","HY","AY","HR","AR",
-    "Avg>2.5","Avg<2.5"
+    "Div", "Date", "Time", "HomeTeam", "AwayTeam", "FTHG", "FTAG", "FTR",
+    "HTHG", "HTAG", "HTR", "HS", "AS", "HST", "AST", "HF", "AF", "HC", "AC", "HY", "AY", "HR", "AR",
+    "Avg>2.5", "Avg<2.5"
 ]
 
 def log(msg: str):
@@ -30,10 +30,6 @@ def flip_scheme(url: str) -> str:
     return url
 
 def robust_get(url: str, tries: int = 4, timeout: int = 20) -> requests.Response | None:
-    """
-    Retry GET. For HTTP 200 always return the response (even if HTML),
-    and let the CSV parser decide. This fixes false negatives like the user's logs.
-    """
     last_exc = None
     flipped_once = False
     for attempt in range(1, tries + 1):
@@ -44,25 +40,25 @@ def robust_get(url: str, tries: int = 4, timeout: int = 20) -> requests.Response
             status = r.status_code
             clen = len(r.content) if r.content is not None else 0
             ctype = r.headers.get("Content-Type", "")
-            log(f"   ↳ HTTP {status}, bytes={clen}, ctype='{ctype}' (try {attempt}/{tries})")
+            log(f"   -> HTTP {status}, bytes={clen}, content-type='{ctype}' (try {attempt}/{tries})")
             if status == 200 and r.content:
-                return r  # trust 200; parser will validate CSV
+                return r
             if status in (300, 301, 302, 303, 307, 308, 403, 429, 500, 502, 503, 504):
                 time.sleep(1.0 * attempt)
                 if attempt >= 2 and not flipped_once:
                     new_url = flip_scheme(url)
                     if new_url != url:
-                        log(f"   ↳ Flipping scheme and retrying: {new_url}")
+                        log(f"   -> Flipping scheme and retrying: {new_url}")
                         url = new_url
                         flipped_once = True
                 continue
             return None
         except Exception as e:
             last_exc = e
-            log(f"   ↳ Exception: {e} (try {attempt}/{tries})")
+            log(f"   -> Exception: {e} (try {attempt}/{tries})")
             time.sleep(1.0 * attempt)
     if last_exc:
-        log(f"   ↳ Final exception: {last_exc}")
+        log(f"   -> Final exception: {last_exc}")
     return None
 
 def normalize_columns(cols) -> list[str]:
@@ -78,37 +74,31 @@ def _looks_like_csv(text_first_kb: str) -> bool:
     line = next((ln for ln in text_first_kb.splitlines() if ln.strip()), "")
     if not line:
         return False
-    # Header hint or comma density
     if "HomeTeam" in line and "AwayTeam" in line:
         return True
     return line.count(",") >= 5
 
 def read_csv_safely(content: bytes, expected_div: str, content_type: str = "") -> pd.DataFrame:
-    # Quick HTML rejection (now here, not in network layer)
     head = content[:1024].decode("utf-8", errors="ignore").lower()
     if "<html" in head and "csv" not in content_type.lower():
-        log("⚠️ Odpověď vypadá jako HTML, zkusím přesto parsovat jako CSV (někteří hosté vrací HTML s embedded CSV).")
+        log("Warning: Response looks like HTML. Trying to parse as CSV anyway.")
 
-    # Choose encoding
     txt = None
     for enc in ("utf-8-sig", "latin-1"):
         try:
             txt = content.decode(enc, errors="ignore")
-            encoding_used = enc
             break
         except Exception:
             continue
     if txt is None:
-        log("❌ Nepodařilo se dekódovat obsah ani jako utf-8-sig, ani latin-1.")
+        log("Error: Failed to decode content as utf-8-sig or latin-1.")
         return pd.DataFrame()
 
-    # If it doesn't look like CSV at all and Content-Type isn't CSV-ish, abort early
     if not _looks_like_csv(txt[:2048]) and ("csv" not in content_type.lower()):
-        log("⚠️ Nevidím CSV hlavičku/čárky – pravděpodobně HTML/mezikrok. Přeskakuji.")
+        log("Warning: File does not look like CSV - skipping.")
         return pd.DataFrame()
 
     buf = io.StringIO(txt)
-    # Peek header presence
     first_line = next((ln for ln in txt.splitlines() if ln.strip()), "")
     has_header = ("Div" in first_line and "Date" in first_line and "HomeTeam" in first_line and "AwayTeam" in first_line)
 
@@ -122,22 +112,19 @@ def read_csv_safely(content: bytes, expected_div: str, content_type: str = "") -
             buf.seek(0)
             df = pd.read_csv(buf, sep=",", engine="python", header=None,
                              names=EXPECTED_COLS, usecols=range(len(EXPECTED_COLS)))
-            log("⚠️ CSV nemělo hlavičku – byla doplněna ručně.")
+            log("Warning: CSV had no header - added manually.")
     except Exception as e:
-        log(f"❌ Chyba při čtení CSV: {e}")
+        log(f"Error while reading CSV: {e}")
         return pd.DataFrame()
 
-    # Filter on expected division
     if "Div" in df.columns:
         df = df[df["Div"].astype(str).str.strip() == expected_div]
     else:
-        log("⚠️ Sloupec 'Div' chybí – vracím prázdná data pro bezpečnost.")
+        log("Missing 'Div' column - returning empty DataFrame.")
         return pd.DataFrame()
 
-    # Date parsing
     if "Date" in df.columns:
         df["Date"] = pd.to_datetime(df["Date"], dayfirst=True, errors="coerce")
-    # Drop all-NA rows (happens when file has only header)
     df = df.dropna(how="all")
     return df
 
@@ -153,27 +140,27 @@ def generate_key(df: pd.DataFrame) -> pd.Series:
 
 def update_league(league_code: str):
     url = LEAGUES[league_code]
-    log(f"\n🔄 Aktualizuji ligu {league_code}…")
+    log(f"\nUpdating league {league_code}...")
     log(f"   URL: {url}")
 
     resp = robust_get(url)
     if not resp:
-        log(f"⚠️ Přeskočeno: {league_code} – nepodařilo se získat platný CSV obsah.")
+        log(f"Skipped: {league_code} - failed to get valid CSV.")
         return
 
-    df_new = read_csv_safely(resp.content, expected_div=league_code, content_type=resp.headers.get("Content-Type",""))
+    df_new = read_csv_safely(resp.content, expected_div=league_code, content_type=resp.headers.get("Content-Type", ""))
     if df_new.empty:
-        log(f"⚠️ Přeskočeno: {league_code} – žádná data po načtení.")
+        log(f"Skipped: {league_code} - no data loaded.")
         return
 
-    log(f"🧪 {league_code}: sloupce={df_new.columns.tolist()} | řádků={len(df_new)}")
+    log(f"{league_code}: columns={df_new.columns.tolist()} | rows={len(df_new)}")
 
     updated_path = os.path.join(DATA_DIR, f"{league_code}_combined_full_updated.csv")
     if os.path.exists(updated_path):
         try:
             df_existing = pd.read_csv(updated_path)
         except Exception as e:
-            log(f"⚠️ Problém při čtení existujícího souboru: {e}. Pokusím se pokračovat s prázdným.")
+            log(f"Warning: Problem reading existing file: {e}. Using empty fallback.")
             df_existing = pd.DataFrame(columns=df_new.columns)
     else:
         df_existing = pd.DataFrame(columns=df_new.columns)
@@ -187,7 +174,7 @@ def update_league(league_code: str):
         df_new["match_key"] = generate_key(df_new)
         df_existing["match_key"] = generate_key(df_existing) if not df_existing.empty else pd.Series(dtype=str)
     except KeyError as e:
-        log(f"⚠️ Přeskočeno: {league_code} – chybí klíčové sloupce: {e}")
+        log(f"Skipped: {league_code} - key column missing: {e}")
         return
 
     df_new_rows = df_new[~df_new["match_key"].isin(df_existing.get("match_key", pd.Series(dtype=str)))].drop(columns="match_key")
@@ -205,9 +192,9 @@ def update_league(league_code: str):
             df_combined["Date"] = df_combined["Date"].dt.strftime("%Y-%m-%d")
 
         df_combined.to_csv(updated_path, index=False)
-        log(f"✅ Přidáno {len(df_new_rows)} nových zápasů do {updated_path}")
+        log(f"✅ Added {len(df_new_rows)} new matches to {updated_path}")
     else:
-        log("ℹ️ Žádné nové zápasy – soubor je aktuální.")
+        log("ℹ️ No new matches - file is already up to date.")
 
 def update_all_leagues():
     for code in LEAGUES:
@@ -220,6 +207,6 @@ if __name__ == "__main__":
             if c in LEAGUES:
                 update_league(c)
             else:
-                log(f"⚠️ Neznámý kód ligy: {c}")
+                log(f"Unknown league code: {c}")
     else:
         update_all_leagues()
