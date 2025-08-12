@@ -142,9 +142,21 @@ def render_team_detail(
         unsafe_allow_html=True
     )
 
+    # Sezónní xG a xGA – primárně z WhoScored, fallback na pseudo-xG
+    ws_stats = get_whoscored_xg_xga(team)
+    pseudo_stats = calculate_team_pseudo_xg(season_df).get(team, {})
 
+    team_xg = ws_stats.get("xg", np.nan)
+    team_xga = ws_stats.get("xga", np.nan)
+    if np.isnan(team_xg):
+        team_xg = pseudo_stats.get("xg", 0)
+    if np.isnan(team_xga):
+        team_xga = pseudo_stats.get("xga", 0)
 
-    
+    col_xg, col_xga = st.columns(2)
+    col_xg.metric("Sezónní xG", f"{team_xg:.1f}")
+    col_xga.metric("Sezónní xGA", f"{team_xga:.1f}")
+
     team_stats = aggregate_team_stats(season_df)
     if team not in team_stats.index:
         st.error(f"Tým '{team}' nebyl nalezen v datech. Zkontroluj správnost názvu.")
@@ -172,18 +184,6 @@ def render_team_detail(
     # ✅ Kontrola rozsahu dat a počtu zápasů
     st.caption(f"Počet zápasů v aktuálním datasetu: {len(season_df)}")
     st.caption(f"Rozsah dat: {season_df['Date'].min().date()} až {season_df['Date'].max().date()}")
-
-    # ✅ xG a xGA – primárně z WhoScored, fallback na pseudo-xG
-    ws_stats = get_whoscored_xg_xga(team)
-    pseudo_dict = calculate_team_pseudo_xg(season_df)
-    pseudo_stats = pseudo_dict.get(team, {})
-
-    team_xg = ws_stats.get("xg", np.nan)
-    team_xga = ws_stats.get("xga", np.nan)
-    if np.isnan(team_xg):
-        team_xg = pseudo_stats.get("xg", 0)
-    if np.isnan(team_xga):
-        team_xga = pseudo_stats.get("xga", 0)
 
     # Fallback values for home/away splits using pseudo-xG
     def _pseudo_xg_split(df_home: pd.DataFrame, df_away: pd.DataFrame):
