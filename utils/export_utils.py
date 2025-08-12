@@ -5,9 +5,6 @@ import pandas as pd
 import streamlit as st
 from io import BytesIO
 
-import pandas as pd
-from io import BytesIO
-
 def generate_excel_analysis_export(
     league_name, home_team, away_team,
     expected_score, outcomes, over_under, btts,
@@ -24,6 +21,9 @@ def generate_excel_analysis_export(
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
 
         # Match Overview
+        xg_home_val = xg_home.get('xG_home') if isinstance(xg_home, dict) else xg_home
+        xg_away_val = xg_away.get('xG_away') if isinstance(xg_away, dict) else xg_away
+
         df_main = pd.DataFrame({
             "League": [league_name],
             "Home": [home_team],
@@ -37,8 +37,8 @@ def generate_excel_analysis_export(
             "Over 2.5 %": [over_under['Over 2.5']],
             "Home xP": [xpoints['Home xP']],
             "Away xP": [xpoints['Away xP']],
-            "xG Home": [xg_home['xG_home']],
-            "xG Away": [xg_away['xG_away']],
+            "xG Home": [xg_home_val],
+            "xG Away": [xg_away_val],
             "Tempo (rating)": [tempo_rating],
             "Tempo (value)": [expected_tempo],
         })
