@@ -7,6 +7,7 @@ from .data import prepare_df, get_last_n_matches
 from .stats import calculate_points
 from .prediction import poisson_over25_probability, expected_goals_vs_similar_elo_weighted
 from .xg import calculate_team_pseudo_xg
+from .whoscored_api import get_whoscored_xg
 from utils.utils_warnings import detect_overperformance_and_momentum
 
 
@@ -637,6 +638,7 @@ def expected_goals_combined_homeaway_allmatches(
 
 TEAM_COMPARISON_CATEGORY_MAP = {
     "Offense": [
+        "xG",
         "Góly",
         "Střely",
         "Na branku",
@@ -657,6 +659,7 @@ TEAM_COMPARISON_CATEGORY_MAP = {
 
 
 TEAM_COMPARISON_ICON_MAP = {
+    "xG": "🔮",
     "Góly": "⚽",
     "Obdržené góly": "🥅",
     "Střely": "📸",
@@ -675,6 +678,7 @@ TEAM_COMPARISON_ICON_MAP = {
 }
 
 TEAM_COMPARISON_DESC_MAP = {
+    "xG": "Očekávané góly podle WhoScored",
     "Góly": "Průměr vstřelených gólů na zápas",
     "Obdržené góly": "Průměr inkasovaných gólů na zápas",
     "Střely": "Průměr střel na zápas",
@@ -693,6 +697,7 @@ TEAM_COMPARISON_DESC_MAP = {
 }
 
 TEAM_COMPARISON_HIGHER_IS_BETTER = {
+    "xG": True,
     "Góly": True,
     "Obdržené góly": False,
     "Střely": True,
@@ -851,6 +856,8 @@ def render_team_comparison_section(
         _display_summary(_category_summary(_df))
 
 def generate_team_comparison(df: pd.DataFrame, team1: str, team2: str) -> pd.DataFrame:
+    xg_dict = calculate_team_pseudo_xg(df)
+
     def team_stats(df, team):
         home = df[df['HomeTeam'] == team]
         away = df[df['AwayTeam'] == team]
@@ -873,6 +880,9 @@ def generate_team_comparison(df: pd.DataFrame, team1: str, team2: str) -> pd.Dat
         accuracy = shots_on_target / shots if shots else 0
         conversion = goals / shots if shots else 0
 
+        ws_xg = get_whoscored_xg(team)
+        xg = ws_xg if not np.isnan(ws_xg) else xg_dict.get(team, {}).get("xg", np.nan)
+
         clean_sheets = 0
         total_matches = 0
         over25 = 0
@@ -891,6 +901,7 @@ def generate_team_comparison(df: pd.DataFrame, team1: str, team2: str) -> pd.Dat
             total_matches += 1
 
         return {
+            "xG": xg,
             "Góly": goals,
             "Obdržené góly": goals_conceded,
             "Střely": shots,
