@@ -91,6 +91,13 @@ def update_league_all_seasons(code):
 
     df_all = pd.concat(combined, ignore_index=True)
     df_all = df_all.drop_duplicates(subset=["Date", "HomeTeam", "AwayTeam"]).sort_values("Date")
+    # Retain only expected columns if present
+    expected_cols = [
+        "Div", "Date", "Time", "HomeTeam", "AwayTeam", "FTHG", "FTAG", "FTR",
+        "HTHG", "HTAG", "HTR", "HS", "AS", "HST", "AST", "HF", "AF",
+        "HC", "AC", "HY", "AY", "HR", "AR"
+    ]
+    df_all = df_all[[c for c in expected_cols if c in df_all.columns]]
     out_path = os.path.join(DATA_DIR, f"{code}_combined_full_updated.csv")
     df_all.to_csv(out_path, index=False, encoding="utf-8-sig")
     log(f"✅ Saved {len(df_all)} matches → {out_path}")
