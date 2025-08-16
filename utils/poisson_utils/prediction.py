@@ -1,5 +1,7 @@
 import logging
 import math
+from typing import Dict, Tuple
+
 import numpy as np
 import pandas as pd
 from scipy.stats import poisson
@@ -58,86 +60,139 @@ def poisson_over25_probability(home_exp: float, away_exp: float, max_goals: int 
     return round(prob_over * 100, 2)
 
 
-def expected_goals_vs_similar_elo_weighted(df, home_team, away_team, elo_dict, elo_tolerance=50):
+def _assign_elo_and_weight(df: pd.DataFrame, elo_dict: Dict[str, float]) -> pd.DataFrame:
+    """Add ELO ratings and recency-based weights to the dataframe."""
+    today = df["Date"].max()
+    return df.assign(
+        HomeELO=df["HomeTeam"].map(elo_dict),
+        AwayELO=df["AwayTeam"].map(elo_dict),
+        days_ago=lambda x: (today - x["Date"]).dt.days,
+        weight=lambda x: 1 / (x["days_ago"] + 1),
+    )
+
+
+def _weighted_stat(goals: pd.Series, weights: pd.Series) -> float:
+    """Safely compute a weighted average for a series of goals."""
+    return float(np.average(goals, weights=weights)) if len(goals) > 0 else 1.0
+
+
+def _expected_goals(
+    goals_for: float,
+    goals_against_opponent: float,
+    league_avg_for: float,
+    league_avg_against: float,
+) -> float:
+    """Compute expected goals normalized by league averages."""
+    return league_avg_for * (goals_for / league_avg_for) * (
+        goals_against_opponent / league_avg_against
+    )
+
+
+def expected_goals_vs_similar_elo_weighted(
+    df: pd.DataFrame,
+    home_team: str,
+    away_team: str,
+    elo_dict: Dict[str, float],
+    elo_tolerance: int = 50,
+) -> Tuple[float, float]:
+    """Estimate expected goals against similarly rated opponents.
+
+    Historical results are filtered to matches where the opponent's ELO rating is
+    within ``elo_tolerance`` of the upcoming opponent. Older matches are
+    down-weighted so that recent games influence the result more heavily. The
+    function calculates attacking and defensive strength in both the specific
+    home/away role and across all matches against comparable opponents, then
+    averages these estimates to produce final expected goals for the home and
+    away teams.
+
+    Args:
+        df: Match data containing at least ``Date``, ``HomeTeam``, ``AwayTeam``,
+            ``FTHG`` and ``FTAG`` columns.
+        home_team: Name of the home team.
+        away_team: Name of the away team.
+        elo_dict: Mapping of teams to their ELO ratings.
+        elo_tolerance: Maximum difference in ELO to consider an opponent similar.
+
+    Returns:
+        A tuple ``(home_expected, away_expected)`` with the expected goals for
+        the home and away team.
+    """
     df = prepare_df(df)
+    df = _assign_elo_and_weight(df, elo_dict)
 
     elo_home = elo_dict.get(home_team, 1500)
     elo_away = elo_dict.get(away_team, 1500)
 
-    today = df['Date'].max()
-    df = df.assign(
-        HomeELO=df['HomeTeam'].map(elo_dict),
-        AwayELO=df['AwayTeam'].map(elo_dict),
-        days_ago=lambda x: (today - x['Date']).dt.days,
-        weight=lambda x: 1 / (x['days_ago'] + 1),
-    )
+    home_mask = df["HomeTeam"] == home_team
+    away_mask = df["AwayTeam"] == away_team
 
-    home_mask = df['HomeTeam'] == home_team
-    away_mask = df['AwayTeam'] == away_team
+    df_home_relevant = df[home_mask & (abs(df["AwayELO"] - elo_away) <= elo_tolerance)]
+    df_away_relevant = df[away_mask & (abs(df["HomeELO"] - elo_home) <= elo_tolerance)]
 
-    df_home_relevant = df[home_mask & (abs(df['AwayELO'] - elo_away) <= elo_tolerance)]
-    df_away_relevant = df[away_mask & (abs(df['HomeELO'] - elo_home) <= elo_tolerance)]
+    df_home_all = df[
+        (home_mask | (df["AwayTeam"] == home_team))
+        & (
+            (abs(df["AwayELO"] - elo_away) <= elo_tolerance)
+            | (abs(df["HomeELO"] - elo_away) <= elo_tolerance)
+        )
+    ]
 
-    df_home_all = df[(home_mask | (df['AwayTeam'] == home_team)) &
-                     ((abs(df['AwayELO'] - elo_away) <= elo_tolerance) | (abs(df['HomeELO'] - elo_away) <= elo_tolerance))]
+    df_away_all = df[
+        ((df["HomeTeam"] == away_team) | away_mask)
+        & (
+            (abs(df["HomeELO"] - elo_home) <= elo_tolerance)
+            | (abs(df["AwayELO"] - elo_home) <= elo_tolerance)
+        )
+    ]
 
-    df_away_all = df[((df['HomeTeam'] == away_team) | away_mask) &
-                     ((abs(df['HomeELO'] - elo_home) <= elo_tolerance) | (abs(df['AwayELO'] - elo_home) <= elo_tolerance))]
+    league_avg_home = df["FTHG"].mean()
+    league_avg_away = df["FTAG"].mean()
 
-    league_avg_home = df['FTHG'].mean()
-    league_avg_away = df['FTAG'].mean()
+    gf_home = _weighted_stat(df_home_relevant["FTHG"], df_home_relevant["weight"])
+    ga_home = _weighted_stat(df_home_relevant["FTAG"], df_home_relevant["weight"])
 
-    def weighted_stat(goals, weights):
-        return np.average(goals, weights=weights) if len(goals) > 0 else 1.0
+    gf_away = _weighted_stat(df_away_relevant["FTAG"], df_away_relevant["weight"])
+    ga_away = _weighted_stat(df_away_relevant["FTHG"], df_away_relevant["weight"])
 
-    gf_home = weighted_stat(df_home_relevant['FTHG'], df_home_relevant['weight'])
-    ga_home = weighted_stat(df_home_relevant['FTAG'], df_home_relevant['weight'])
-
-    gf_away = weighted_stat(df_away_relevant['FTAG'], df_away_relevant['weight'])
-    ga_away = weighted_stat(df_away_relevant['FTHG'], df_away_relevant['weight'])
-
-    gf_home_all = weighted_stat(
+    gf_home_all = _weighted_stat(
         np.where(
-            df_home_all['HomeTeam'] == home_team,
-            df_home_all['FTHG'],
-            df_home_all['FTAG'],
+            df_home_all["HomeTeam"] == home_team,
+            df_home_all["FTHG"],
+            df_home_all["FTAG"],
         ),
-        df_home_all['weight'],
+        df_home_all["weight"],
     )
-    ga_home_all = weighted_stat(
+    ga_home_all = _weighted_stat(
         np.where(
-            df_home_all['HomeTeam'] == home_team,
-            df_home_all['FTAG'],
-            df_home_all['FTHG'],
+            df_home_all["HomeTeam"] == home_team,
+            df_home_all["FTAG"],
+            df_home_all["FTHG"],
         ),
-        df_home_all['weight'],
+        df_home_all["weight"],
     )
 
-    gf_away_all = weighted_stat(
+    gf_away_all = _weighted_stat(
         np.where(
-            df_away_all['AwayTeam'] == away_team,
-            df_away_all['FTAG'],
-            df_away_all['FTHG'],
+            df_away_all["AwayTeam"] == away_team,
+            df_away_all["FTAG"],
+            df_away_all["FTHG"],
         ),
-        df_away_all['weight'],
+        df_away_all["weight"],
     )
-    ga_away_all = weighted_stat(
+    ga_away_all = _weighted_stat(
         np.where(
-            df_away_all['AwayTeam'] == away_team,
-            df_away_all['FTHG'],
-            df_away_all['FTAG'],
+            df_away_all["AwayTeam"] == away_team,
+            df_away_all["FTHG"],
+            df_away_all["FTAG"],
         ),
-        df_away_all['weight'],
+        df_away_all["weight"],
     )
 
-    def compute_expected(gf, ga_opp, l_home, l_away):
-        return l_home * (gf / l_home) * (ga_opp / l_away)
+    home_exp_home = _expected_goals(gf_home, ga_away, league_avg_home, league_avg_away)
+    away_exp_away = _expected_goals(gf_away, ga_home, league_avg_away, league_avg_home)
 
-    home_exp_home = compute_expected(gf_home, ga_away, league_avg_home, league_avg_away)
-    away_exp_away = compute_expected(gf_away, ga_home, league_avg_away, league_avg_home)
-
-    home_exp_all = compute_expected(gf_home_all, ga_away_all, league_avg_home, league_avg_away)
-    away_exp_all = compute_expected(gf_away_all, ga_home_all, league_avg_away, league_avg_home)
+    home_exp_all = _expected_goals(gf_home_all, ga_away_all, league_avg_home, league_avg_away)
+    away_exp_all = _expected_goals(gf_away_all, ga_home_all, league_avg_away, league_avg_home)
 
     logger.info("📘 ELO-based: Home/Away only")
     logger.info(
