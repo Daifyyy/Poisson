@@ -18,7 +18,7 @@ from sections.match_prediction_section import render_single_match_prediction
 from sections.multi_prediction_section import render_multi_match_predictions
 from sections.team_detail_section import render_team_detail
 from sections.my_bets_section import render_my_bets_section as render_my_bets
-from sections.cross_league_section import render_cross_league_index
+from sections.cross_league_section import render_cross_league_ratings
 
 import urllib.parse
 from utils.poisson_utils import (
@@ -231,7 +231,7 @@ df, season_df, gii_dict, elo_dict = load_and_prepare(league_file)
 # Zachováme kompletní dataset pro historické statistiky (H2H apod.)
 full_df = df.copy()
 
-# Cross-league index for all teams
+# Cross-league ratings for all teams
 cross_league_df = compute_cross_league_index(league_files)
 
 # --- Date range filtr ---
@@ -266,7 +266,7 @@ navigation = st.sidebar.radio(
         "League overview",
         "Match prediction",
         "Multi predictions",
-        "Cross-league index",
+        "Cross-league ratings",
         "My Bets",
     ),
 )
@@ -342,8 +342,8 @@ elif navigation == "Multi predictions":
         league_files,
     )
 
-elif navigation == "Cross-league index":
-    render_cross_league_index(cross_league_df)
+elif navigation == "Cross-league ratings":
+    render_cross_league_ratings(cross_league_df)
 
 elif selected_team:
     render_team_detail(df, season_df, selected_team, league_name, gii_dict)
