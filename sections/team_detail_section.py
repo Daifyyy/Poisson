@@ -3,6 +3,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import Dict
+
+import plotly.graph_objects as go
+
 from utils.responsive import responsive_columns
 from utils.poisson_utils import (
     elo_history, calculate_form_emojis, calculate_expected_and_actual_points,
@@ -15,6 +18,7 @@ from utils.poisson_utils import (
     render_team_comparison_section
 )
 from utils.poisson_utils.team_analysis import TEAM_COMPARISON_ICON_MAP, TEAM_COMPARISON_DESC_MAP
+from utils.form_trend import get_rolling_form
 
 
 def render_team_detail(
@@ -118,6 +122,76 @@ def render_team_detail(
             team, compare_team,
             stats_total, stats_home, stats_away
         )
+        st.divider()
+        footer_cols = st.columns(4)
+
+        fig = go.Figure()
+
+        team_trend = get_rolling_form(all_matches, team)
+        fig.add_trace(
+            go.Scatter(
+                x=team_trend["Date"],
+                y=team_trend["rolling_points"],
+                mode="lines",
+                name=f"{team} body",
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=team_trend["Date"],
+                y=team_trend["rolling_xg"],
+                mode="lines",
+                name=f"{team} xG",
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=team_trend["Date"],
+                y=team_trend["ELO"],
+                mode="lines",
+                name=f"{team} ELO",
+                yaxis="y2",
+            )
+        )
+
+        compare_trend = get_rolling_form(compare_matches, compare_team)
+        fig.add_trace(
+            go.Scatter(
+                x=compare_trend["Date"],
+                y=compare_trend["rolling_points"],
+                mode="lines",
+                name=f"{compare_team} body",
+                line=dict(dash="dash"),
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=compare_trend["Date"],
+                y=compare_trend["rolling_xg"],
+                mode="lines",
+                name=f"{compare_team} xG",
+                line=dict(dash="dash"),
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=compare_trend["Date"],
+                y=compare_trend["ELO"],
+                mode="lines",
+                name=f"{compare_team} ELO",
+                yaxis="y2",
+                line=dict(dash="dash"),
+            )
+        )
+
+        fig.update_layout(
+            yaxis=dict(title="Rolling body/xG"),
+            yaxis2=dict(title="ELO", overlaying="y", side="right"),
+            legend=dict(orientation="h"),
+        )
+
+        footer_cols[0].plotly_chart(fig, use_container_width=True)
+
         return
 
 
@@ -464,6 +538,47 @@ def render_team_detail(
         plt.xticks(rotation=45)
         cols = responsive_columns(4)
         cols[0].pyplot(fig)
+
+    st.divider()
+    footer_cols = st.columns(4)
+
+    form_trend = get_rolling_form(all_matches, team)
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=form_trend["Date"],
+            y=form_trend["rolling_points"],
+            mode="lines",
+            name="Body",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=form_trend["Date"],
+            y=form_trend["rolling_xg"],
+            mode="lines",
+            name="xG",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=form_trend["Date"],
+            y=form_trend["ELO"],
+            mode="lines",
+            name="ELO",
+            yaxis="y2",
+        )
+    )
+
+    fig.update_layout(
+        yaxis=dict(title="Rolling body/xG"),
+        yaxis2=dict(title="ELO", overlaying="y", side="right"),
+        legend=dict(orientation="h"),
+    )
+
+    footer_cols[0].plotly_chart(fig, use_container_width=True)
+
+    return
 
     
     # def extract_match_stats(row):
