@@ -79,6 +79,13 @@ def update_bet(bet_id: int, **fields: Any) -> None:
         conn.commit()
 
 
+def delete_bet(bet_id: int) -> None:
+    """Remove a bet from the database by id."""
+    with _get_connection() as conn:
+        conn.execute("DELETE FROM bets WHERE id = ?", (bet_id,))
+        conn.commit()
+
+
 def fetch_bets() -> List[Dict[str, Any]]:
     """Return all bets as a list of dicts ordered by creation time."""
     with _get_connection() as conn:
