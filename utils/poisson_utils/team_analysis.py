@@ -40,24 +40,32 @@ def calculate_conceded_goals(df: pd.DataFrame) -> pd.DataFrame:
 def calculate_recent_team_form(df: pd.DataFrame, last_n: int = 5) -> pd.DataFrame:
     """Vrací DataFrame s průměrem bodů a formou (emoji) za posledních N zápasů pro každý tým."""
     from .match_style import form_points_to_emoji
-    teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
-    form_stats = []
-    for team in teams:
-        recent_matches = (
-            df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)]
-            .sort_values("Date")
-            .tail(last_n)
-        )
-        total_points = 0
-        for _, row in recent_matches.iterrows():
-            is_home = row['HomeTeam'] == team
-            points = calculate_points(row, is_home)
-            total_points += points
-        avg_points = total_points / last_n
-        form_stats.append({"Tým": team, "Body/zápas": avg_points})
-    form_df = pd.DataFrame(form_stats)
-    form_df["Form"] = form_df["Body/zápas"].apply(form_points_to_emoji)
-    return form_df.sort_values("Body/zápas").reset_index(drop=True)
+
+    df = df.copy()
+
+    # body za zápas ve vektorové podobě
+    df["home_points"] = np.select(
+        [df["FTHG"] > df["FTAG"], df["FTHG"] == df["FTAG"]], [3, 1], default=0
+    )
+    df["away_points"] = np.select(
+        [df["FTAG"] > df["FTHG"], df["FTAG"] == df["FTHG"]], [3, 1], default=0
+    )
+
+    home = df[["Date", "HomeTeam", "home_points"]].rename(
+        columns={"HomeTeam": "Tým", "home_points": "Body"}
+    )
+    away = df[["Date", "AwayTeam", "away_points"]].rename(
+        columns={"AwayTeam": "Tým", "away_points": "Body"}
+    )
+    all_matches = pd.concat([home, away], ignore_index=True).sort_values("Date")
+
+    recent = all_matches.groupby("Tým").tail(last_n)
+    avg_points = (
+        recent.groupby("Tým")["Body"].sum() / last_n
+    ).reset_index(name="Body/zápas")
+
+    avg_points["Form"] = avg_points["Body/zápas"].apply(form_points_to_emoji)
+    return avg_points.sort_values("Body/zápas").reset_index(drop=True)
 
 
 def calculate_expected_and_actual_points(df: pd.DataFrame) -> dict:
@@ -84,27 +92,29 @@ def calculate_expected_and_actual_points(df: pd.DataFrame) -> dict:
             continue
 
         # Skutečné body
-        home_points = sum(
-            3 if row['FTHG'] > row['FTAG'] else 1 if row['FTHG'] == row['FTAG'] else 0
-            for _, row in home.iterrows()
-        )
-        away_points = sum(
-            3 if row['FTAG'] > row['FTHG'] else 1 if row['FTAG'] == row['FTHG'] else 0
-            for _, row in away.iterrows()
-        )
+        home_points = np.select(
+            [home['FTHG'] > home['FTAG'], home['FTHG'] == home['FTAG']],
+            [3, 1],
+            default=0,
+        ).sum()
+        away_points = np.select(
+            [away['FTAG'] > away['FTHG'], away['FTAG'] == away['FTHG']],
+            [3, 1],
+            default=0,
+        ).sum()
         total_points = home_points + away_points
         num_matches = len(home) + len(away)
 
         # Očekávané body (xP) přes Poisson z proxy xG
         xP = 0.0
-        for _, row in all_matches.iterrows():
-            if row['HomeTeam'] == team:
-                xg_for = (row['HST'] / row['HS']) if row['HS'] > 0 else 0.1
-                xg_against = (row['AST'] / row['AS']) if row['AS'] > 0 else 0.1
+        for row in all_matches.itertuples(index=False):
+            if row.HomeTeam == team:
+                xg_for = (row.HST / row.HS) if row.HS > 0 else 0.1
+                xg_against = (row.AST / row.AS) if row.AS > 0 else 0.1
                 team_is_home = True
-            elif row['AwayTeam'] == team:
-                xg_for = (row['AST'] / row['AS']) if row['AS'] > 0 else 0.1
-                xg_against = (row['HST'] / row['HS']) if row['HS'] > 0 else 0.1
+            elif row.AwayTeam == team:
+                xg_for = (row.AST / row.AS) if row.AS > 0 else 0.1
+                xg_against = (row.HST / row.HS) if row.HS > 0 else 0.1
                 team_is_home = False
             else:
                 continue
