@@ -4,6 +4,7 @@ scipy
 streamlit
 matplotlib
 seaborn
+plotly
 XlsxWriter>=3.0.0
 
 requests
