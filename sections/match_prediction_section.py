@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from typing import Any, Dict, List, Tuple
+from collections.abc import Mapping
 from utils.responsive import responsive_columns
 from utils.poisson_utils import (
     expected_goals_weighted_by_elo,
@@ -579,18 +580,18 @@ def render_single_match_prediction(
 
 
     
-    style_home = get_team_style_vs_opponent_type(full_df, home_team, away_team) or {}
-    style_away = get_team_style_vs_opponent_type(full_df, away_team, home_team) or {}
+    style_home = get_team_style_vs_opponent_type(full_df, home_team, away_team)
+    style_away = get_team_style_vs_opponent_type(full_df, away_team, home_team)
     st.divider()
     radar_cols = st.columns(4)
-    if style_home:
+    if isinstance(style_home, Mapping) and style_home:
         radar_cols[0].plotly_chart(
             plot_style_radar(style_home), use_container_width=True
         )
         radar_cols[0].caption(
             " | ".join(TEAM_COMPARISON_DESC_MAP.get(k, k) for k in style_home)
         )
-    if style_away:
+    if isinstance(style_away, Mapping) and style_away:
         radar_cols[1].plotly_chart(
             plot_style_radar(style_away), use_container_width=True
         )

@@ -1,8 +1,20 @@
+"""Utilities for plotting radar charts.
+
+The original implementation expected a ``dict`` of statistics, but in
+practice the caller occasionally passed other data types (such as a
+single ``float``).  This resulted in an ``AttributeError`` when the
+function attempted to access ``.keys`` on a non-mapping object.  To make
+the function robust we now accept any ``Mapping`` and gracefully handle
+invalid inputs by returning an empty figure.
+"""
+
+from collections.abc import Mapping
+from typing import Any
+
 import plotly.graph_objects as go
-from typing import Dict, Any
 
 
-def plot_style_radar(stats_dict: Dict[str, Any]) -> go.Figure:
+def plot_style_radar(stats_dict: Mapping[str, Any]) -> go.Figure:
     """Create a simple radar chart for style metrics.
 
     Parameters
@@ -15,7 +27,7 @@ def plot_style_radar(stats_dict: Dict[str, Any]) -> go.Figure:
     go.Figure
         Plotly radar chart visualising the provided metrics.
     """
-    if not stats_dict:
+    if not isinstance(stats_dict, Mapping) or not stats_dict:
         return go.Figure()
 
     categories = list(stats_dict.keys())
