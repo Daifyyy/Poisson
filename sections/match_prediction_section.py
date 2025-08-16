@@ -36,6 +36,8 @@ from utils.poisson_utils import (
 )
 from utils.frontend_utils import display_team_status_table
 from utils.poisson_utils.match_style import tempo_tag
+from utils.radar_chart import plot_style_radar
+from utils.poisson_utils.team_analysis import TEAM_COMPARISON_DESC_MAP
 from utils.export_utils import generate_excel_analysis_export
 from utils.utils_warnings import (
     scoreline_variance_warning,
@@ -577,6 +579,25 @@ def render_single_match_prediction(
 
 
     
+    style_home = get_team_style_vs_opponent_type(full_df, home_team, away_team) or {}
+    style_away = get_team_style_vs_opponent_type(full_df, away_team, home_team) or {}
+    st.divider()
+    radar_cols = st.columns(4)
+    if style_home:
+        radar_cols[0].plotly_chart(
+            plot_style_radar(style_home), use_container_width=True
+        )
+        radar_cols[0].caption(
+            " | ".join(TEAM_COMPARISON_DESC_MAP.get(k, k) for k in style_home)
+        )
+    if style_away:
+        radar_cols[1].plotly_chart(
+            plot_style_radar(style_away), use_container_width=True
+        )
+        radar_cols[1].caption(
+            " | ".join(TEAM_COMPARISON_DESC_MAP.get(k, k) for k in style_away)
+        )
+
     # Extrakce konkrétních warningů z výstupu
     variance_warning_msg = next((w["message"] for w in warnings_list if "rozptyl" in w["message"].lower()), None)
     style_form_warning_msg = next((w["message"] for w in warnings_list if "forma" in w["message"].lower()), None)
