@@ -793,22 +793,26 @@ def calculate_match_tempo(df, team, opponent_elo, is_home, elo_dict, last_n=10):
     for t in all_teams:
         home = df[df['HomeTeam'] == t]
         away = df[df['AwayTeam'] == t]
-        if not home.empty and not away.empty:
+        if not home.empty or not away.empty:
             s = pd.concat([home['HS'], away['AS']])
             c = pd.concat([home['HC'], away['AC']])
             f = pd.concat([home['HF'], away['AF']])
             all_tempos.append((s + c + f).mean())
 
-    percentile = round(sum(t < tempo_index for t in all_tempos) / len(all_tempos) * 100, 1)
+    if all_tempos:
+        percentile = round(sum(t < tempo_index for t in all_tempos) / len(all_tempos) * 100, 1)
 
-    if percentile >= 80:
-        rating = "⚡ velmi rychlé"
-    elif percentile >= 40:
-        rating = "🎯 střední tempo"
-    elif percentile >= 10:
-        rating = "💤 pomalé"
+        if percentile >= 80:
+            rating = "⚡ velmi rychlé"
+        elif percentile >= 40:
+            rating = "🎯 střední tempo"
+        elif percentile >= 10:
+            rating = "💤 pomalé"
+        else:
+            rating = "🪨 velmi pomalé"
     else:
-        rating = "🪨 velmi pomalé"
+        percentile = 0
+        rating = "N/A"
 
     # Dominance vs trpění
     if is_home:
