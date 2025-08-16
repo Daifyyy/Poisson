@@ -211,36 +211,40 @@ def display_metrics(
 ) -> None:
     """Display key statistical metrics and outcome probabilities."""
     st.markdown("## 📊 Klíčové metriky")
-    cols = responsive_columns(6)
 
+    cols = responsive_columns(3)
     cols[0].metric(
         "xG/xGA sezóna",
         f"{xg_home:.1f}/{xga_home:.1f} vs {xg_away:.1f}/{xga_away:.1f}"
     )
-    cols[1].metric("Oček. body (xP)", f"{xpoints['Home xP']:.1f} vs {xpoints['Away xP']:.1f}")
+    cols[1].metric(
+        "Oček. body (xP)",
+        f"{xpoints['Home xP']:.1f} vs {xpoints['Away xP']:.1f}"
+    )
     cols[2].metric("BTTS", f"{btts['BTTS Yes']:.1f}%")
     cols[2].caption(
         f"Kurzy: {1 / (btts['BTTS Yes'] / 100):.2f}"
     )
-    cols[3].metric(
+
+    cols = responsive_columns(3)
+    cols[0].metric(
         "Over 1.5 / 2.5 / 3.5",
         f"{over_under['Over 1.5']:.1f}% / {over_under['Over 2.5']:.1f}% / {over_under['Over 3.5']:.1f}%",
     )
-    cols[3].caption(
+    cols[0].caption(
         f"Kurzy: {1 / (over_under['Over 1.5'] / 100):.2f} / {1 / (over_under['Over 2.5'] / 100):.2f} / {1 / (over_under['Over 3.5'] / 100):.2f}"
     )
-
-    cols[4].metric(
+    cols[1].metric(
         "Průměrné rohy",
         f"{corner_home_exp:.1f} vs {corner_away_exp:.1f}"
     )
     over_key = f"Over {corner_line}"
-    cols[5].metric(
+    cols[2].metric(
         over_key,
         f"{corner_probs[over_key]:.1f}%",
         f"{1 / (corner_probs[over_key] / 100):.2f}"
     )
-    cols[5].caption(
+    cols[2].caption(
         f"Under: {corner_probs[f'Under {corner_line}']:.1f}%"
     )
 
