@@ -1,5 +1,6 @@
 import math
 import pandas as pd
+import pytest
 
 from utils.poisson_utils import expected_corners, poisson_corner_matrix, corner_over_under_prob
 
@@ -19,6 +20,21 @@ def test_expected_corners():
     home, away = expected_corners(df, "A", "B")
     assert math.isclose(home, 5.5, rel_tol=1e-4)
     assert math.isclose(away, 3.25, rel_tol=1e-4)
+
+
+@pytest.mark.parametrize("missing", ["HC", "AC", "HomeTeam", "AwayTeam"])
+def test_expected_corners_missing_column(missing):
+    df = _sample_df().drop(columns=[missing])
+    with pytest.raises(ValueError, match=missing):
+        expected_corners(df, "A", "B")
+
+
+def test_expected_corners_multiple_missing_columns():
+    df = _sample_df().drop(columns=["HC", "AC"])
+    with pytest.raises(ValueError) as exc:
+        expected_corners(df, "A", "B")
+    msg = str(exc.value)
+    assert "HC" in msg and "AC" in msg
 
 
 def test_corner_over_under_probabilities_sum_to_100():
