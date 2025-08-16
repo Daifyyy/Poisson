@@ -204,10 +204,14 @@ def display_metrics(
     over_under: Dict[str, float],
     outcomes: Dict[str, float],
     confidence_index: float,
+    corner_home_exp: float,
+    corner_away_exp: float,
+    corner_probs: Dict[str, float],
+    corner_line: float,
 ) -> None:
     """Display key statistical metrics and outcome probabilities."""
     st.markdown("## 📊 Klíčové metriky")
-    cols = responsive_columns(4)
+    cols = responsive_columns(6)
 
     cols[0].metric(
         "xG/xGA sezóna",
@@ -224,6 +228,20 @@ def display_metrics(
     )
     cols[3].caption(
         f"Kurzy: {1 / (over_under['Over 1.5'] / 100):.2f} / {1 / (over_under['Over 2.5'] / 100):.2f} / {1 / (over_under['Over 3.5'] / 100):.2f}"
+    )
+
+    cols[4].metric(
+        "Průměrné rohy",
+        f"{corner_home_exp:.1f} vs {corner_away_exp:.1f}"
+    )
+    over_key = f"Over {corner_line}"
+    cols[5].metric(
+        over_key,
+        f"{corner_probs[over_key]:.1f}%",
+        f"{1 / (corner_probs[over_key] / 100):.2f}"
+    )
+    cols[5].caption(
+        f"Under: {corner_probs[f'Under {corner_line}']:.1f}%"
     )
 
     st.markdown("## 🧠 Pravděpodobnosti výsledků")
@@ -347,6 +365,10 @@ def render_single_match_prediction(
         variance_warning=variance_flag,
     )
 
+    corner_line = st.sidebar.slider("Rohová hranice", 5.5, 15.5, 9.5, 0.5)
+    corner_matrix = poisson_corner_matrix(corner_home_exp, corner_away_exp)
+    corner_probs = corner_over_under_prob(corner_matrix, corner_line)
+
     display_metrics(
         home_team,
         away_team,
@@ -359,6 +381,10 @@ def render_single_match_prediction(
         over_under,
         outcomes,
         confidence_index,
+        corner_home_exp,
+        corner_away_exp,
+        corner_probs,
+        corner_line,
     )
 
     with st.form("bet_form"):
@@ -398,20 +424,7 @@ def render_single_match_prediction(
             )
             st.success("Bet saved")
 
-    corner_line = st.sidebar.slider("Rohová hranice", 5.5, 15.5, 9.5, 0.5)
-    corner_matrix = poisson_corner_matrix(corner_home_exp, corner_away_exp)
-    corner_probs = corner_over_under_prob(corner_matrix, corner_line)
-    st.markdown("## 🛎️ Rohy")
-    corner_cols = responsive_columns(2)
-    corner_cols[0].metric("Průměrné rohy", f"{corner_home_exp:.1f} vs {corner_away_exp:.1f}")
-    over_key = f"Over {corner_line}"
-    corner_cols[1].metric(
-        over_key,
-        f"{corner_probs[over_key]:.1f}%",
-        f"{1 / (corner_probs[over_key] / 100):.2f}"
-    )
-    corner_cols[1].caption(f"Under: {corner_probs[f'Under {corner_line}']:.1f}%")
-        # Styl hry
+    # Styl hry
     st.markdown("## 🎮 Styl hry")
 
     cols = responsive_columns(2)
