@@ -1,8 +1,15 @@
 import pandas as pd
 import numpy as np
+from typing import Dict, Tuple, Optional
 
 from .data import prepare_df
 from .prediction import poisson_prediction
+
+
+# Caches for expected goals and filtered match datasets
+_expected_goals_cache: Dict[str, Dict[Tuple[str, str], Tuple[float, float]]] = {}
+_filtered_matches_cache: Dict[str, Dict[Tuple[str, str, bool], pd.DataFrame]] = {}
+_league_versions: Dict[str, Tuple[int, pd.Timestamp]] = {}
 
 def calculate_pseudo_xg_for_team(df: pd.DataFrame, team: str) -> dict:
     """Počítá pseudo-xG metriky pro jeden tým."""
@@ -95,8 +102,29 @@ def calculate_team_pseudo_xg(df):
 
 
 def expected_goals_weighted_by_elo(df: pd.DataFrame, home_team: str, away_team: str, elo_dict: dict) -> tuple:
-    """Spočítá očekávané góly domácích a hostů na základě ELO soupeřů a váženého průměru tří období."""
+    """Calculate expected goals for both teams using ELO-weighted averages.
+
+    Results are memoized per ``(home_team, away_team, league)`` combination.
+    Filtered datasets for historical and seasonal samples are cached so repeated
+    calls avoid re-sorting large dataframes.  Cache is invalidated whenever the
+    underlying league dataframe changes (length or max date).
+    """
+
     df = prepare_df(df)
+
+    league = df['Div'].iloc[0] if 'Div' in df.columns else 'unknown'
+    version = (len(df), df['Date'].max())
+
+    if _league_versions.get(league) != version:
+        # League data changed -> invalidate caches for this league
+        _expected_goals_cache.pop(league, None)
+        _filtered_matches_cache.pop(league, None)
+        _league_versions[league] = version
+
+    league_cache = _expected_goals_cache.setdefault(league, {})
+    cache_key = (home_team, away_team)
+    if cache_key in league_cache:
+        return league_cache[cache_key]
 
     latest_date = df['Date'].max()
     one_year_ago = latest_date - pd.Timedelta(days=365)
@@ -107,32 +135,50 @@ def expected_goals_weighted_by_elo(df: pd.DataFrame, home_team: str, away_team: 
         (df['HomeTeam'] == away_team) | (df['AwayTeam'] == away_team)
     ].sort_values('Date').tail(10)
 
-    def filter_by_elo(sub_df, team, is_home, opponent_elo, n=10):
+    filtered_cache = _filtered_matches_cache.setdefault(league, {})
+
+    def get_matches(sub_df: pd.DataFrame, subset_key: Optional[str], team: str, is_home: bool) -> pd.DataFrame:
         team_col = 'HomeTeam' if is_home else 'AwayTeam'
         opp_col = 'AwayTeam' if is_home else 'HomeTeam'
+
+        if subset_key is None:
+            matches = sub_df[sub_df[team_col] == team].copy()
+            matches['OppELO'] = matches[opp_col].map(elo_dict)
+            return matches
+
+        key = (subset_key, team, is_home)
+        if key not in filtered_cache:
+            matches = sub_df[sub_df[team_col] == team].copy()
+            matches['OppELO'] = matches[opp_col].map(elo_dict)
+            filtered_cache[key] = matches
+        return filtered_cache[key]
+
+    def compute_stats(sub_df: pd.DataFrame, subset_key: Optional[str], team: str, is_home: bool, opponent_elo: float, n: int = 10):
         gf_col = 'FTHG' if is_home else 'FTAG'
         ga_col = 'FTAG' if is_home else 'FTHG'
 
-        matches = sub_df[sub_df[team_col] == team].copy()
-        matches['OppELO'] = matches[opp_col].map(elo_dict)
-        matches['EloDiff'] = abs(matches['OppELO'] - opponent_elo)
-        matches = matches.sort_values('EloDiff').head(n)
+        matches = get_matches(sub_df, subset_key, team, is_home)
+        if matches.empty:
+            return 1.0, 1.0
 
-        gf = matches[gf_col].mean() if not matches.empty else 1.0
-        ga = matches[ga_col].mean() if not matches.empty else 1.0
+        tmp = matches.assign(EloDiff=(matches['OppELO'] - opponent_elo).abs())
+        closest = tmp.nsmallest(n, 'EloDiff')
+
+        gf = closest[gf_col].mean() if not closest.empty else 1.0
+        ga = closest[ga_col].mean() if not closest.empty else 1.0
         return gf, ga
 
     elo_away = elo_dict.get(away_team, 1500)
     elo_home = elo_dict.get(home_team, 1500)
 
-    hist_home, hist_home_ga = filter_by_elo(df_hist, home_team, True, elo_away)
-    hist_away, hist_away_ga = filter_by_elo(df_hist, away_team, False, elo_home)
+    hist_home, hist_home_ga = compute_stats(df_hist, 'hist', home_team, True, elo_away)
+    hist_away, hist_away_ga = compute_stats(df_hist, 'hist', away_team, False, elo_home)
 
-    season_home, season_home_ga = filter_by_elo(df_season, home_team, True, elo_away)
-    season_away, season_away_ga = filter_by_elo(df_season, away_team, False, elo_home)
+    season_home, season_home_ga = compute_stats(df_season, 'season', home_team, True, elo_away)
+    season_away, season_away_ga = compute_stats(df_season, 'season', away_team, False, elo_home)
 
-    last5_home, last5_home_ga = filter_by_elo(df_last10, home_team, True, elo_away)
-    last5_away, last5_away_ga = filter_by_elo(df_last10, away_team, False, elo_home)
+    last5_home, last5_home_ga = compute_stats(df_last10, None, home_team, True, elo_away)
+    last5_away, last5_away_ga = compute_stats(df_last10, None, away_team, False, elo_home)
 
     league_avg_home_goals = df['FTHG'].mean()
     league_avg_away_goals = df['FTAG'].mean()
@@ -151,7 +197,9 @@ def expected_goals_weighted_by_elo(df: pd.DataFrame, home_team: str, away_team: 
     expected_home = 0.3 * ehist_home + 0.4 * eseason_home + 0.3 * elast5_home
     expected_away = 0.3 * ehist_away + 0.4 * eseason_away + 0.3 * elast5_away
 
-    return round(expected_home, 2), round(expected_away, 2)
+    result = round(expected_home, 2), round(expected_away, 2)
+    league_cache[cache_key] = result
+    return result
 
 
 def expected_team_stats_weighted_by_elo(df: pd.DataFrame, home_team: str, away_team: str, stat_columns: dict, elo_dict: dict) -> dict:
