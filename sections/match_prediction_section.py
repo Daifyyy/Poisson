@@ -415,8 +415,8 @@ def render_single_match_prediction(
                 f"{away_team} -1.0",
             ],
         )
-        odds = st.number_input("Odds", min_value=1.0, value=1.0, step=0.01)
-        stake = st.number_input("Stake", min_value=0.0, value=1.0, step=0.1)
+        odds = st.number_input("Odds", min_value=1.0, value=1.5, step=0.01)
+        stake = st.number_input("Stake", min_value=0.0, value=100.0, step=0.1)
         if st.form_submit_button("Save bet"):
             bet_db.insert_bet(
                 league=league_name,
