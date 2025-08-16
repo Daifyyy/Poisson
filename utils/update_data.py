@@ -1,7 +1,9 @@
+import os
+from concurrent.futures import ThreadPoolExecutor
+from io import StringIO
+
 import pandas as pd
 import requests
-import os
-from io import StringIO
 
 LEAGUES = {
     "E0": "https://www.football-data.co.uk/mmz4281/2425/E0.csv",  # Premier League
@@ -29,17 +31,29 @@ def normalize_keys(df):
 def update_all_leagues():
     messages = []
 
-    for code, url in LEAGUES.items():
+    def fetch_league(code, url):
         try:
             print(f"🔄 Stahuji {code}...")
             response = requests.get(url)
             if response.status_code != 200:
-                messages.append(f"❌ {code}: Stažení selhalo.")
-                continue
-
+                return code, None, f"❌ {code}: Stažení selhalo."
             df_new = pd.read_csv(StringIO(response.text))
             df_new = normalize_keys(df_new)
+            return code, df_new, None
+        except Exception as e:
+            return code, None, f"❌ {code}: Chyba – {str(e)}"
 
+    # Download all leagues concurrently
+    with ThreadPoolExecutor(max_workers=len(LEAGUES)) as executor:
+        futures = [executor.submit(fetch_league, code, url) for code, url in LEAGUES.items()]
+        results = [future.result() for future in futures]
+
+    # Process and save after all downloads complete
+    for code, df_new, error in results:
+        if error:
+            messages.append(error)
+            continue
+        try:
             path = f"data/{code}_combined_full_updated.csv"
             if not os.path.exists(path):
                 messages.append(f"❌ {code}: Soubor {path} neexistuje.")
