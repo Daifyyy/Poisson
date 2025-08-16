@@ -44,12 +44,10 @@ def poisson_corner_matrix(home_exp: float, away_exp: float, max_corners: int = 2
 
 def corner_over_under_prob(matrix: np.ndarray, threshold: float) -> dict:
     """Compute over/under probabilities for total corners given a matrix."""
-    size = matrix.shape[0]
-    over = 0.0
-    for i in range(size):
-        for j in range(size):
-            if i + j > threshold:
-                over += matrix[i, j]
+    indices_sum = np.add.outer(
+        np.arange(matrix.shape[0]), np.arange(matrix.shape[1])
+    )
+    over = matrix[indices_sum > threshold].sum()
     over_pct = round(over * 100, 2)
     under_pct = round(100 - over_pct, 2)
     return {f"Over {threshold}": over_pct, f"Under {threshold}": under_pct}
