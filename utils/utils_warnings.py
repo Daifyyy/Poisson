@@ -29,13 +29,12 @@ def calculate_team_goal_averages(df):
     for team in teams:
         home_avg = df[df['HomeTeam'] == team]['FTHG'].mean()
         away_avg = df[df['AwayTeam'] == team]['FTAG'].mean()
-        # ``np.nanmean`` does not handle ``pd.NA`` values that can appear when
-        # operating on pandas' nullable dtypes.  Convert the values to a
-        # float-based ``Series`` so that any ``pd.NA`` is cast to ``np.nan`` and
-        # then compute the mean while skipping missing values.
-        avg_goals[team] = (
-            pd.Series([home_avg, away_avg], dtype="float64").mean(skipna=True)
-        )
+        # ``home_avg``/``away_avg`` can be ``pd.NA`` when the source columns use
+        # pandas' nullable dtypes.  ``np.nanmean`` does not understand
+        # ``pd.NA`` values, so coerce them to ``np.nan`` before computing the
+        # mean.
+        values = pd.to_numeric([home_avg, away_avg], errors="coerce")
+        avg_goals[team] = np.nanmean(values)
     return avg_goals
 
 def form_points_to_emoji(avg_points):
@@ -794,22 +793,26 @@ def calculate_match_tempo(df, team, opponent_elo, is_home, elo_dict, last_n=10):
     for t in all_teams:
         home = df[df['HomeTeam'] == t]
         away = df[df['AwayTeam'] == t]
-        if not home.empty and not away.empty:
+        if not home.empty or not away.empty:
             s = pd.concat([home['HS'], away['AS']])
             c = pd.concat([home['HC'], away['AC']])
             f = pd.concat([home['HF'], away['AF']])
             all_tempos.append((s + c + f).mean())
 
-    percentile = round(sum(t < tempo_index for t in all_tempos) / len(all_tempos) * 100, 1)
+    if all_tempos:
+        percentile = round(sum(t < tempo_index for t in all_tempos) / len(all_tempos) * 100, 1)
 
-    if percentile >= 80:
-        rating = "⚡ velmi rychlé"
-    elif percentile >= 40:
-        rating = "🎯 střední tempo"
-    elif percentile >= 10:
-        rating = "💤 pomalé"
+        if percentile >= 80:
+            rating = "⚡ velmi rychlé"
+        elif percentile >= 40:
+            rating = "🎯 střední tempo"
+        elif percentile >= 10:
+            rating = "💤 pomalé"
+        else:
+            rating = "🪨 velmi pomalé"
     else:
-        rating = "🪨 velmi pomalé"
+        percentile = 0
+        rating = "N/A"
 
     # Dominance vs trpění
     if is_home:

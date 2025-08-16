@@ -103,16 +103,20 @@ def calculate_match_tempo(df: pd.DataFrame, team: str, opponent_elo: float, is_h
             f = pd.concat([home['HF'], away['AF']])
             all_tempos.append((s + c + f).median())
 
-    percentile = round(sum(t < tempo_index for t in all_tempos) / len(all_tempos) * 100, 1)
+    if all_tempos:
+        percentile = round(sum(t < tempo_index for t in all_tempos) / len(all_tempos) * 100, 1)
 
-    if percentile >= 80:
-        rating = "⚡ velmi rychlé"
-    elif percentile >= 40:
-        rating = "🎯 střední tempo"
-    elif percentile >= 10:
-        rating = "💤 pomalé"
+        if percentile >= 80:
+            rating = "⚡ velmi rychlé"
+        elif percentile >= 40:
+            rating = "🎯 střední tempo"
+        elif percentile >= 10:
+            rating = "💤 pomalé"
+        else:
+            rating = "🪨 velmi pomalé"
     else:
-        rating = "🪨 velmi pomalé"
+        percentile = 0
+        rating = "N/A"
 
     # ⚖️ IMBALANCE – jen proti soupeřům stejné síly
     
