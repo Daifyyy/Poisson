@@ -93,3 +93,4 @@ from .corners import (
 )
 
 from .whoscored_api import get_whoscored_xg, get_whoscored_xg_xga
+from .cross_league import calculate_cross_league_team_index
