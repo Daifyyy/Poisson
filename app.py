@@ -18,6 +18,7 @@ from sections.match_prediction_section import render_single_match_prediction
 from sections.multi_prediction_section import render_multi_match_predictions
 from sections.team_detail_section import render_team_detail
 from sections.my_bets_section import render_my_bets_section as render_my_bets
+from sections.cross_league_section import render_cross_league_index
 
 import urllib.parse
 from utils.poisson_utils import (
@@ -26,6 +27,7 @@ from utils.poisson_utils import (
     calculate_gii_zscore,
     calculate_elo_ratings,
     get_team_average_gii,
+    calculate_cross_league_team_index,
 )
 from utils.frontend_utils import validate_dataset
 from utils.update_data import update_all_leagues
@@ -130,6 +132,96 @@ def load_and_prepare(file_path: str):
 
     return df, season_df, gii_dict, elo_dict
 
+
+@st.cache_data(show_spinner=False)
+def compute_cross_league_index(files: dict) -> pd.DataFrame:
+    """Compute cross-league team index for all leagues in ``files``."""
+
+    team_frames = []
+    rating_rows = []
+
+    for _, path in files.items():
+        league_code = path.split("/")[-1].split("_")[0]
+        league_df = load_data(path)
+
+        # Aggregate totals for each team
+        home = league_df[
+            [
+                "Div",
+                "HomeTeam",
+                "FTHG",
+                "FTAG",
+                "HS",
+                "HST",
+                "AS",
+                "AST",
+            ]
+        ].rename(
+            columns={
+                "Div": "league",
+                "HomeTeam": "team",
+                "FTHG": "goals_for",
+                "FTAG": "goals_against",
+                "HS": "shots_for",
+                "HST": "sot_for",
+                "AS": "shots_against",
+                "AST": "sot_against",
+            }
+        )
+
+        away = league_df[
+            [
+                "Div",
+                "AwayTeam",
+                "FTAG",
+                "FTHG",
+                "AS",
+                "AST",
+                "HS",
+                "HST",
+            ]
+        ].rename(
+            columns={
+                "Div": "league",
+                "AwayTeam": "team",
+                "FTAG": "goals_for",
+                "FTHG": "goals_against",
+                "AS": "shots_for",
+                "AST": "sot_for",
+                "HS": "shots_against",
+                "HST": "sot_against",
+            }
+        )
+
+        combined = pd.concat([home, away], ignore_index=True)
+        agg = (
+            combined.groupby(["league", "team"])
+            .agg(
+                matches=("goals_for", "size"),
+                goals_for=("goals_for", "sum"),
+                goals_against=("goals_against", "sum"),
+                shots_for=("shots_for", "sum"),
+                shots_against=("shots_against", "sum"),
+                sot_for=("sot_for", "sum"),
+                sot_against=("sot_against", "sum"),
+            )
+            .reset_index()
+        )
+
+        agg["xg_for"] = 0.1 * agg["shots_for"] + 0.3 * agg["sot_for"]
+        agg["xg_against"] = 0.1 * agg["shots_against"] + 0.3 * agg["sot_against"]
+        agg = agg.drop(columns=["sot_for", "sot_against"])
+
+        team_frames.append(agg)
+
+        elo_dict_league = calculate_elo_ratings(league_df)
+        avg_elo = sum(elo_dict_league.values()) / len(elo_dict_league)
+        rating_rows.append({"league": league_code, "elo": avg_elo})
+
+    teams_df = pd.concat(team_frames, ignore_index=True)
+    ratings_df = pd.DataFrame(rating_rows)
+    return calculate_cross_league_team_index(teams_df, ratings_df)
+
 # Re-load po aktualizaci dat
 if st.session_state.get("reload_flag"):
     st.cache_data.clear()
@@ -138,6 +230,9 @@ if st.session_state.get("reload_flag"):
 df, season_df, gii_dict, elo_dict = load_and_prepare(league_file)
 # Zachováme kompletní dataset pro historické statistiky (H2H apod.)
 full_df = df.copy()
+
+# Cross-league index for all teams
+cross_league_df = compute_cross_league_index(league_files)
 
 # --- Date range filtr ---
 overall_start = df["Date"].min().date()
@@ -167,7 +262,13 @@ if "match_list" not in st.session_state:
 # --- Navigation ---
 navigation = st.sidebar.radio(
     "Navigate",
-    ("League overview", "Match prediction", "Multi predictions", "My Bets"),
+    (
+        "League overview",
+        "Match prediction",
+        "Multi predictions",
+        "Cross-league index",
+        "My Bets",
+    ),
 )
 
 # --- Query params ---
@@ -240,6 +341,9 @@ elif navigation == "Multi predictions":
         league_file,
         league_files,
     )
+
+elif navigation == "Cross-league index":
+    render_cross_league_index(cross_league_df)
 
 elif selected_team:
     render_team_detail(df, season_df, selected_team, league_name, gii_dict)
