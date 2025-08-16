@@ -103,8 +103,8 @@ def render_team_detail(
         compare_matches = pd.concat([compare_home, compare_away])
 
         total_df = pd.concat([all_matches, compare_matches])
-        home_df = pd.concat([home, compare_home])
-        away_df = pd.concat([away, compare_away])
+        home_df = pd.concat([home, compare_away])
+        away_df = pd.concat([away, compare_home])
 
         stats_total = generate_team_comparison(total_df, team, compare_team)
         stats_home = generate_team_comparison(home_df, team, compare_team)
