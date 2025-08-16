@@ -327,15 +327,15 @@ def merged_home_away_opponent_form(df: pd.DataFrame, team: str) -> dict:
     def summarize(matches, is_home):
         if matches.empty:
             return {
-                "Z": 0,
-                "G": 0,
-                "OG": 0,
-                "S": 0,
-                "SOT": 0,
+                "Zápasy": 0,
+                "Góly": 0,
+                "Obdržené": 0,
+                "Střely": 0,
+                "Na branku": 0,
                 "xG": 0,
                 "xGA": 0,
-                "PTS": 0,
-                "CS": 0,
+                "Body/zápas": 0,
+                "Čistá konta %": 0,
             }
 
         goals_for = matches["FTHG"] if is_home else matches["FTAG"]
