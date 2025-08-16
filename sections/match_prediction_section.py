@@ -52,6 +52,7 @@ from utils.anomaly_detection import (
     colored_risk_tag,
     calculate_confidence_index
 )
+from utils import bet_db
 
 @st.cache_data
 def get_cached_match_inputs(df_hash,df, home_team, away_team, elo_dict):
@@ -359,6 +360,43 @@ def render_single_match_prediction(
         outcomes,
         confidence_index,
     )
+
+    with st.form("bet_form"):
+        bet_type = st.selectbox(
+            "Bet type",
+            [
+                f"{home_team} win",
+                f"{away_team} win",
+                "Draw",
+                f"Double {home_team}",
+                f"Double {away_team}",
+                f"{home_team} w/o draw",
+                f"{away_team} w/o draw",
+                "Over 1.5",
+                "Over 2.5",
+                "Over 3.5",
+                "Under 2.5",
+                "Under 3.5",
+                f"{home_team} and over 1.5",
+                f"{away_team} and over 1.5",
+                f"{home_team} and over 2.5",
+                f"{away_team} and over 2.5",
+                f"{home_team} -1.0",
+                f"{away_team} -1.0",
+            ],
+        )
+        odds = st.number_input("Odds", min_value=1.0, value=1.0, step=0.01)
+        stake = st.number_input("Stake", min_value=0.0, value=1.0, step=0.1)
+        if st.form_submit_button("Save bet"):
+            bet_db.insert_bet(
+                league=league_name,
+                home_team=home_team,
+                away_team=away_team,
+                bet_type=bet_type,
+                odds=odds,
+                stake=stake,
+            )
+            st.success("Bet saved")
 
     corner_line = st.sidebar.slider("Rohová hranice", 5.5, 15.5, 9.5, 0.5)
     corner_matrix = poisson_corner_matrix(corner_home_exp, corner_away_exp)
