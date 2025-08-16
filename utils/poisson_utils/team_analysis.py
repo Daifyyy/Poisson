@@ -310,9 +310,14 @@ def merged_home_away_opponent_form(df: pd.DataFrame, team: str) -> dict:
     for t in pd.concat([df['HomeTeam'], df['AwayTeam']]).unique():
         home_g = df.loc[df['HomeTeam'] == t, 'FTHG'].mean()
         away_g = df.loc[df['AwayTeam'] == t, 'FTAG'].mean()
-        team_avg_goals[t] = (
-            pd.Series([home_g, away_g], dtype="float64").mean(skipna=True)
-        )
+
+        goals = []
+        if pd.notna(home_g):
+            goals.append(home_g)
+        if pd.notna(away_g):
+            goals.append(away_g)
+
+        team_avg_goals[t] = np.mean(goals) if goals else np.nan
 
     sorted_teams = sorted(team_avg_goals.items(), key=lambda x: x[1], reverse=True)
     top = set(t for t, _ in sorted_teams[: int(len(sorted_teams) * 0.3)])
