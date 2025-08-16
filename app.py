@@ -43,7 +43,7 @@ st.set_page_config(
     page_title="⚽ Poisson Predictor",
     page_icon="⚽",
     layout=layout,
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 init_responsive_layout()
 pd.options.display.float_format = lambda x: f"{x:.1f}"
