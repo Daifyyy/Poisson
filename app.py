@@ -28,6 +28,10 @@ from utils.poisson_utils import (
 )
 from utils.frontend_utils import validate_dataset
 from utils.update_data import update_all_leagues
+from utils.bet_db import init_db
+
+# Initialize bets database on startup
+init_db()
 
 # --- Základní nastavení ---
 # Layout can be switched via env variable STREAMLIT_LAYOUT; defaults to "wide"
