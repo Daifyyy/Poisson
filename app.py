@@ -17,7 +17,7 @@ from sections.overview_section import render_league_overview
 from sections.match_prediction_section import render_single_match_prediction
 from sections.multi_prediction_section import render_multi_match_predictions
 from sections.team_detail_section import render_team_detail
-from sections.my_bets_section import render_my_bets_section
+from sections.my_bets_section import render_my_bets_section as render_my_bets
 
 import urllib.parse
 from utils.poisson_utils import (
@@ -164,12 +164,20 @@ elo_dict = {team: elo_dict.get(team) for team in filtered_teams}
 if "match_list" not in st.session_state:
     st.session_state.match_list = []
 
+# --- Navigation ---
+navigation = st.sidebar.radio(
+    "Navigate",
+    ("League overview", "Match prediction", "Multi predictions", "My Bets"),
+)
+
 # --- Výběr týmů ---
-teams_in_season = sorted(set(season_df["HomeTeam"].unique()) | set(season_df["AwayTeam"].unique()))
-  home_team = st.sidebar.selectbox("Domácí tým", teams_in_season)
-  away_team = st.sidebar.selectbox("Hostující tým", teams_in_season)
-  multi_prediction_mode = st.sidebar.checkbox("📝 Hromadné predikce")
-  my_bets_mode = st.sidebar.checkbox("📒 My Bets")
+teams_in_season = sorted(
+    set(season_df["HomeTeam"].unique()) | set(season_df["AwayTeam"].unique())
+)
+home_team = away_team = None
+if navigation in ("Match prediction", "Multi predictions"):
+    home_team = st.sidebar.selectbox("Domácí tým", teams_in_season)
+    away_team = st.sidebar.selectbox("Hostující tým", teams_in_season)
 
 # --- Query params ---
 query_params = st.query_params
@@ -194,8 +202,8 @@ elif st.session_state["last_selected_league"] != league_name:
     st.rerun()
 
 # === ROUTING ===
-if my_bets_mode:
-    render_my_bets_section()
+if navigation == "My Bets":
+    render_my_bets()
 
 elif selected_team:
     render_team_detail(df, season_df, selected_team, league_name, gii_dict)
@@ -204,7 +212,7 @@ elif selected_team:
         st.query_params["selected_league"] = league_name
         st.rerun()
 
-elif multi_prediction_mode:
+elif navigation == "Multi predictions":
     render_multi_match_predictions(
         st.session_state,
         home_team,
@@ -214,7 +222,12 @@ elif multi_prediction_mode:
         league_files,
     )
 
-elif home_team != away_team:
+elif (
+    navigation == "Match prediction"
+    and home_team
+    and away_team
+    and home_team != away_team
+):
     render_single_match_prediction(
         df,
         season_df,
