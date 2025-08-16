@@ -40,6 +40,7 @@ def load_data(file_path: str) -> pd.DataFrame:
     else:
         dtype_mapping = {col: "Int64" for col in numeric_columns}
         df = pd.read_csv(file_path, dtype=dtype_mapping, parse_dates=["Date"])
+        df.to_parquet(parquet_path, index=False)
 
     df = prepare_df(df)
     required_columns = [
