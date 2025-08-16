@@ -170,6 +170,17 @@ navigation = st.sidebar.radio(
     ("League overview", "Match prediction", "Multi predictions", "My Bets"),
 )
 
+# --- Query params ---
+query_params = st.query_params
+
+# Clear selected team when switching navigation to avoid stale selection
+if "last_navigation" not in st.session_state:
+    st.session_state["last_navigation"] = navigation
+elif st.session_state["last_navigation"] != navigation:
+    st.session_state["last_navigation"] = navigation
+    if "selected_team" in query_params:
+        del query_params["selected_team"]
+
 # --- Výběr týmů ---
 teams_in_season = sorted(
     set(season_df["HomeTeam"].unique()) | set(season_df["AwayTeam"].unique())
@@ -179,8 +190,6 @@ if navigation in ("Match prediction", "Multi predictions"):
     home_team = st.sidebar.selectbox("Domácí tým", teams_in_season)
     away_team = st.sidebar.selectbox("Hostující tým", teams_in_season)
 
-# --- Query params ---
-query_params = st.query_params
 raw_team = query_params.get("selected_team", None)
 if isinstance(raw_team, list):
     raw_team = raw_team[0]
@@ -205,23 +214,6 @@ elif st.session_state["last_selected_league"] != league_name:
 if navigation == "My Bets":
     render_my_bets()
 
-elif selected_team:
-    render_team_detail(df, season_df, selected_team, league_name, gii_dict)
-    if st.button("🔙 Zpět na ligový přehled"):
-        st.query_params.clear()
-        st.query_params["selected_league"] = league_name
-        st.rerun()
-
-elif navigation == "Multi predictions":
-    render_multi_match_predictions(
-        st.session_state,
-        home_team,
-        away_team,
-        league_name,
-        league_file,
-        league_files,
-    )
-
 elif (
     navigation == "Match prediction"
     and home_team
@@ -238,6 +230,23 @@ elif (
         gii_dict,
         elo_dict,
     )
+
+elif navigation == "Multi predictions":
+    render_multi_match_predictions(
+        st.session_state,
+        home_team,
+        away_team,
+        league_name,
+        league_file,
+        league_files,
+    )
+
+elif selected_team:
+    render_team_detail(df, season_df, selected_team, league_name, gii_dict)
+    if st.button("🔙 Zpět na ligový přehled"):
+        st.query_params.clear()
+        st.query_params["selected_league"] = league_name
+        st.rerun()
 
 else:
     render_league_overview(season_df, league_name, gii_dict, elo_dict)
