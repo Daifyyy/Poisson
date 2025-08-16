@@ -11,6 +11,14 @@ def expected_corners(df: pd.DataFrame, home_team: str, away_team: str) -> tuple:
     the opponent's corners conceded in the corresponding venue (home/away).
     If any component is missing, it is ignored in the average and defaulted to 0.
     """
+
+    required_columns = {"HC", "AC", "HomeTeam", "AwayTeam"}
+    missing_columns = required_columns - set(df.columns)
+    if missing_columns:
+        raise ValueError(
+            f"Missing columns: {', '.join(sorted(missing_columns))}"
+        )
+
     df = prepare_df(df)
 
     home_for = df[df['HomeTeam'] == home_team]['HC'].mean()
