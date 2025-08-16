@@ -209,9 +209,11 @@ def analyze_opponent_strength(df: pd.DataFrame, team: str, is_home: bool = True)
 
     avg_goals_per_team = {}
     for t in pd.concat([df['HomeTeam'], df['AwayTeam']]).unique():
-        home_goals = df[df['HomeTeam'] == t]['FTHG'].mean()
-        away_goals = df[df['AwayTeam'] == t]['FTAG'].mean()
-        avg_goals_per_team[t] = np.nanmean([home_goals, away_goals])
+        home_goals = df.loc[df['HomeTeam'] == t, 'FTHG'].mean()
+        away_goals = df.loc[df['AwayTeam'] == t, 'FTAG'].mean()
+        avg_goals_per_team[t] = (
+            pd.Series([home_goals, away_goals], dtype="float64").mean(skipna=True)
+        )
 
     sorted_teams = sorted(avg_goals_per_team.items(), key=lambda x: x[1], reverse=True)
     total = len(sorted_teams)
@@ -306,9 +308,11 @@ def merged_home_away_opponent_form(df: pd.DataFrame, team: str) -> dict:
 
     team_avg_goals = {}
     for t in pd.concat([df['HomeTeam'], df['AwayTeam']]).unique():
-        home_g = df[df['HomeTeam'] == t]['FTHG'].mean()
-        away_g = df[df['AwayTeam'] == t]['FTAG'].mean()
-        team_avg_goals[t] = np.nanmean([home_g, away_g])
+        home_g = df.loc[df['HomeTeam'] == t, 'FTHG'].mean()
+        away_g = df.loc[df['AwayTeam'] == t, 'FTAG'].mean()
+        team_avg_goals[t] = (
+            pd.Series([home_g, away_g], dtype="float64").mean(skipna=True)
+        )
 
     sorted_teams = sorted(team_avg_goals.items(), key=lambda x: x[1], reverse=True)
     top = set(t for t, _ in sorted_teams[: int(len(sorted_teams) * 0.3)])
