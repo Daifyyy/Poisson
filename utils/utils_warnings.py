@@ -29,7 +29,13 @@ def calculate_team_goal_averages(df):
     for team in teams:
         home_avg = df[df['HomeTeam'] == team]['FTHG'].mean()
         away_avg = df[df['AwayTeam'] == team]['FTAG'].mean()
-        avg_goals[team] = np.nanmean([home_avg, away_avg])
+        # ``np.nanmean`` does not handle ``pd.NA`` values that can appear when
+        # operating on pandas' nullable dtypes.  Convert the values to a
+        # float-based ``Series`` so that any ``pd.NA`` is cast to ``np.nan`` and
+        # then compute the mean while skipping missing values.
+        avg_goals[team] = (
+            pd.Series([home_avg, away_avg], dtype="float64").mean(skipna=True)
+        )
     return avg_goals
 
 def form_points_to_emoji(avg_points):
