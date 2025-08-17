@@ -195,3 +195,87 @@ def load_cup_matches(team_league_map: dict[str, str], data_dir: str | Path = "da
         )
 
     return pd.concat(frames, ignore_index=True)
+
+
+def load_cup_team_stats(
+    team_league_map: dict[str, str],
+    data_dir: str | Path = "data",
+    matches_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Aggregate cup matches into per-team statistics.
+
+    Parameters
+    ----------
+    team_league_map : dict
+        Mapping of team name to domestic league code. Typically built from
+        league CSV files.
+    data_dir : str or Path, optional
+        Directory containing cup CSV files. Defaults to ``"data"``. Ignored
+        when ``matches_df`` is provided.
+    matches_df : pd.DataFrame, optional
+        Pre-loaded cup matches as returned by :func:`load_cup_matches`. Passing
+        this avoids reading the CSV files again.
+
+    Returns
+    -------
+    pd.DataFrame
+        Table with columns ``league``, ``team``, ``matches``, ``goals_for``,
+        ``goals_against``, ``xg_for`` and ``xg_against``. Shot metrics are set
+        to zero because FBref cup pages do not provide them. The ``xg`` values
+        are approximated by the goal counts so that downstream calculations can
+        still rely on xG columns.
+    """
+
+    matches = (
+        matches_df.copy()
+        if matches_df is not None
+        else load_cup_matches(team_league_map, data_dir)
+    )
+    if matches.empty:
+        return pd.DataFrame(
+            columns=[
+                "league",
+                "team",
+                "matches",
+                "goals_for",
+                "goals_against",
+                "xg_for",
+                "xg_against",
+                "shots_for",
+                "shots_against",
+            ]
+        )
+
+    home = matches.rename(
+        columns={
+            "HomeTeam": "team",
+            "FTHG": "goals_for",
+            "FTAG": "goals_against",
+            "HomeLeague": "league",
+        }
+    )
+    away = matches.rename(
+        columns={
+            "AwayTeam": "team",
+            "FTAG": "goals_for",
+            "FTHG": "goals_against",
+            "AwayLeague": "league",
+        }
+    )
+    combined = pd.concat([home, away], ignore_index=True)
+
+    agg = (
+        combined.groupby(["league", "team"])
+        .agg(
+            matches=("goals_for", "size"),
+            goals_for=("goals_for", "sum"),
+            goals_against=("goals_against", "sum"),
+        )
+        .reset_index()
+    )
+
+    agg["xg_for"] = agg["goals_for"]
+    agg["xg_against"] = agg["goals_against"]
+    agg["shots_for"] = 0
+    agg["shots_against"] = 0
+    return agg
