@@ -4,7 +4,10 @@ from .team_analysis import calculate_strength_of_schedule
 
 
 def calculate_cross_league_team_index(
-    df: pd.DataFrame, league_ratings: pd.DataFrame, matches: pd.DataFrame
+    df: pd.DataFrame,
+    league_ratings: pd.DataFrame,
+    matches: pd.DataFrame,
+    min_matches: int = 10,
 ) -> pd.DataFrame:
     """Return league-adjusted team ratings to compare clubs across leagues.
 
@@ -25,9 +28,9 @@ def calculate_cross_league_team_index(
     -------
     pd.DataFrame
         Original DataFrame extended with per-match metrics, normalised xG
-        differential and a ``team_index`` scaled by league strength and
-        opponent quality. Higher values indicate a stronger team relative to
-        world average.
+        differential, offensive/defensive ratings and a ``team_index`` scaled by
+        league strength and opponent quality. Higher values indicate a stronger
+        team relative to world average.
     """
     metrics = [
         "goals_for",
@@ -55,13 +58,28 @@ def calculate_cross_league_team_index(
     df["sos"] = df["team"].map(sos_dict).fillna(0)
 
     # convert to per-match values (per 90 minutes)
-    df[available] = df[available].div(df["matches"], axis=0)
+    per_match = df[available].div(df["matches"], axis=0)
+
+    # league average for each metric (weighted by match count)
+    league_totals = df.groupby("league")[available + ["matches"]].sum()
+    league_avgs = league_totals[available].div(league_totals["matches"], axis=0)
+    league_avg_df = (
+        df[["league"]]
+        .merge(league_avgs, left_on="league", right_index=True, how="left")
+        [available]
+    )
+
+    # blend team metrics with league average when sample size is small
+    weight = (df["matches"].clip(upper=min_matches) / min_matches)
+    df[available] = per_match.mul(weight, axis=0) + league_avg_df.mul(1 - weight, axis=0)
 
     # xG differential normalised by league mean/std
     if {"xg_for", "xg_against"}.issubset(df.columns):
         df["xg_diff"] = df["xg_for"] - df["xg_against"]
         grp = df.groupby("league")["xg_diff"]
-        df["xg_diff_norm"] = (df["xg_diff"] - grp.transform("mean")) / grp.transform("std").replace(0, pd.NA)
+        df["xg_diff_norm"] = (
+            df["xg_diff"] - grp.transform("mean")
+        ) / grp.transform("std").replace(0, pd.NA)
     else:
         df["xg_diff_norm"] = 0.0
 
@@ -71,6 +89,27 @@ def calculate_cross_league_team_index(
         raise ValueError("Missing ELO rating for some leagues")
     elo_mean = league_ratings["elo"].mean()
     league_factor = df["elo"] / elo_mean
+
+    # offensive and defensive ratings vs league norms (higher is better)
+    off_components = []
+    def_components = []
+    if "goals_for" in available:
+        off_components.append(df["goals_for"] - league_avg_df["goals_for"])
+    if "xg_for" in available:
+        off_components.append(df["xg_for"] - league_avg_df["xg_for"])
+    if "goals_against" in available:
+        def_components.append(league_avg_df["goals_against"] - df["goals_against"])
+    if "xg_against" in available:
+        def_components.append(league_avg_df["xg_against"] - df["xg_against"])
+
+    df["off_rating"] = sum(off_components) / len(off_components) if off_components else 0.0
+    df["def_rating"] = sum(def_components) / len(def_components) if def_components else 0.0
+
+    # expected goals differential vs world average opponent
+    if {"xg_for", "xg_against"}.issubset(df.columns):
+        df["xg_vs_world"] = (df["xg_for"] - df["xg_against"]) * league_factor
+    else:
+        df["xg_vs_world"] = 0.0
 
     df["team_index"] = (
         0.5 * df["xg_diff_norm"] + 0.5 * df["team_elo_rel"] + 0.1 * df["sos"]

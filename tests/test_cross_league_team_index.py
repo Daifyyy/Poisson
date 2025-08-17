@@ -37,3 +37,13 @@ def test_cross_league_team_index_basic():
     # check expected value for A1 approximately
     a1_index = result.loc[result["team"] == "A1", "team_index"].item()
     assert a1_index == pytest.approx(0.810697, rel=1e-3)
+
+    # small sample sizes should be blended toward league averages
+    a1_goals_for = result.loc[result["team"] == "A1", "goals_for"].item()
+    assert a1_goals_for == pytest.approx(0.9, rel=1e-3)
+
+    # offensive and defensive ratings based on goal/xG differentials
+    a1_off = result.loc[result["team"] == "A1", "off_rating"].item()
+    a1_def = result.loc[result["team"] == "A1", "def_rating"].item()
+    assert a1_off == pytest.approx(0.12, rel=1e-3)
+    assert a1_def == pytest.approx(0.095, rel=1e-3)
