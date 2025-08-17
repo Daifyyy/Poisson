@@ -1,4 +1,6 @@
 import pandas as pd
+import warnings
+
 from .elo import calculate_elo_ratings
 from .team_analysis import calculate_strength_of_schedule
 
@@ -74,14 +76,29 @@ def calculate_cross_league_team_index(
     df[available] = per_match.mul(weight, axis=0) + league_avg_df.mul(1 - weight, axis=0)
 
     # xG differential normalised by league mean/std
-    if {"xg_for", "xg_against"}.issubset(df.columns):
+    has_xg = {"xg_for", "xg_against"}.issubset(df.columns) and not (
+        df.get("xg_for").isna().any() or df.get("xg_against").isna().any()
+    )
+    if has_xg:
         df["xg_diff"] = df["xg_for"] - df["xg_against"]
         grp = df.groupby("league")["xg_diff"]
         df["xg_diff_norm"] = (
             df["xg_diff"] - grp.transform("mean")
         ) / grp.transform("std").replace(0, pd.NA)
+    elif {"goals_for", "goals_against"}.issubset(df.columns):
+        warnings.warn(
+            "Missing xG data; falling back to goal differential which may be less accurate",
+            UserWarning,
+        )
+        df["goal_diff"] = df["goals_for"] - df["goals_against"]
+        grp = df.groupby("league")["goal_diff"]
+        df["xg_diff_norm"] = (
+            df["goal_diff"] - grp.transform("mean")
+        ) / grp.transform("std").replace(0, pd.NA)
     else:
-        df["xg_diff_norm"] = 0.0
+        raise ValueError(
+            "calculate_cross_league_team_index requires 'xg_for'/'xg_against' or 'goals_for'/'goals_against' columns"
+        )
 
     # merge league strength and scale to world average
     missing_leagues = set(df["league"].unique()) - set(league_ratings["league"])
@@ -110,10 +127,16 @@ def calculate_cross_league_team_index(
     df["def_rating"] = sum(def_components) / len(def_components) if def_components else 0.0
 
     # expected goals differential vs world average opponent
-    if {"xg_for", "xg_against"}.issubset(df.columns):
+    if has_xg:
         df["xg_vs_world"] = (df["xg_for"] - df["xg_against"]) * league_factor
+    elif {"goals_for", "goals_against"}.issubset(df.columns):
+        df["xg_vs_world"] = (df["goals_for"] - df["goals_against"]) * league_factor
     else:
-        df["xg_vs_world"] = 0.0
+        # has_xg already validated presence of goal columns earlier; this branch
+        # is defensive should the function be modified in future
+        raise ValueError(
+            "Missing data to compute team differential: provide xG or goal metrics"
+        )
 
     df["team_index"] = (
         0.5 * df["xg_diff_norm"] + 0.5 * df["team_elo_rel"] + 0.1 * df["sos"]
