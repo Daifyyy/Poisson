@@ -137,7 +137,12 @@ def calculate_cross_league_team_index(
     df = df.merge(league_ratings, on="league", how="left")
     if df["elo"].isna().any():
         raise ValueError("Missing ELO rating for some leagues")
-    df["league_penalty_coef"] = df["elo"] / WORLD_ELO_MEAN
+    if "league_penalty_coef" in df.columns:
+        pass
+    elif "penalty_coef" in df.columns:
+        df = df.rename(columns={"penalty_coef": "league_penalty_coef"})
+    else:
+        df["league_penalty_coef"] = df["elo"] / WORLD_ELO_MEAN
 
     # offensive and defensive ratings vs league norms (higher is better)
     off_components = []

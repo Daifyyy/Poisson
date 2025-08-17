@@ -162,3 +162,33 @@ def test_cross_league_team_index_requires_xg_or_goals():
 
     with pytest.raises(ValueError):
         calculate_cross_league_team_index(teams, ratings, matches)
+
+
+def test_cross_league_team_index_accepts_precomputed_penalty():
+    teams = pd.DataFrame(
+        {
+            "league": ["A", "A"],
+            "team": ["A1", "A2"],
+            "matches": [1, 1],
+            "goals_for": [1, 0],
+            "goals_against": [0, 1],
+            "xg_for": [1.2, 0.8],
+            "xg_against": [0.8, 1.2],
+        }
+    )
+    ratings = pd.DataFrame({"league": ["A"], "elo": [1500], "penalty_coef": [0.8]})
+    matches = pd.DataFrame(
+        {
+            "Date": pd.date_range("2021-01-01", periods=1),
+            "league": ["A"],
+            "HomeTeam": ["A1"],
+            "AwayTeam": ["A2"],
+            "FTHG": [1],
+            "FTAG": [0],
+        }
+    )
+    result = calculate_cross_league_team_index(teams, ratings, matches)
+    assert result["league_penalty_coef"].eq(0.8).all()
+    a1 = result.loc[result["team"] == "A1"].iloc[0]
+    expected_vs_world = (a1["xg_for"] - a1["xg_against"]) * 0.8
+    assert a1["xg_vs_world"] == pytest.approx(expected_vs_world, rel=1e-3)

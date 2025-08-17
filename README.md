@@ -60,8 +60,16 @@ Po spuštění otevři zobrazenou URL v prohlížeči.
 ## 🔄 Aktualizace dat
 - **CSV z football-data.co.uk**: `python scripts/update_league_data.py`
 - **API-Football**: `python update_all_leagues_from_api.py` (vyžaduje `API_FOOTBALL_KEY`)
+- **League penalty coefficients**: `python update_league_penalty_coefficients.py`
 
 Stažené soubory se ukládají do složky `data/`.
+
+### League penalty coefficients
+Tabulka `data/league_penalty_coefficients.csv` uchovává sílu jednotlivých lig,
+která se používá při výpočtu křížového `team_indexu`. Aplikace tento soubor
+načítá při startu, takže koeficienty jsou konzistentní napříč spuštěními.
+Po přidání nové ligy nebo změně dat spusť skript výše a commitni aktualizovaný
+CSV, aby se změny propsaly i do aplikace.
 
 ## ✅ Testy
 
