@@ -147,10 +147,8 @@ def compute_cross_league_index(files: dict) -> tuple[pd.DataFrame, pd.DataFrame]
     """
 
     team_frames = []
-    rating_rows = []
 
     for _, path in files.items():
-        league_code = path.split("/")[-1].split("_")[0]
         league_df = load_data(path)
 
         # Aggregate totals for each team
@@ -223,14 +221,13 @@ def compute_cross_league_index(files: dict) -> tuple[pd.DataFrame, pd.DataFrame]
 
         team_frames.append(agg)
 
-        elo_dict_league = calculate_elo_ratings(league_df)
-        avg_elo = sum(elo_dict_league.values()) / len(elo_dict_league)
-        rating_rows.append({"league": league_code, "elo": avg_elo})
-
     teams_df = pd.concat(team_frames, ignore_index=True)
-    ratings_df = pd.DataFrame(rating_rows)
+    ratings_df = pd.read_csv(ROOT / "data" / "league_penalty_coefficients.csv")
     team_df = calculate_cross_league_team_index(teams_df, ratings_df)
-    league_df = build_league_quality_table(ratings_df)
+    if "penalty_coef" in ratings_df.columns:
+        league_df = ratings_df.rename(columns={"penalty_coef": "league_penalty_coef"})
+    else:
+        league_df = build_league_quality_table(ratings_df)
     return team_df, league_df
 
 # Re-load po aktualizaci dat
