@@ -8,6 +8,7 @@ Komplexní aplikace pro odhad výsledků fotbalových zápasů pomocí **Poisson
 - Detailní profil týmu včetně ELO ratingu, xG a GII
 - Přehled ligy s tabulkou a základními statistikami
 - Strength of Schedule (SOS) s průměrnou kvalitou soupeřů podle ELO či xG
+- Křížový `team_index` pro srovnání klubů napříč ligami: počítá 0.5× normalizovaný xG rozdíl, 0.5× relativní týmové ELO a 0.1× strength-of-schedule a vše škáluje sílou ligy, takže velkokluby jsou řazeny odpovídajícím způsobem
 - Aktualizace datasetů skriptem nebo API
 - Jednotkové testy pokrývající klíčové funkce
 
