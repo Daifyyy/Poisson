@@ -4,6 +4,59 @@ import pytest
 from utils.poisson_utils import calculate_cross_league_team_index
 
 
+@pytest.fixture
+def sample_european_teams():
+    teams = pd.DataFrame(
+        {
+            "league": ["Premier League", "La Liga", "Eredivisie"],
+            "team": ["Liverpool", "Real Madrid", "PSV"],
+            "matches": [10, 10, 10],
+            "goals_for": [20, 20, 20],
+            "goals_against": [10, 10, 10],
+            "xg_for": [18, 18, 18],
+            "xg_against": [9, 9, 9],
+        }
+    )
+    ratings = pd.DataFrame(
+        {
+            "league": ["Premier League", "La Liga", "Eredivisie"],
+            "elo": [1700, 1680, 1500],
+        }
+    )
+    matches = pd.DataFrame(
+        {
+            "Date": pd.date_range("2021-08-01", periods=6, freq="D"),
+            "league": [
+                "Premier League",
+                "Premier League",
+                "La Liga",
+                "La Liga",
+                "Eredivisie",
+                "Eredivisie",
+            ],
+            "HomeTeam": [
+                "Liverpool",
+                "Everton",
+                "Real Madrid",
+                "Sevilla",
+                "PSV",
+                "Ajax",
+            ],
+            "AwayTeam": [
+                "Everton",
+                "Liverpool",
+                "Sevilla",
+                "Real Madrid",
+                "Ajax",
+                "PSV",
+            ],
+            "FTHG": [1, 1, 1, 1, 1, 1],
+            "FTAG": [1, 1, 1, 1, 1, 1],
+        }
+    )
+    return teams, ratings, matches
+
+
 def test_cross_league_team_index_basic():
     teams = pd.DataFrame(
         {
@@ -47,3 +100,10 @@ def test_cross_league_team_index_basic():
     a1_def = result.loc[result["team"] == "A1", "def_rating"].item()
     assert a1_off == pytest.approx(0.12, rel=1e-3)
     assert a1_def == pytest.approx(0.095, rel=1e-3)
+
+
+def test_cross_league_team_index_respects_league_strength(sample_european_teams):
+    teams, ratings, matches = sample_european_teams
+    result = calculate_cross_league_team_index(teams, ratings, matches)
+    ordered = list(result.sort_values("team_index", ascending=False)["team"])
+    assert ordered == ["Liverpool", "Real Madrid", "PSV"]
