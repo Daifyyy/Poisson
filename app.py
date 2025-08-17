@@ -21,14 +21,16 @@ from sections.my_bets_section import render_my_bets_section as render_my_bets
 from sections.cross_league_section import render_cross_league_ratings
 
 import urllib.parse
-from utils.poisson_utils import (
-    load_data,
-    detect_current_season,
-    calculate_gii_zscore,
-    calculate_elo_ratings,
-    get_team_average_gii,
-    load_cup_matches,
-)
+
+# Import only the required functions from the ``poisson_utils`` package
+# to avoid importing heavy optional dependencies.  The package's ``__init__``
+# pulls in many modules (such as API clients) which might not be available in
+# minimal environments like the execution sandbox used for testing.  Importing
+# directly from submodules keeps the import surface small and prevents an
+# ``ImportError`` when optional requirements are missing.
+from utils.poisson_utils.data import load_data, detect_current_season, load_cup_matches
+from utils.poisson_utils.match_style import calculate_gii_zscore, get_team_average_gii
+from utils.poisson_utils.elo import calculate_elo_ratings
 from utils.poisson_utils.cross_league import (
     calculate_cross_league_team_index,
     build_league_quality_table,
