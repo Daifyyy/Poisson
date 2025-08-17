@@ -107,3 +107,52 @@ def test_cross_league_team_index_respects_league_strength(sample_european_teams)
     result = calculate_cross_league_team_index(teams, ratings, matches)
     ordered = list(result.sort_values("team_index", ascending=False)["team"])
     assert ordered == ["Liverpool", "Real Madrid", "PSV"]
+
+
+def test_cross_league_team_index_falls_back_to_goals_when_xg_missing():
+    teams = pd.DataFrame(
+        {
+            "league": ["A", "A"],
+            "team": ["A1", "A2"],
+            "matches": [2, 2],
+            "goals_for": [3, 0],
+            "goals_against": [0, 3],
+        }
+    )
+    ratings = pd.DataFrame({"league": ["A"], "elo": [1500]})
+    matches = pd.DataFrame(
+        {
+            "Date": pd.date_range("2021-01-01", periods=2, freq="D"),
+            "league": ["A", "A"],
+            "HomeTeam": ["A1", "A2"],
+            "AwayTeam": ["A2", "A1"],
+            "FTHG": [2, 0],
+            "FTAG": [0, 1],
+        }
+    )
+
+    with pytest.warns(UserWarning):
+        result = calculate_cross_league_team_index(teams, ratings, matches)
+
+    a1 = result.loc[result["team"] == "A1"].iloc[0]
+    expected_vs_world = a1["goals_for"] - a1["goals_against"]
+    assert a1["xg_vs_world"] == pytest.approx(expected_vs_world, rel=1e-3)
+    assert a1["xg_diff_norm"] != 0
+
+
+def test_cross_league_team_index_requires_xg_or_goals():
+    teams = pd.DataFrame({"league": ["A"], "team": ["A1"], "matches": [1]})
+    ratings = pd.DataFrame({"league": ["A"], "elo": [1500]})
+    matches = pd.DataFrame(
+        {
+            "Date": pd.date_range("2021-01-01", periods=1),
+            "league": ["A"],
+            "HomeTeam": ["A1"],
+            "AwayTeam": ["A1"],
+            "FTHG": [0],
+            "FTAG": [0],
+        }
+    )
+
+    with pytest.raises(ValueError):
+        calculate_cross_league_team_index(teams, ratings, matches)
