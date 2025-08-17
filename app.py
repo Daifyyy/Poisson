@@ -28,7 +28,12 @@ import urllib.parse
 # minimal environments like the execution sandbox used for testing.  Importing
 # directly from submodules keeps the import surface small and prevents an
 # ``ImportError`` when optional requirements are missing.
-from utils.poisson_utils.data import load_data, detect_current_season, load_cup_matches
+from utils.poisson_utils.data import (
+    load_data,
+    detect_current_season,
+    load_cup_matches,
+    load_cup_team_stats,
+)
 from utils.poisson_utils.match_style import calculate_gii_zscore, get_team_average_gii
 from utils.poisson_utils.elo import calculate_elo_ratings
 from utils.poisson_utils.cross_league import (
@@ -241,8 +246,14 @@ def compute_cross_league_index(files: dict) -> tuple[pd.DataFrame, pd.DataFrame]
     cup_df = load_cup_matches(team_league_map, data_dir)
     if not cup_df.empty:
         match_frames.append(cup_df[["Date", "HomeTeam", "AwayTeam", "FTHG", "FTAG"]])
+        cup_stats = load_cup_team_stats(team_league_map, data_dir, cup_df)
+        team_frames.append(cup_stats)
 
     teams_df = pd.concat(team_frames, ignore_index=True)
+    teams_df = (
+        teams_df.groupby(["league", "team"], as_index=False)
+        .sum(numeric_only=True)
+    )
     matches_df = pd.concat(match_frames, ignore_index=True)
     ratings_df = pd.read_csv(ROOT / "data" / "league_penalty_coefficients.csv")
     team_df = calculate_cross_league_team_index(teams_df, ratings_df, matches_df)
