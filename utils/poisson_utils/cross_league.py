@@ -5,6 +5,12 @@ from .elo import calculate_elo_ratings
 from .team_analysis import calculate_strength_of_schedule
 
 
+# Historically calibrated world average ELO rating. Using a fixed reference
+# ensures that ``team_index`` values remain comparable across seasons and
+# different sets of leagues.
+WORLD_ELO_MEAN = 1500
+
+
 def calculate_cross_league_team_index(
     df: pd.DataFrame,
     league_ratings: pd.DataFrame,
@@ -108,8 +114,7 @@ def calculate_cross_league_team_index(
     df = df.merge(league_ratings, on="league", how="left")
     if df["elo"].isna().any():
         raise ValueError("Missing ELO rating for some leagues")
-    elo_mean = league_ratings["elo"].mean()
-    league_factor = df["elo"] / elo_mean
+    league_factor = df["elo"] / WORLD_ELO_MEAN
 
     # offensive and defensive ratings vs league norms (higher is better)
     off_components = []
