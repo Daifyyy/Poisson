@@ -36,4 +36,4 @@ def test_cross_league_team_index_basic():
 
     # check expected value for A1 approximately
     a1_index = result.loc[result["team"] == "A1", "team_index"].item()
-    assert a1_index == pytest.approx(0.91736, rel=1e-3)
+    assert a1_index == pytest.approx(0.810697, rel=1e-3)

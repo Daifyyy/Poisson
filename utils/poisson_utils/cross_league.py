@@ -1,5 +1,6 @@
 import pandas as pd
 from .elo import calculate_elo_ratings
+from .team_analysis import calculate_strength_of_schedule
 
 
 def calculate_cross_league_team_index(
@@ -24,8 +25,9 @@ def calculate_cross_league_team_index(
     -------
     pd.DataFrame
         Original DataFrame extended with per-match metrics, normalised xG
-        differential and a ``team_index`` scaled by league strength. Higher
-        values indicate a stronger team relative to world average.
+        differential and a ``team_index`` scaled by league strength and
+        opponent quality. Higher values indicate a stronger team relative to
+        world average.
     """
     metrics = [
         "goals_for",
@@ -48,6 +50,10 @@ def calculate_cross_league_team_index(
     df["league_elo_mean"] = df.groupby("league")["team_elo"].transform("mean")
     df["team_elo_rel"] = df["team_elo"] / df["league_elo_mean"]
 
+    # strength of schedule (opponent quality) z-score per team
+    sos_dict = calculate_strength_of_schedule(matches, metric="elo")
+    df["sos"] = df["team"].map(sos_dict).fillna(0)
+
     # convert to per-match values (per 90 minutes)
     df[available] = df[available].div(df["matches"], axis=0)
 
@@ -66,5 +72,7 @@ def calculate_cross_league_team_index(
     elo_mean = league_ratings["elo"].mean()
     league_factor = df["elo"] / elo_mean
 
-    df["team_index"] = (0.5 * df["xg_diff_norm"] + 0.5 * df["team_elo_rel"]) * league_factor
+    df["team_index"] = (
+        0.5 * df["xg_diff_norm"] + 0.5 * df["team_elo_rel"] + 0.1 * df["sos"]
+    ) * league_factor
     return df
