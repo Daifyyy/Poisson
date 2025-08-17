@@ -27,7 +27,10 @@ from utils.poisson_utils import (
     calculate_gii_zscore,
     calculate_elo_ratings,
     get_team_average_gii,
+)
+from utils.poisson_utils.cross_league import (
     calculate_cross_league_team_index,
+    build_league_quality_table,
 )
 from utils.frontend_utils import validate_dataset
 from utils.update_data import update_all_leagues
@@ -134,8 +137,14 @@ def load_and_prepare(file_path: str):
 
 
 @st.cache_data(show_spinner=False)
-def compute_cross_league_index(files: dict) -> pd.DataFrame:
-    """Compute cross-league team index for all leagues in ``files``."""
+def compute_cross_league_index(files: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Compute cross-league team index for all leagues in ``files``.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, pd.DataFrame]
+        Team ratings and league quality tables.
+    """
 
     team_frames = []
     rating_rows = []
@@ -220,7 +229,9 @@ def compute_cross_league_index(files: dict) -> pd.DataFrame:
 
     teams_df = pd.concat(team_frames, ignore_index=True)
     ratings_df = pd.DataFrame(rating_rows)
-    return calculate_cross_league_team_index(teams_df, ratings_df)
+    team_df = calculate_cross_league_team_index(teams_df, ratings_df)
+    league_df = build_league_quality_table(ratings_df)
+    return team_df, league_df
 
 # Re-load po aktualizaci dat
 if st.session_state.get("reload_flag"):
@@ -232,7 +243,7 @@ df, season_df, gii_dict, elo_dict = load_and_prepare(league_file)
 full_df = df.copy()
 
 # Cross-league ratings for all teams
-cross_league_df = compute_cross_league_index(league_files)
+cross_league_df, league_quality_df = compute_cross_league_index(league_files)
 
 # --- Date range filtr ---
 overall_start = df["Date"].min().date()
@@ -343,7 +354,7 @@ elif navigation == "Multi predictions":
     )
 
 elif navigation == "Cross-league ratings":
-    render_cross_league_ratings(cross_league_df)
+    render_cross_league_ratings(cross_league_df, league_quality_df)
 
 elif selected_team:
     render_team_detail(df, season_df, selected_team, league_name, gii_dict)
