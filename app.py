@@ -27,6 +27,7 @@ from utils.poisson_utils import (
     calculate_gii_zscore,
     calculate_elo_ratings,
     get_team_average_gii,
+    load_cup_matches,
 )
 from utils.poisson_utils.cross_league import (
     calculate_cross_league_team_index,
@@ -148,6 +149,7 @@ def compute_cross_league_index(files: dict) -> tuple[pd.DataFrame, pd.DataFrame]
 
     team_frames = []
     match_frames = []
+    team_league_map = {}
 
     for _, path in files.items():
         league_df = load_data(path)
@@ -155,6 +157,12 @@ def compute_cross_league_index(files: dict) -> tuple[pd.DataFrame, pd.DataFrame]
         match_frames.append(
             league_df[["Date", "HomeTeam", "AwayTeam", "FTHG", "FTAG"]]
         )
+
+        # build mapping from team to domestic league
+        league_code = league_df["Div"].iloc[0]
+        teams = pd.concat([league_df["HomeTeam"], league_df["AwayTeam"]]).unique()
+        for team in teams:
+            team_league_map[team] = league_code
 
         # Aggregate totals for each team
         home = league_df[
@@ -225,6 +233,12 @@ def compute_cross_league_index(files: dict) -> tuple[pd.DataFrame, pd.DataFrame]
         agg = agg.drop(columns=["sot_for", "sot_against"])
 
         team_frames.append(agg)
+
+    # append cup matches if available
+    data_dir = Path(next(iter(files.values()))).parent
+    cup_df = load_cup_matches(team_league_map, data_dir)
+    if not cup_df.empty:
+        match_frames.append(cup_df[["Date", "HomeTeam", "AwayTeam", "FTHG", "FTAG"]])
 
     teams_df = pd.concat(team_frames, ignore_index=True)
     matches_df = pd.concat(match_frames, ignore_index=True)
