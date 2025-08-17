@@ -84,6 +84,10 @@ def calculate_cross_league_team_index(
         df["xg_diff_norm"] = 0.0
 
     # merge league strength and scale to world average
+    missing_leagues = set(df["league"].unique()) - set(league_ratings["league"])
+    if missing_leagues:
+        missing = ", ".join(sorted(missing_leagues))
+        raise ValueError(f"Missing league ratings for: {missing}")
     df = df.merge(league_ratings, on="league", how="left")
     if df["elo"].isna().any():
         raise ValueError("Missing ELO rating for some leagues")
