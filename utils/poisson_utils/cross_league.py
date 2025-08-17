@@ -22,15 +22,15 @@ def build_league_quality_table(league_ratings: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        Copy of ``league_ratings`` with an additional ``penalty_coef`` column
-        representing the league's strength relative to the global average. A
-        value below ``1`` denotes a weaker league where team ratings are
-        penalised.
+        Copy of ``league_ratings`` with an additional ``league_penalty_coef``
+        column representing the league's strength relative to the global
+        average. A value below ``1`` denotes a weaker league where team ratings
+        are penalised.
     """
     table = league_ratings.copy()
     if "elo" not in table.columns:
         raise ValueError("league_ratings must contain 'elo' column")
-    table["penalty_coef"] = table["elo"] / WORLD_ELO_MEAN
+    table["league_penalty_coef"] = table["elo"] / WORLD_ELO_MEAN
     return table
 
 
@@ -59,9 +59,9 @@ def calculate_cross_league_team_index(
     -------
     pd.DataFrame
         Original DataFrame extended with per-match metrics, normalised xG
-        differential, offensive/defensive ratings and a ``team_index`` scaled by
-        league strength and opponent quality. Higher values indicate a stronger
-        team relative to world average.
+        differential, offensive/defensive ratings, ``league_penalty_coef`` and a
+        ``team_index`` scaled by league strength and opponent quality. Higher
+        values indicate a stronger team relative to world average.
     """
     metrics = [
         "goals_for",
@@ -137,7 +137,7 @@ def calculate_cross_league_team_index(
     df = df.merge(league_ratings, on="league", how="left")
     if df["elo"].isna().any():
         raise ValueError("Missing ELO rating for some leagues")
-    league_factor = df["elo"] / WORLD_ELO_MEAN
+    df["league_penalty_coef"] = df["elo"] / WORLD_ELO_MEAN
 
     # offensive and defensive ratings vs league norms (higher is better)
     off_components = []
@@ -156,9 +156,9 @@ def calculate_cross_league_team_index(
 
     # expected goals differential vs world average opponent
     if has_xg:
-        df["xg_vs_world"] = (df["xg_for"] - df["xg_against"]) * league_factor
+        df["xg_vs_world"] = (df["xg_for"] - df["xg_against"]) * df["league_penalty_coef"]
     elif {"goals_for", "goals_against"}.issubset(df.columns):
-        df["xg_vs_world"] = (df["goals_for"] - df["goals_against"]) * league_factor
+        df["xg_vs_world"] = (df["goals_for"] - df["goals_against"]) * df["league_penalty_coef"]
     else:
         # has_xg already validated presence of goal columns earlier; this branch
         # is defensive should the function be modified in future
@@ -168,5 +168,5 @@ def calculate_cross_league_team_index(
 
     df["team_index"] = (
         0.5 * df["xg_diff_norm"] + 0.5 * df["team_elo_rel"] + 0.1 * df["sos"]
-    ) * league_factor
+    ) * df["league_penalty_coef"]
     return df

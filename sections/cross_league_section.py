@@ -24,10 +24,10 @@ def render_cross_league_ratings(df: pd.DataFrame, league_table: pd.DataFrame) ->
     league_cols = {
         "league": "League",
         "elo": "ELO",
-        "penalty_coef": "Penalty Coef",
+        "league_penalty_coef": "Penalty Coef",
     }
     league_display = (
-        league_filtered.sort_values("penalty_coef", ascending=False)[league_cols.keys()]
+        league_filtered.sort_values("league_penalty_coef", ascending=False)[league_cols.keys()]
         .reset_index(drop=True)
         .rename(columns=league_cols)
     )
@@ -36,6 +36,7 @@ def render_cross_league_ratings(df: pd.DataFrame, league_table: pd.DataFrame) ->
     display_cols = {
         "league": "League",
         "team": "Team",
+        "league_penalty_coef": "Penalty Coef",
         "team_index": "Team Strength",
         "team_elo_rel": "ELO Adj",
         "xg_diff_norm": "xG Diff Adj",
