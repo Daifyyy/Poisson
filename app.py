@@ -147,9 +147,14 @@ def compute_cross_league_index(files: dict) -> tuple[pd.DataFrame, pd.DataFrame]
     """
 
     team_frames = []
+    match_frames = []
 
     for _, path in files.items():
         league_df = load_data(path)
+
+        match_frames.append(
+            league_df[["Date", "HomeTeam", "AwayTeam", "FTHG", "FTAG"]]
+        )
 
         # Aggregate totals for each team
         home = league_df[
@@ -222,8 +227,9 @@ def compute_cross_league_index(files: dict) -> tuple[pd.DataFrame, pd.DataFrame]
         team_frames.append(agg)
 
     teams_df = pd.concat(team_frames, ignore_index=True)
+    matches_df = pd.concat(match_frames, ignore_index=True)
     ratings_df = pd.read_csv(ROOT / "data" / "league_penalty_coefficients.csv")
-    team_df = calculate_cross_league_team_index(teams_df, ratings_df)
+    team_df = calculate_cross_league_team_index(teams_df, ratings_df, matches_df)
     if "penalty_coef" in ratings_df.columns:
         league_df = ratings_df.rename(columns={"penalty_coef": "league_penalty_coef"})
     else:
