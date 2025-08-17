@@ -19,6 +19,7 @@ from sections.multi_prediction_section import render_multi_match_predictions
 from sections.team_detail_section import render_team_detail
 from sections.my_bets_section import render_my_bets_section as render_my_bets
 from sections.cross_league_section import render_cross_league_ratings
+from sections.uefa_cup_section import render_uefa_cup_predictions
 
 import urllib.parse
 
@@ -308,6 +309,7 @@ navigation = st.sidebar.radio(
         "Match prediction",
         "Multi predictions",
         "Cross-league ratings",
+        "UEFA Cups",
         "My Bets",
     ),
 )
@@ -385,6 +387,9 @@ elif navigation == "Multi predictions":
 
 elif navigation == "Cross-league ratings":
     render_cross_league_ratings(cross_league_df, league_quality_df)
+
+elif navigation == "UEFA Cups":
+    render_uefa_cup_predictions(cross_league_df, ROOT / "data")
 
 elif selected_team:
     render_team_detail(df, season_df, selected_team, league_name, gii_dict)
