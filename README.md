@@ -60,6 +60,7 @@ Po spuštění otevři zobrazenou URL v prohlížeči.
 ## 🔄 Aktualizace dat
 - **CSV z football-data.co.uk**: `python scripts/update_league_data.py`
 - **API-Football**: `python update_all_leagues_from_api.py` (vyžaduje `API_FOOTBALL_KEY`)
+- **Pohárové soutěže z FBref**: `python scripts/update_cup_data_fbref.py`
 - **League penalty coefficients**: `python update_league_penalty_coefficients.py`
 
 Stažené soubory se ukládají do složky `data/`.
