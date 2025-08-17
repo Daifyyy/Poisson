@@ -11,6 +11,29 @@ from .team_analysis import calculate_strength_of_schedule
 WORLD_ELO_MEAN = 1500
 
 
+def build_league_quality_table(league_ratings: pd.DataFrame) -> pd.DataFrame:
+    """Return league strength table with penalty coefficients.
+
+    Parameters
+    ----------
+    league_ratings : pd.DataFrame
+        Table of league ELO ratings with columns ``league`` and ``elo``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of ``league_ratings`` with an additional ``penalty_coef`` column
+        representing the league's strength relative to the global average. A
+        value below ``1`` denotes a weaker league where team ratings are
+        penalised.
+    """
+    table = league_ratings.copy()
+    if "elo" not in table.columns:
+        raise ValueError("league_ratings must contain 'elo' column")
+    table["penalty_coef"] = table["elo"] / WORLD_ELO_MEAN
+    return table
+
+
 def calculate_cross_league_team_index(
     df: pd.DataFrame,
     league_ratings: pd.DataFrame,
