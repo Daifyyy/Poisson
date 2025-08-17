@@ -2,6 +2,7 @@ import pandas as pd
 import pytest
 
 from utils.poisson_utils import calculate_cross_league_team_index
+from utils.poisson_utils.cross_league import WORLD_ELO_MEAN
 
 
 @pytest.fixture
@@ -100,6 +101,11 @@ def test_cross_league_team_index_basic():
     a1_def = result.loc[result["team"] == "A1", "def_rating"].item()
     assert a1_off == pytest.approx(0.12, rel=1e-3)
     assert a1_def == pytest.approx(0.095, rel=1e-3)
+
+    # league penalty coefficient should be exposed
+    assert "league_penalty_coef" in result.columns
+    a1_coef = result.loc[result["team"] == "A1", "league_penalty_coef"].item()
+    assert a1_coef == pytest.approx(1600 / WORLD_ELO_MEAN, rel=1e-3)
 
 
 def test_cross_league_team_index_respects_league_strength(sample_european_teams):
