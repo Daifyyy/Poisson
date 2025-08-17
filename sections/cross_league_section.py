@@ -24,9 +24,9 @@ def render_cross_league_ratings(df: pd.DataFrame) -> None:
         "league": "League",
         "team": "Team",
         "team_index": "Team Strength",
-        "xg_vs_world": "xG vs World",
-        "off_rating": "Offensive Rating",
-        "def_rating": "Defensive Rating",
+        "team_elo_rel": "ELO Adj",
+        "xg_diff_norm": "xG Diff Adj",
+        "sos": "SOS Adj",
     }
     table = (
         filtered.sort_values("team_index", ascending=False)[display_cols.keys()]
@@ -39,8 +39,8 @@ def render_cross_league_ratings(df: pd.DataFrame) -> None:
         """
 **Legend**
 - **Team Strength** – overall team rating relative to global average.
-- **xG vs World** – expected goals difference against a world-average opponent.
-- **Offensive Rating** – attacking strength (higher is better).
-- **Defensive Rating** – defensive strength (higher is better).
+- **ELO Adj** – team's ELO rating relative to its league average (1.0 is league mean).
+- **xG Diff Adj** – expected goals differential normalised within its league.
+- **SOS Adj** – strength of schedule z-score based on opponent quality.
         """
     )
