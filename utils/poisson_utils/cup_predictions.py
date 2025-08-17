@@ -111,9 +111,12 @@ def predict_cup_match(home_team: str, away_team: str, cross_league_df: pd.DataFr
     away_exp = max(away_exp, 0.01)
 
     matrix = poisson_prediction(home_exp, away_exp, max_goals=MAX_GOALS)
-    home_win = float(np.triu(matrix, 1).sum())
+    # Lower triangle (excluding diagonal) represents home team wins when rows
+    # correspond to home goals and columns to away goals.
+    home_win = float(np.tril(matrix, -1).sum())
     draw = float(np.trace(matrix))
-    away_win = float(np.tril(matrix, -1).sum())
+    # Upper triangle (excluding diagonal) captures away team wins.
+    away_win = float(np.triu(matrix, 1).sum())
 
     return {
         "home_exp_goals": round(home_exp, 2),
