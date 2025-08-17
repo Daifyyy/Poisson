@@ -143,3 +143,55 @@ def get_last_n_matches(df, team, role="both", n=10):
     else:
         matches = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)]
     return matches.sort_values("Date").tail(n)
+
+
+def load_cup_matches(team_league_map: dict[str, str], data_dir: str | Path = "data") -> pd.DataFrame:
+    """Load cup fixtures and map teams to their domestic leagues.
+
+    Parameters
+    ----------
+    team_league_map : dict
+        Mapping of team name to domestic league code. Typically built from
+        league CSV files.
+    data_dir : str or Path, optional
+        Directory containing cup CSV files. Defaults to ``"data"``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Cup matches with columns ``Date``, ``HomeTeam``, ``AwayTeam``, ``FTHG``
+        and ``FTAG``. Only rows where both teams have a known league are
+        returned. Additional columns ``HomeLeague`` and ``AwayLeague``
+        indicate the mapped domestic leagues.
+    """
+
+    data_dir = Path(data_dir)
+    cup_files = [
+        p
+        for p in data_dir.glob("*_combined_full.csv")
+        if not p.name.endswith("_updated.csv")
+    ]
+    frames = []
+    for path in cup_files:
+        df = pd.read_csv(path)
+        df = prepare_df(df)
+        df["HomeLeague"] = df["HomeTeam"].map(team_league_map)
+        df["AwayLeague"] = df["AwayTeam"].map(team_league_map)
+        df = df[df["HomeLeague"].notna() & df["AwayLeague"].notna()]
+        if not df.empty:
+            frames.append(df)
+
+    if not frames:
+        return pd.DataFrame(
+            columns=[
+                "Date",
+                "HomeTeam",
+                "AwayTeam",
+                "FTHG",
+                "FTAG",
+                "HomeLeague",
+                "AwayLeague",
+            ]
+        )
+
+    return pd.concat(frames, ignore_index=True)
