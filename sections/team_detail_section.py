@@ -219,7 +219,7 @@ def render_team_detail(
         unsafe_allow_html=True
     )
 
-    # Sezónní xG a xGA – primárně z WhoScored, fallback na pseudo-xG
+    # Sezónní xG a xGA ze dostupného poskytovatele (Understat, FBref nebo pseudo)
     ws_stats = get_team_xg_xga(team, season, season_df)
 
     team_xg = ws_stats.get("xg", np.nan)
@@ -257,29 +257,9 @@ def render_team_detail(
     st.caption(f"Počet zápasů v aktuálním datasetu: {len(season_df)}")
     st.caption(f"Rozsah dat: {season_df['Date'].min().date()} až {season_df['Date'].max().date()}")
 
-    # Fallback values for home/away splits using pseudo-xG
-    def _pseudo_xg_split(df_home: pd.DataFrame, df_away: pd.DataFrame):
-        coeff_shot = 0.1
-        coeff_on = 0.3
-        xg_h = (
-            (df_home['HS'] * coeff_shot + df_home['HST'] * coeff_on).mean()
-            if not df_home.empty else 0.0
-        )
-        xga_h = (
-            (df_home['AS'] * coeff_shot + df_home['AST'] * coeff_on).mean()
-            if not df_home.empty else 0.0
-        )
-        xg_a = (
-            (df_away['AS'] * coeff_shot + df_away['AST'] * coeff_on).mean()
-            if not df_away.empty else 0.0
-        )
-        xga_a = (
-            (df_away['HS'] * coeff_shot + df_away['HST'] * coeff_on).mean()
-            if not df_away.empty else 0.0
-        )
-        return xg_h, xga_h, xg_a, xga_a
-
-    home_xg, home_xga, away_xg, away_xga = _pseudo_xg_split(home, away)
+    # Poskytovatel nevrací rozdělení na domácí a venkovní zápasy, použijeme celkový průměr
+    home_xg = away_xg = team_xg
+    home_xga = away_xga = team_xga
 
     #card_stats = get_team_card_stats(season_df, team)
     # yellow_per_foul = card_stats["yellow"] / card_stats["fouls"] if card_stats["fouls"] else 0
@@ -398,7 +378,6 @@ def render_team_detail(
 
     with st.expander("Legenda"):
         desc_map = TEAM_COMPARISON_DESC_MAP.copy()
-        desc_map["xGA"] = "Očekávané obdržené góly podle WhoScored"
         desc_map["Přesnost střel %"] = desc_map.pop("Přesnost střel", "")
         desc_map["Konverzní míra %"] = desc_map.pop("Konverzní míra", "")
         for key in metrics_df.index:

@@ -723,8 +723,8 @@ TEAM_COMPARISON_ICON_MAP = {
 }
 
 TEAM_COMPARISON_DESC_MAP = {
-    "xG": "Očekávané góly podle WhoScored",
-    "xGA": "Očekávané obdržené góly podle WhoScored",
+    "xG": "Očekávané góly",
+    "xGA": "Očekávané obdržené góly",
     "Góly": "Průměr vstřelených gólů na zápas",
     "Obdržené góly": "Průměr inkasovaných gólů na zápas",
     "Střely": "Průměr střel na zápas",
