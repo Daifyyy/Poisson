@@ -34,6 +34,46 @@ Základní CSV musí obsahovat alespoň tyto sloupce:
 Date, HomeTeam, AwayTeam, FTHG, FTAG, FTR, HS, AS, HST, AST, HC, AC, HY, AY, HR, AR, HF, AF
 ```
 
+## xG Data Sources
+
+Expected goals values are fetched from multiple providers with the following
+priority:
+
+1. **Understat** – primary source
+2. **FBref** – fallback if Understat is unavailable
+3. **pseudo‑xG** – computed from match statistics when no external provider
+   succeeds
+
+Results are cached to JSON files in `utils/poisson_utils/xg_sources/`:
+
+- `xg_cache.json` stores the final aggregated results
+- `understat_xg_cache.json` and `fbref_xg_cache.json` keep provider‑specific
+  responses
+
+Caches persist between runs. Delete the files to refresh the stored data or
+allow the scripts to overwrite them when new values are available.
+
+Data from Understat and FBref/StatsBomb is subject to their respective terms of
+use. When distributing or displaying the data, provide appropriate attribution
+to the original sources.
+
+### Extending Providers
+
+Additional providers can be added by creating a new module in
+`utils/poisson_utils/xg_sources/` that implements a
+`get_team_xg_xga(team, season, ...) -> Dict[str, float]` function. Include the
+module name in the provider chain within `get_team_xg_xga` to control lookup
+priority.
+
+### Example
+
+```python
+from utils.poisson_utils.xg_sources import get_team_xg_xga
+
+stats = get_team_xg_xga("Arsenal", "2023-2024", league_df=df)
+print(stats["xg"], stats["xga"], stats["source"])  # includes provider name
+```
+
 ## 🛠️ Instalace
 
 ```bash
