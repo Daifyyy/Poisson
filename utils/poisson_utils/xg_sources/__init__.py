@@ -6,8 +6,19 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pandas as pd
+import logging
 
 CACHE_FILE = Path(__file__).with_name("xg_cache.json")
+
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    log_dir = Path(__file__).resolve().parents[3] / "logs"
+    log_dir.mkdir(exist_ok=True)
+    handler = logging.FileHandler(log_dir / "xg_source.log")
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 
 def _load_cache() -> Dict[str, Dict[str, float]]:
@@ -41,6 +52,14 @@ def get_team_xg_xga(
         if key in cache:
             data = cache[key]
             if "xg" in data and "xga" in data:
+                logger.info(
+                    "xG source %s for %s %s: xG=%s xGA=%s",
+                    source,
+                    season,
+                    team,
+                    data["xg"],
+                    data["xga"],
+                )
                 return {**data, "source": source}
         try:
             module = import_module(f".{source}", __name__)
@@ -53,6 +72,14 @@ def get_team_xg_xga(
         if "xg" in data and "xga" in data:
             cache[key] = {"xg": data["xg"], "xga": data["xga"]}
             _save_cache(cache)
+            logger.info(
+                "xG source %s for %s %s: xG=%s xGA=%s",
+                source,
+                season,
+                team,
+                data["xg"],
+                data["xga"],
+            )
             return {"xg": data["xg"], "xga": data["xga"], "source": source}
 
     if league_df is not None:
@@ -61,6 +88,14 @@ def get_team_xg_xga(
         if key in cache:
             data = cache[key]
             if "xg" in data and "xga" in data:
+                logger.info(
+                    "xG source %s for %s %s: xG=%s xGA=%s",
+                    source,
+                    season,
+                    team,
+                    data["xg"],
+                    data["xga"],
+                )
                 return {**data, "source": source}
         try:
             from .pseudo import fetch_pseudo_xg
@@ -71,6 +106,15 @@ def get_team_xg_xga(
         if isinstance(data, dict) and "xg" in data and "xga" in data:
             cache[key] = {"xg": data["xg"], "xga": data["xga"]}
             _save_cache(cache)
+            logger.info(
+                "xG source %s for %s %s: xG=%s xGA=%s",
+                source,
+                season,
+                team,
+                data["xg"],
+                data["xga"],
+            )
             return {"xg": data["xg"], "xga": data["xga"], "source": source}
 
+    logger.warning("No xG data for %s %s", season, team)
     return {"xg": float("nan"), "xga": float("nan"), "source": None}
