@@ -33,7 +33,8 @@ from utils.poisson_utils import (
     poisson_corner_matrix,
     corner_over_under_prob,
     calculate_team_pseudo_xg,
-    get_whoscored_xg_xga,
+    detect_current_season,
+    get_team_xg_xga,
 )
 from utils.frontend_utils import display_team_status_table
 from utils.poisson_utils.match_style import tempo_tag
@@ -108,9 +109,10 @@ def compute_match_inputs(
     """
     df_hash = hash(pd.util.hash_pandas_object(df).sum())
     match_data = get_cached_match_inputs(df_hash, df, home_team, away_team, elo_dict)
-
-    ws_home = get_whoscored_xg_xga(home_team)
-    ws_away = get_whoscored_xg_xga(away_team)
+    season_start = detect_current_season(season_df, prepared=True)[1]
+    season = str(season_start.year)
+    ws_home = get_team_xg_xga(home_team, season)
+    ws_away = get_team_xg_xga(away_team, season)
 
     pseudo_dict = cache_team_pseudo_xg_xga(season_df)
     pseudo_home = pseudo_dict.get(home_team, {"xg": 0.0, "xga": 0.0})

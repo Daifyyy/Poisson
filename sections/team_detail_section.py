@@ -9,8 +9,8 @@ import plotly.graph_objects as go
 from utils.responsive import responsive_columns
 from utils.poisson_utils import (
     elo_history, calculate_form_emojis, calculate_expected_and_actual_points,
-    aggregate_team_stats, calculate_team_pseudo_xg, get_whoscored_xg_xga,
-    calculate_conceded_goals, calculate_recent_team_form,
+    aggregate_team_stats, calculate_team_pseudo_xg, detect_current_season,
+    get_team_xg_xga, calculate_conceded_goals, calculate_recent_team_form,
     calculate_elo_changes, calculate_team_styles,
     intensity_score_to_emoji, compute_score_stats, compute_form_trend,
     merged_home_away_opponent_form, classify_team_strength, calculate_advanced_team_metrics,
@@ -99,6 +99,9 @@ def render_team_detail(
     home = season_df[season_df['HomeTeam'] == team]
     away = season_df[season_df['AwayTeam'] == team]
     all_matches = pd.concat([home, away])
+
+    season_start = detect_current_season(original_df, prepared=True)[1]
+    season = str(season_start.year)
 
     if compare_team and compare_team != "Žádný" and compare_team != team:
         compare_df = _apply_time_filter(original_df, compare_team)
@@ -217,7 +220,7 @@ def render_team_detail(
     )
 
     # Sezónní xG a xGA – primárně z WhoScored, fallback na pseudo-xG
-    ws_stats = get_whoscored_xg_xga(team)
+    ws_stats = get_team_xg_xga(team, season)
     pseudo_stats = calculate_team_pseudo_xg(season_df).get(team, {})
 
     team_xg = ws_stats.get("xg", np.nan)

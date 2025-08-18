@@ -94,6 +94,6 @@ from .corners import (
     corner_over_under_prob,
 )
 
-from .whoscored_api import get_whoscored_xg, get_whoscored_xg_xga
+from .xg_sources import get_team_xg_xga
 from .cross_league import calculate_cross_league_team_index
 from .cup_predictions import predict_cup_match
