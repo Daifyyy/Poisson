@@ -6,7 +6,6 @@ import streamlit as st
 from .data import prepare_df, get_last_n_matches, detect_current_season
 from .stats import calculate_points
 from .prediction import poisson_over25_probability, expected_goals_vs_similar_elo_weighted
-from .xg import calculate_team_pseudo_xg
 from .xg_sources import get_team_xg_xga
 from utils.utils_warnings import detect_overperformance_and_momentum
 
@@ -906,7 +905,6 @@ def render_team_comparison_section(
 def generate_team_comparison(df: pd.DataFrame, team1: str, team2: str) -> pd.DataFrame:
     season_start = detect_current_season(df, prepared=True)[1]
     season = str(season_start.year)
-    xg_dict = calculate_team_pseudo_xg(df)
 
     def team_stats(df, team):
         home = df[df['HomeTeam'] == team]
@@ -930,11 +928,9 @@ def generate_team_comparison(df: pd.DataFrame, team1: str, team2: str) -> pd.Dat
         accuracy = shots_on_target / shots if shots else 0
         conversion = goals / shots if shots else 0
 
-        ws_stats = get_team_xg_xga(team, season)
-        ws_xg = ws_stats.get("xg")
-        ws_xga = ws_stats.get("xga")
-        xg = ws_xg if not np.isnan(ws_xg) else xg_dict.get(team, {}).get("xg", np.nan)
-        xga = ws_xga if not np.isnan(ws_xga) else xg_dict.get(team, {}).get("xga", np.nan)
+        ws_stats = get_team_xg_xga(team, season, df)
+        xg = ws_stats.get("xg", np.nan)
+        xga = ws_stats.get("xga", np.nan)
 
         clean_sheets = 0
         total_matches = 0

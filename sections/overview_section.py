@@ -5,7 +5,6 @@ from utils.poisson_utils import (
     calculate_form_emojis,
     calculate_expected_and_actual_points,
     aggregate_team_stats,
-    calculate_team_pseudo_xg,
     add_btts_column,
     calculate_conceded_goals,
     calculate_recent_team_form,
@@ -46,7 +45,6 @@ def compute_league_summary(season_df, gii_dict, elo_dict):
         .round(0)
     )
     btts = season_df.groupby("HomeTeam")["BTTS"].mean().mul(100).round(0)
-    pseudo_dict = calculate_team_pseudo_xg(season_df)
     sos_dict = calculate_strength_of_schedule(season_df, metric="elo")
 
     trends = []
@@ -63,14 +61,9 @@ def compute_league_summary(season_df, gii_dict, elo_dict):
         avg_goals_all.append(round(avg_goals_per_match, 1))
         score_var.append(round(score_variance, 1))
 
-        ws_stats = get_team_xg_xga(team, season)
-        pseudo_stats = pseudo_dict.get(team, {})
+        ws_stats = get_team_xg_xga(team, season, season_df)
         team_xg = ws_stats.get("xg")
         team_xga = ws_stats.get("xga")
-        if pd.isna(team_xg):
-            team_xg = pseudo_stats.get("xg", 0)
-        if pd.isna(team_xga):
-            team_xga = pseudo_stats.get("xga", 0)
         xg_vals.append(round(team_xg, 2))
         xga_vals.append(round(team_xga, 2))
 

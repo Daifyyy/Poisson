@@ -32,7 +32,6 @@ from utils.poisson_utils import (
     expected_corners,
     poisson_corner_matrix,
     corner_over_under_prob,
-    calculate_team_pseudo_xg,
     detect_current_season,
     get_team_xg_xga,
 )
@@ -86,9 +85,6 @@ def get_cached_match_inputs(df_hash,df, home_team, away_team, elo_dict):
         "xpoints": xpoints
     }
 @st.cache_data
-def cache_team_pseudo_xg_xga(season_df):
-    return calculate_team_pseudo_xg(season_df)
-@st.cache_data
 def get_cached_tempo(df_hash, df, team, opponent_elo, is_home, elo_dict):
     return calculate_match_tempo(df, team, opponent_elo, is_home, elo_dict)
 
@@ -111,26 +107,13 @@ def compute_match_inputs(
     match_data = get_cached_match_inputs(df_hash, df, home_team, away_team, elo_dict)
     season_start = detect_current_season(season_df, prepared=True)[1]
     season = str(season_start.year)
-    ws_home = get_team_xg_xga(home_team, season)
-    ws_away = get_team_xg_xga(away_team, season)
-
-    pseudo_dict = cache_team_pseudo_xg_xga(season_df)
-    pseudo_home = pseudo_dict.get(home_team, {"xg": 0.0, "xga": 0.0})
-    pseudo_away = pseudo_dict.get(away_team, {"xg": 0.0, "xga": 0.0})
+    ws_home = get_team_xg_xga(home_team, season, season_df)
+    ws_away = get_team_xg_xga(away_team, season, season_df)
 
     xg_home = ws_home.get("xg", float("nan"))
     xga_home = ws_home.get("xga", float("nan"))
     xg_away = ws_away.get("xg", float("nan"))
     xga_away = ws_away.get("xga", float("nan"))
-
-    if np.isnan(xg_home):
-        xg_home = pseudo_home["xg"]
-    if np.isnan(xga_home):
-        xga_home = pseudo_home["xga"]
-    if np.isnan(xg_away):
-        xg_away = pseudo_away["xg"]
-    if np.isnan(xga_away):
-        xga_away = pseudo_away["xga"]
 
     corner_home, corner_away = expected_corners(df, home_team, away_team)
 

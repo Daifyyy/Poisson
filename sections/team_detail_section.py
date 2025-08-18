@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 from utils.responsive import responsive_columns
 from utils.poisson_utils import (
     elo_history, calculate_form_emojis, calculate_expected_and_actual_points,
-    aggregate_team_stats, calculate_team_pseudo_xg, detect_current_season,
+    aggregate_team_stats, detect_current_season,
     get_team_xg_xga, calculate_conceded_goals, calculate_recent_team_form,
     calculate_elo_changes, calculate_team_styles,
     intensity_score_to_emoji, compute_score_stats, compute_form_trend,
@@ -220,15 +220,10 @@ def render_team_detail(
     )
 
     # Sezónní xG a xGA – primárně z WhoScored, fallback na pseudo-xG
-    ws_stats = get_team_xg_xga(team, season)
-    pseudo_stats = calculate_team_pseudo_xg(season_df).get(team, {})
+    ws_stats = get_team_xg_xga(team, season, season_df)
 
     team_xg = ws_stats.get("xg", np.nan)
     team_xga = ws_stats.get("xga", np.nan)
-    if np.isnan(team_xg):
-        team_xg = pseudo_stats.get("xg", 0)
-    if np.isnan(team_xga):
-        team_xga = pseudo_stats.get("xga", 0)
 
     col_xg, col_xga = st.columns(2)
     col_xg.metric("Sezónní xG", f"{team_xg:.1f}")
