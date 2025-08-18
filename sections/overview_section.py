@@ -15,7 +15,8 @@ from utils.poisson_utils import (
     compute_score_stats,
     compute_form_trend,
     calculate_strength_of_schedule,
-    get_whoscored_xg_xga,
+    detect_current_season,
+    get_team_xg_xga,
 )
 from utils.statistics import calculate_clean_sheets
 
@@ -33,6 +34,8 @@ def compute_league_summary(season_df, gii_dict, elo_dict):
         / num_matches,
         1,
     )
+    season_start = detect_current_season(season_df, prepared=True)[1]
+    season = str(season_start.year)
 
     form_emojis = calculate_form_emojis(season_df)
     points_data = calculate_expected_and_actual_points(season_df)
@@ -60,7 +63,7 @@ def compute_league_summary(season_df, gii_dict, elo_dict):
         avg_goals_all.append(round(avg_goals_per_match, 1))
         score_var.append(round(score_variance, 1))
 
-        ws_stats = get_whoscored_xg_xga(team)
+        ws_stats = get_team_xg_xga(team, season)
         pseudo_stats = pseudo_dict.get(team, {})
         team_xg = ws_stats.get("xg")
         team_xga = ws_stats.get("xga")
