@@ -1,7 +1,5 @@
 import os
 import sys
-import pandas as pd
-import requests
 
 """
 Fetch cup match data from FBref schedule/results pages and save
@@ -14,6 +12,9 @@ Usage:
 The mapping `CUP_URLS` defines the FBref schedule/results page for
 each competition.  Add or adjust entries as needed.
 """
+
+import pandas as pd
+import requests
 
 # Root directory of the repository and the target data folder
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
