@@ -236,6 +236,7 @@ def display_metrics(
     corner_probs: Dict[str, float],
     corner_line: float,
     outcomes_xg: Optional[Dict[str, float]] = None,
+
 ) -> None:
     """Display key statistical metrics and outcome probabilities."""
     st.markdown("## 📊 Klíčové metriky")
@@ -312,9 +313,6 @@ def display_metrics(
             f"{outcomes_xg['Away Win']:.1f}%",
             f"{1 / (outcomes_xg['Away Win'] / 100):.2f}",
         )
-        cols3[3].markdown(" ")
-
-
 
 
 
@@ -335,6 +333,7 @@ def render_single_match_prediction(
     if xg_row is not None:
         xg_pred = make_poisson_from_xg(xg_row)
         outcomes_xg = xg_pred["outcomes"]
+
     else:
         outcomes_xg = None
         st.info("xG data are not available for this matchup.")
@@ -360,7 +359,6 @@ def render_single_match_prediction(
             "Value H/D/A/>2.5: "
             f"{home_val:+.2%}/{draw_val:+.2%}/{away_val:+.2%}/{over_val:+.2%}"
         )
-    else:
         st.info("xG data are not available for this matchup.")
 
     try:
@@ -469,6 +467,7 @@ def render_single_match_prediction(
         corner_probs,
         corner_line,
         outcomes_xg,
+
     )
 
     with st.form("bet_form"):
