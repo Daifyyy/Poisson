@@ -66,15 +66,8 @@ def load_upcoming_xg() -> pd.DataFrame:
     """
     path = "data/Footballxg.com - (F1X) xG Free Upcoming v3.1.xlsx"
     cols = [
-        "Date",
-        "Home Team",
-        "Away Team",
-        "xG Home",
-        "xG Away",
-        "Home",
-        "Draw",
-        "Away",
-        ">2.5",
+        "Date", "Home Team", "Away Team", "xG Home", "xG Away",
+        "Home", "Draw", "Away", ">2.5",
     ]
     try:
         return pd.read_excel(path, header=5, usecols=cols)
@@ -89,15 +82,13 @@ def lookup_xg_row(
     """Find matching xG row for given teams (case-insensitive)."""
     if df.empty:
         return None
-    mask = (
-        df["Home Team"].str.lower() == home_team.lower()
-    ) & (
-        df["Away Team"].str.lower() == away_team.lower()
-    )
+    mask = (df["Home Team"].str.lower() == home_team.lower()) & \
+           (df["Away Team"].str.lower() == away_team.lower())
     match = df.loc[mask]
     if match.empty:
         return None
     return match.iloc[0]
+
 
 
 def make_poisson_from_xg(row: pd.Series) -> Dict[str, Dict[str, float]]:
@@ -253,85 +244,63 @@ def display_metrics(
     st.markdown("## 📊 Klíčové metriky")
 
     cols = responsive_columns(3)
-    cols[0].metric(
-        "xG/xGA sezóna",
-        f"{xg_home:.1f}/{xga_home:.1f} vs {xg_away:.1f}/{xga_away:.1f}"
-    )
-    cols[1].metric(
-        "Oček. body (xP)",
-        f"{xpoints['Home xP']:.1f} vs {xpoints['Away xP']:.1f}"
-    )
+    cols[0].metric("xG/xGA sezóna",
+                   f"{xg_home:.1f}/{xga_home:.1f} vs {xg_away:.1f}/{xga_away:.1f}")
+    cols[1].metric("Oček. body (xP)",
+                   f"{xpoints['Home xP']:.1f} vs {xpoints['Away xP']:.1f}")
     cols[2].metric("BTTS", f"{btts['BTTS Yes']:.1f}%")
-    cols[2].caption(
-        f"Kurzy: {1 / (btts['BTTS Yes'] / 100):.2f}"
-    )
+    cols[2].caption(f"Kurzy: {1 / (btts['BTTS Yes'] / 100):.2f}")
 
     cols = responsive_columns(3)
     cols[0].metric(
         "Over 1.5 / 2.5 / 3.5",
-        f"{over_under['Over 1.5']:.1f}% / {over_under['Over 2.5']:.1f}% / {over_under['Over 3.5']:.1f}%",
+        f"{over_under['Over 1.5']:.1f}% / "
+        f"{over_under['Over 2.5']:.1f}% / "
+        f"{over_under['Over 3.5']:.1f}%"
     )
     cols[0].caption(
-        f"Kurzy: {1 / (over_under['Over 1.5'] / 100):.2f} / {1 / (over_under['Over 2.5'] / 100):.2f} / {1 / (over_under['Over 3.5'] / 100):.2f}"
+        f"Kurzy: {1 / (over_under['Over 1.5'] / 100):.2f} / "
+        f"{1 / (over_under['Over 2.5'] / 100):.2f} / "
+        f"{1 / (over_under['Over 3.5'] / 100):.2f}"
     )
-    cols[1].metric(
-        "Průměrné rohy",
-        f"{corner_home_exp:.1f} vs {corner_away_exp:.1f}"
-    )
+    cols[1].metric("Průměrné rohy", f"{corner_home_exp:.1f} vs {corner_away_exp:.1f}")
     over_key = f"Over {corner_line}"
-    cols[2].metric(
-        over_key,
-        f"{corner_probs[over_key]:.1f}%",
-        f"{1 / (corner_probs[over_key] / 100):.2f}"
-    )
-    cols[2].caption(
-        f"Under: {corner_probs[f'Under {corner_line}']:.1f}%"
-    )
+    cols[2].metric(over_key,
+                   f"{corner_probs[over_key]:.1f}%",
+                   f"{1 / (corner_probs[over_key] / 100):.2f}")
+    cols[2].caption(f"Under: {corner_probs[f'Under {corner_line}']:.1f}%")
 
     st.markdown("## 🧠 Pravděpodobnosti výsledků")
     cols2 = responsive_columns(4)
-    cols2[0].metric(
-        "🏠 Výhra domácích",
-        f"{outcomes['Home Win']:.1f}%",
-        f"{1 / (outcomes['Home Win'] / 100):.2f}",
-    )
-    cols2[1].metric(
-        "🤝 Remíza",
-        f"{outcomes['Draw']:.1f}%",
-        f"{1 / (outcomes['Draw'] / 100):.2f}",
-    )
-    cols2[2].metric(
-        "🚶‍♂️ Výhra hostů",
-        f"{outcomes['Away Win']:.1f}%",
-        f"{1 / (outcomes['Away Win'] / 100):.2f}",
-    )
+    cols2[0].metric("🏠 Výhra domácích",
+                    f"{outcomes['Home Win']:.1f}%",
+                    f"{1 / (outcomes['Home Win'] / 100):.2f}")
+    cols2[1].metric("🤝 Remíza",
+                    f"{outcomes['Draw']:.1f}%",
+                    f"{1 / (outcomes['Draw'] / 100):.2f}")
+    cols2[2].metric("🚶‍♂️ Výhra hostů",
+                    f"{outcomes['Away Win']:.1f}%",
+                    f"{1 / (outcomes['Away Win'] / 100):.2f}")
     cols2[3].metric("🔒 Confidence", f"{confidence_index:.1f} %")
 
     if outcomes_xg:
         cols3 = responsive_columns(4)
-        cols3[0].metric(
-            "🏠 Výhra domácích (xG)",
-            f"{outcomes_xg['Home Win']:.1f}%",
-            f"{1 / (outcomes_xg['Home Win'] / 100):.2f}",
-        )
-        cols3[1].metric(
-            "🤝 Remíza (xG)",
-            f"{outcomes_xg['Draw']:.1f}%",
-            f"{1 / (outcomes_xg['Draw'] / 100):.2f}",
-        )
-        cols3[2].metric(
-            "🚶‍♂️ Výhra hostů (xG)",
-            f"{outcomes_xg['Away Win']:.1f}%",
-            f"{1 / (outcomes_xg['Away Win'] / 100):.2f}",
-        )
+        cols3[0].metric("🏠 Výhra domácích (xG)",
+                        f"{outcomes_xg['Home Win']:.1f}%",
+                        f"{1 / (outcomes_xg['Home Win'] / 100):.2f}")
+        cols3[1].metric("🤝 Remíza (xG)",
+                        f"{outcomes_xg['Draw']:.1f}%",
+                        f"{1 / (outcomes_xg['Draw'] / 100):.2f}")
+        cols3[2].metric("🚶‍♂️ Výhra hostů (xG)",
+                        f"{outcomes_xg['Away Win']:.1f}%",
+                        f"{1 / (outcomes_xg['Away Win'] / 100):.2f}")
         if over25_xg is not None:
-            cols3[3].metric(
-                "Over 2.5 (xG)",
-                f"{over25_xg:.1f}%",
-                f"{1 / (over25_xg / 100):.2f}",
-            )
+            cols3[3].metric("Over 2.5 (xG)",
+                            f"{over25_xg:.1f}%",
+                            f"{1 / (over25_xg / 100):.2f}")
         else:
             cols3[3].markdown(" ")
+
 
 
 
@@ -359,6 +328,7 @@ def render_single_match_prediction(
         outcomes_xg = None
         over25_xg = None
         st.info("xG data are not available for this matchup.")
+
 
     try:
         inputs = compute_match_inputs(df, season_df, home_team, away_team, gii_dict, elo_dict)
