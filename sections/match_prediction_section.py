@@ -58,6 +58,45 @@ from utils.anomaly_detection import (
 from utils import bet_db
 
 @st.cache_data
+def load_upcoming_xg() -> pd.DataFrame:
+    """Load upcoming xG workbook with caching."""
+    path = "data/Footballxg.com - (F1X) xG Free Upcoming v3.1.xlsx"
+    cols = [
+        "Date",
+        "Home Team",
+        "Away Team",
+        "xG Home",
+        "xG Away",
+        "Home",
+        "Draw",
+        "Away",
+        ">2.5",
+    ]
+    df = pd.read_excel(path, header=5, usecols=cols)
+    return df
+
+
+def lookup_xg_row(df: pd.DataFrame, home_team: str, away_team: str):
+    """Find matching xG row for given teams (case-insensitive)."""
+    mask = (
+        df["Home Team"].str.lower() == home_team.lower()
+    ) & (
+        df["Away Team"].str.lower() == away_team.lower()
+    )
+    match = df.loc[mask]
+    if match.empty:
+        return None
+    return match.iloc[0]
+
+
+def make_poisson_from_xg(row: pd.Series) -> Dict[str, Dict[str, float]]:
+    """Generate Poisson outcome probabilities from xG values."""
+    matrix = poisson_prediction(row["xG Home"], row["xG Away"])
+    outcomes = match_outcomes_prob(matrix)
+    over_under = over_under_prob(matrix, 2.5)
+    return {"matrix": matrix, "outcomes": outcomes, "over_under": over_under}
+
+@st.cache_data
 def get_cached_match_inputs(df_hash,df, home_team, away_team, elo_dict):
     # from utils.poisson_utils import (
     #     expected_goals_weighted_by_elo, poisson_prediction, match_outcomes_prob,
@@ -271,6 +310,30 @@ def render_single_match_prediction(
     elo_dict,
 ):
     st.header(f"🔮 {home_team} vs {away_team}")
+
+    xg_df = load_upcoming_xg()
+    xg_row = lookup_xg_row(xg_df, home_team, away_team)
+    if xg_row is not None:
+        xg_pred = make_poisson_from_xg(xg_row)
+        st.subheader("xG-based prediction")
+        outcomes_xg = xg_pred["outcomes"]
+        over25 = xg_pred["over_under"]["Over 2.5"]
+        st.write(
+            f"Home: {outcomes_xg['Home Win']:.1f}% | "
+            f"Draw: {outcomes_xg['Draw']:.1f}% | "
+            f"Away: {outcomes_xg['Away Win']:.1f}% | "
+            f"Over 2.5: {over25:.1f}%"
+        )
+        home_val = outcomes_xg["Home Win"] / 100 - 1 / xg_row["Home"]
+        draw_val = outcomes_xg["Draw"] / 100 - 1 / xg_row["Draw"]
+        away_val = outcomes_xg["Away Win"] / 100 - 1 / xg_row["Away"]
+        over_val = over25 / 100 - 1 / xg_row[">2.5"]
+        st.write(
+            "Value H/D/A/>2.5: "
+            f"{home_val:+.2%}/{draw_val:+.2%}/{away_val:+.2%}/{over_val:+.2%}"
+        )
+    else:
+        st.info("xG data are not available for this matchup.")
 
     try:
         inputs = compute_match_inputs(df, season_df, home_team, away_team, gii_dict, elo_dict)
