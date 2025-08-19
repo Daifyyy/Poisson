@@ -236,7 +236,7 @@ def display_metrics(
     corner_probs: Dict[str, float],
     corner_line: float,
     outcomes_xg: Optional[Dict[str, float]] = None,
-    over25_xg: Optional[float] = None,
+
 ) -> None:
     """Display key statistical metrics and outcome probabilities."""
     st.markdown("## 📊 Klíčové metriky")
@@ -313,16 +313,6 @@ def display_metrics(
             f"{outcomes_xg['Away Win']:.1f}%",
             f"{1 / (outcomes_xg['Away Win'] / 100):.2f}",
         )
-        if over25_xg is not None:
-            cols3[3].metric(
-                "Over 2.5 (xG)",
-                f"{over25_xg:.1f}%",
-                f"{1 / (over25_xg / 100):.2f}",
-            )
-        else:
-            cols3[3].markdown(" ")
-
-
 
 
 
@@ -343,10 +333,32 @@ def render_single_match_prediction(
     if xg_row is not None:
         xg_pred = make_poisson_from_xg(xg_row)
         outcomes_xg = xg_pred["outcomes"]
-        over25_xg = xg_pred["over_under"].get("Over 2.5")
+
     else:
         outcomes_xg = None
-        over25_xg = None
+        st.info("xG data are not available for this matchup.")
+
+    xg_df = load_upcoming_xg()
+    xg_row = lookup_xg_row(xg_df, home_team, away_team)
+    if xg_row is not None:
+        xg_pred = make_poisson_from_xg(xg_row)
+        st.subheader("xG-based prediction")
+        outcomes_xg = xg_pred["outcomes"]
+        over25 = xg_pred["over_under"]["Over 2.5"]
+        st.write(
+            f"Home: {outcomes_xg['Home Win']:.1f}% | "
+            f"Draw: {outcomes_xg['Draw']:.1f}% | "
+            f"Away: {outcomes_xg['Away Win']:.1f}% | "
+            f"Over 2.5: {over25:.1f}%"
+        )
+        home_val = outcomes_xg["Home Win"] / 100 - 1 / xg_row["Home"]
+        draw_val = outcomes_xg["Draw"] / 100 - 1 / xg_row["Draw"]
+        away_val = outcomes_xg["Away Win"] / 100 - 1 / xg_row["Away"]
+        over_val = over25 / 100 - 1 / xg_row[">2.5"]
+        st.write(
+            "Value H/D/A/>2.5: "
+            f"{home_val:+.2%}/{draw_val:+.2%}/{away_val:+.2%}/{over_val:+.2%}"
+        )
         st.info("xG data are not available for this matchup.")
 
     try:
@@ -455,7 +467,7 @@ def render_single_match_prediction(
         corner_probs,
         corner_line,
         outcomes_xg,
-        over25_xg,
+
     )
 
     with st.form("bet_form"):
