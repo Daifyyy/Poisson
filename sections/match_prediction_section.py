@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 from collections.abc import Mapping
 from utils.responsive import responsive_columns
 from utils.poisson_utils import (
@@ -56,6 +56,45 @@ from utils.anomaly_detection import (
     calculate_confidence_index
 )
 from utils import bet_db
+
+@st.cache_data
+def load_upcoming_xg() -> pd.DataFrame:
+    """Load upcoming xG workbook with caching."""
+    path = "data/Footballxg.com - (F1X) xG Free Upcoming v3.1.xlsx"
+    cols = [
+        "Date",
+        "Home Team",
+        "Away Team",
+        "xG Home",
+        "xG Away",
+        "Home",
+        "Draw",
+        "Away",
+        ">2.5",
+    ]
+    df = pd.read_excel(path, header=5, usecols=cols)
+    return df
+
+
+def lookup_xg_row(df: pd.DataFrame, home_team: str, away_team: str):
+    """Find matching xG row for given teams (case-insensitive)."""
+    mask = (
+        df["Home Team"].str.lower() == home_team.lower()
+    ) & (
+        df["Away Team"].str.lower() == away_team.lower()
+    )
+    match = df.loc[mask]
+    if match.empty:
+        return None
+    return match.iloc[0]
+
+
+def make_poisson_from_xg(row: pd.Series) -> Dict[str, Dict[str, float]]:
+    """Generate Poisson outcome probabilities from xG values."""
+    matrix = poisson_prediction(row["xG Home"], row["xG Away"])
+    outcomes = match_outcomes_prob(matrix)
+    over_under = over_under_prob(matrix, 2.5)
+    return {"matrix": matrix, "outcomes": outcomes, "over_under": over_under}
 
 @st.cache_data
 def get_cached_match_inputs(df_hash,df, home_team, away_team, elo_dict):
@@ -196,6 +235,8 @@ def display_metrics(
     corner_away_exp: float,
     corner_probs: Dict[str, float],
     corner_line: float,
+    outcomes_xg: Optional[Dict[str, float]] = None,
+    over25_xg: Optional[float] = None,
 ) -> None:
     """Display key statistical metrics and outcome probabilities."""
     st.markdown("## 📊 Klíčové metriky")
@@ -255,6 +296,32 @@ def display_metrics(
     )
     cols2[3].metric("🔒 Confidence", f"{confidence_index:.1f} %")
 
+    if outcomes_xg:
+        cols3 = responsive_columns(4)
+        cols3[0].metric(
+            "🏠 Výhra domácích (xG)",
+            f"{outcomes_xg['Home Win']:.1f}%",
+            f"{1 / (outcomes_xg['Home Win'] / 100):.2f}",
+        )
+        cols3[1].metric(
+            "🤝 Remíza (xG)",
+            f"{outcomes_xg['Draw']:.1f}%",
+            f"{1 / (outcomes_xg['Draw'] / 100):.2f}",
+        )
+        cols3[2].metric(
+            "🚶‍♂️ Výhra hostů (xG)",
+            f"{outcomes_xg['Away Win']:.1f}%",
+            f"{1 / (outcomes_xg['Away Win'] / 100):.2f}",
+        )
+        if over25_xg is not None:
+            cols3[3].metric(
+                "Over 2.5 (xG)",
+                f"{over25_xg:.1f}%",
+                f"{1 / (over25_xg / 100):.2f}",
+            )
+        else:
+            cols3[3].markdown(" ")
+
 
 
 
@@ -271,6 +338,16 @@ def render_single_match_prediction(
     elo_dict,
 ):
     st.header(f"🔮 {home_team} vs {away_team}")
+    xg_df = load_upcoming_xg()
+    xg_row = lookup_xg_row(xg_df, home_team, away_team)
+    if xg_row is not None:
+        xg_pred = make_poisson_from_xg(xg_row)
+        outcomes_xg = xg_pred["outcomes"]
+        over25_xg = xg_pred["over_under"].get("Over 2.5")
+    else:
+        outcomes_xg = None
+        over25_xg = None
+        st.info("xG data are not available for this matchup.")
 
     try:
         inputs = compute_match_inputs(df, season_df, home_team, away_team, gii_dict, elo_dict)
@@ -377,6 +454,8 @@ def render_single_match_prediction(
         corner_away_exp,
         corner_probs,
         corner_line,
+        outcomes_xg,
+        over25_xg,
     )
 
     with st.form("bet_form"):
