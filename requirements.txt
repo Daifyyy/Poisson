@@ -6,6 +6,7 @@ matplotlib
 seaborn
 plotly
 XlsxWriter>=3.0.0
+openpyxl
 
 requests
 beautifulsoup4
