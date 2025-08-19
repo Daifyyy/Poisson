@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 from collections.abc import Mapping
 from utils.responsive import responsive_columns
 from utils.poisson_utils import (
@@ -235,6 +235,7 @@ def display_metrics(
     corner_away_exp: float,
     corner_probs: Dict[str, float],
     corner_line: float,
+    outcomes_xg: Optional[Dict[str, float]] = None,
 ) -> None:
     """Display key statistical metrics and outcome probabilities."""
     st.markdown("## 📊 Klíčové metriky")
@@ -294,6 +295,25 @@ def display_metrics(
     )
     cols2[3].metric("🔒 Confidence", f"{confidence_index:.1f} %")
 
+    if outcomes_xg:
+        cols3 = responsive_columns(4)
+        cols3[0].metric(
+            "🏠 Výhra domácích (xG)",
+            f"{outcomes_xg['Home Win']:.1f}%",
+            f"{1 / (outcomes_xg['Home Win'] / 100):.2f}",
+        )
+        cols3[1].metric(
+            "🤝 Remíza (xG)",
+            f"{outcomes_xg['Draw']:.1f}%",
+            f"{1 / (outcomes_xg['Draw'] / 100):.2f}",
+        )
+        cols3[2].metric(
+            "🚶‍♂️ Výhra hostů (xG)",
+            f"{outcomes_xg['Away Win']:.1f}%",
+            f"{1 / (outcomes_xg['Away Win'] / 100):.2f}",
+        )
+        cols3[3].markdown(" ")
+
 
 
 
@@ -310,6 +330,14 @@ def render_single_match_prediction(
     elo_dict,
 ):
     st.header(f"🔮 {home_team} vs {away_team}")
+    xg_df = load_upcoming_xg()
+    xg_row = lookup_xg_row(xg_df, home_team, away_team)
+    if xg_row is not None:
+        xg_pred = make_poisson_from_xg(xg_row)
+        outcomes_xg = xg_pred["outcomes"]
+    else:
+        outcomes_xg = None
+        st.info("xG data are not available for this matchup.")
 
     xg_df = load_upcoming_xg()
     xg_row = lookup_xg_row(xg_df, home_team, away_team)
@@ -440,6 +468,7 @@ def render_single_match_prediction(
         corner_away_exp,
         corner_probs,
         corner_line,
+        outcomes_xg,
     )
 
     with st.form("bet_form"):
