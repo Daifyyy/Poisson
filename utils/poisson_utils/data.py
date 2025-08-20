@@ -14,8 +14,15 @@ def prepare_df(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def load_data(file_path: str) -> pd.DataFrame:
-    """Načte CSV soubor a připraví ho."""
+def load_data(file_path: str, *, force_refresh: bool = False) -> pd.DataFrame:
+    """Načte CSV soubor a připraví ho.
+
+    Pokud existuje soubor ``.parquet`` se stejným názvem, funkce porovná
+    časy poslední úpravy a velikosti obou souborů.  Novější nebo velikostně
+    odlišný ``.csv`` přepíše cache v ``.parquet``.  Volitelným parametrem
+    ``force_refresh`` lze vynutit načtení z ``.csv`` bez ohledu na tyto
+    kontroly.
+    """
     numeric_columns = [
         "FTHG",
         "FTAG",
@@ -35,12 +42,34 @@ def load_data(file_path: str) -> pd.DataFrame:
 
     file_path = Path(file_path)
     parquet_path = file_path.with_suffix(".parquet")
-    if parquet_path.exists():
+
+    def _read_csv() -> pd.DataFrame:
+        dtype_mapping = {col: "Int64" for col in numeric_columns}
+        df_csv = pd.read_csv(file_path, dtype=dtype_mapping, parse_dates=["Date"])
+        df_csv.to_parquet(parquet_path, index=False)
+        return df_csv
+
+    if parquet_path.exists() and not force_refresh:
+        if file_path.exists():
+            csv_stat = file_path.stat()
+            parquet_stat = parquet_path.stat()
+            if csv_stat.st_mtime > parquet_stat.st_mtime:
+                df = _read_csv()
+            elif (
+                csv_stat.st_mtime == parquet_stat.st_mtime
+                and csv_stat.st_size != parquet_stat.st_size
+            ):
+                df = _read_csv()
+            else:
+                df = pd.read_parquet(parquet_path)
+        else:
+            df = pd.read_parquet(parquet_path)
+    elif force_refresh and file_path.exists():
+        df = _read_csv()
+    elif parquet_path.exists():
         df = pd.read_parquet(parquet_path)
     else:
-        dtype_mapping = {col: "Int64" for col in numeric_columns}
-        df = pd.read_csv(file_path, dtype=dtype_mapping, parse_dates=["Date"])
-        df.to_parquet(parquet_path, index=False)
+        df = _read_csv()
 
     df = prepare_df(df)
     required_columns = [
