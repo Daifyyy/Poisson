@@ -106,14 +106,20 @@ def calculate_expected_and_actual_points(df: pd.DataFrame) -> dict:
 
         # Očekávané body (xP) přes Poisson z proxy xG
         xP = 0.0
+
+        def _sot_to_xg(sot, shots):
+            sot = 0 if pd.isna(sot) else sot
+            shots = 0 if pd.isna(shots) else shots
+            return (sot / shots) if shots > 0 else 0.1
+
         for row in all_matches.itertuples(index=False):
             if row.HomeTeam == team:
-                xg_for = (row.HST / row.HS) if row.HS > 0 else 0.1
-                xg_against = (row.AST / row.AS) if row.AS > 0 else 0.1
+                xg_for = _sot_to_xg(row.HST, row.HS)
+                xg_against = _sot_to_xg(row.AST, row.AS)
                 team_is_home = True
             elif row.AwayTeam == team:
-                xg_for = (row.AST / row.AS) if row.AS > 0 else 0.1
-                xg_against = (row.HST / row.HS) if row.HS > 0 else 0.1
+                xg_for = _sot_to_xg(row.AST, row.AS)
+                xg_against = _sot_to_xg(row.HST, row.HS)
                 team_is_home = False
             else:
                 continue
