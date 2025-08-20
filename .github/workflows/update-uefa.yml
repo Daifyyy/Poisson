@@ -1,12 +1,12 @@
 name: 🔄 Update UEFA Data
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # ruční spuštění
   schedule:
-    - cron: '0 5 * * 1'
+    - cron: '0 5 * * 1'  # každé pondělí v 5:00 ráno
 
 permissions:
-  contents: write  # ✅ DŮLEŽITÉ: umožní push do repo
+  contents: write  # ✅ nutné pro git push
 
 jobs:
   update:
@@ -18,7 +18,7 @@ jobs:
       - name: 🧾 Checkout repo
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}  # ↔️ použije GITHUB_TOKEN
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🐍 Set up Python
         uses: actions/setup-python@v5
@@ -30,22 +30,28 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: ⚽ Stáhni zápasy
+      - name: ⚽ Stáhni UEFA zápasy (CL, EL, ECL)
         run: |
           python scripts/update_uefa_cups.py
 
-      - name: 🧮 Spoj CSV
+      - name: 🧮 Spoj CSV do jednoho
         run: |
           python scripts/combine_uefa_csv.py
+
+      - name: ✅ Validuj CSV soubory
+        run: |
+          python scripts/validate_uefa_csv.py
 
       - name: 🔁 Commit změn (pokud jsou)
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add data/*.csv
+
           if git diff --cached --quiet; then
             echo "✅ Žádné změny k commitnutí."
           else
             COMMIT_MSG="🔄 Update UEFA data – $(date +'%Y-%m-%d')"
             git commit -m "$COMMIT_MSG"
             git push
+          fi
