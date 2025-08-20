@@ -95,6 +95,8 @@ with st.sidebar.expander("🔧 Správa dat"):
     if st.button("🔄 Aktualizovat data z webu"):
         with st.spinner("Stahuji a porovnávám data..."):
             logs = update_all_leagues()
+            # clear cached data so modified files are re-read
+            st.cache_data.clear()
             # signalizace pro re-load cache
             if "reload_flag" in st.session_state:
                 del st.session_state["reload_flag"]
@@ -125,9 +127,23 @@ league_name = st.sidebar.selectbox(
 )
 league_file = league_files[league_name]
 
+"""Main application logic and cached helpers."""
+
 # --- Načtení a příprava dat ---
 @st.cache_data(show_spinner=False)
-def load_and_prepare(file_path: str):
+def load_and_prepare(file_path: str, mtime: float):
+    """Load league data and compute derived statistics.
+
+    Parameters
+    ----------
+    file_path:
+        Path to the league CSV file.
+    mtime:
+        Last modification timestamp of ``file_path``.  The value itself is not
+        used inside the function but ensures the Streamlit cache is invalidated
+        whenever the underlying data file changes.
+    """
+
     df = load_data(file_path)
     validate_dataset(df)
 
@@ -146,8 +162,19 @@ def load_and_prepare(file_path: str):
 
 
 @st.cache_data(show_spinner=False)
-def compute_cross_league_index(files: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
+def compute_cross_league_index(
+    files: dict, mtimes: dict
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Compute cross-league team index for all leagues in ``files``.
+
+    Parameters
+    ----------
+    files:
+        Mapping of league names to their CSV paths.
+    mtimes:
+        Mapping of league names to the last modification timestamp of the
+        corresponding CSV file.  Only used so Streamlit's cache depends on the
+        file contents.
 
     Returns
     -------
@@ -269,12 +296,17 @@ if st.session_state.get("reload_flag"):
     st.cache_data.clear()
     del st.session_state["reload_flag"]
 
-df, season_df, gii_dict, elo_dict = load_and_prepare(league_file)
+df, season_df, gii_dict, elo_dict = load_and_prepare(
+    league_file, os.path.getmtime(league_file)
+)
 # Zachováme kompletní dataset pro historické statistiky (H2H apod.)
 full_df = df.copy()
 
 # Cross-league ratings for all teams
-cross_league_df, league_quality_df = compute_cross_league_index(league_files)
+league_mtimes = {name: os.path.getmtime(path) for name, path in league_files.items()}
+cross_league_df, league_quality_df = compute_cross_league_index(
+    league_files, league_mtimes
+)
 
 # --- Date range filtr ---
 overall_start = df["Date"].min().date()
