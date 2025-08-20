@@ -129,7 +129,6 @@ league_name = st.sidebar.selectbox(
 )
 league_file = league_files[league_name]
 
-"""Main application logic and cached helpers."""
 
 # --- Načtení a příprava dat ---
 @st.cache_data(show_spinner=False)
