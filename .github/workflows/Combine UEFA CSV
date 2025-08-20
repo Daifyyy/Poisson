@@ -1,0 +1,44 @@
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "data/CL_combined_full.csv"
+      - "data/EL_combined_full.csv"
+      - "data/ECL_combined_full.csv"
+  workflow_dispatch:
+
+jobs:
+  combine:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🧾 Checkout repo
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🧪 Combine UEFA data
+        run: |
+          python scripts/combine_uefa_csv.py
+
+      - name: 🔁 Commit combined CSV if changed
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add data/all_cups_combined.csv
+
+          if git diff --cached --quiet; then
+            echo "✅ No changes – nothing to commit."
+          else
+            git commit -m "🔄 Update combined UEFA CSV – $(date +'%Y-%m-%d')" || true
+            git push
+          fi
