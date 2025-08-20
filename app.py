@@ -1,3 +1,5 @@
+__doc__ = None  # prevent accidental module docstring rendering in Streamlit
+
 import time
 import sys
 import os
