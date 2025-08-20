@@ -1,0 +1,38 @@
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-token:
+    runs-on: ubuntu-latest
+
+    env:
+      FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
+
+    steps:
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: ✅ Ověření dostupnosti tokenu a API
+        run: |
+          echo "📡 Testuji token a dostupnost API..."
+          if [ -z "$FOOTBALL_DATA_TOKEN" ]; then
+            echo "❌ FOOTBALL_DATA_TOKEN není nastaven."
+            exit 1
+          fi
+
+          http_code=$(curl -s -o out.json -w "%{http_code}" \
+            -H "X-Auth-Token: $FOOTBALL_DATA_TOKEN" \
+            "https://api.football-data.org/v4/competitions")
+
+          echo "📬 HTTP status: $http_code"
+          if [ "$http_code" != "200" ]; then
+            echo "❌ Chyba: Token nefunguje nebo endpoint není dostupný"
+            cat out.json | head -c 500
+            exit 1
+          fi
+
+          count=$(jq '.count' out.json)
+          echo "✅ Token funguje. Počet soutěží dostupných přes API: $count"
