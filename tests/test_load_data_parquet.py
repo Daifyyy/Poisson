@@ -1,4 +1,5 @@
 import pandas as pd
+import time
 import utils.poisson_utils.data as data
 
 
@@ -17,3 +18,45 @@ def test_load_data_writes_and_reads_parquet(tmp_path):
     df2 = data.load_data(str(csv_path))
 
     pd.testing.assert_frame_equal(df1, df2)
+
+
+def test_load_data_refreshes_when_csv_newer(tmp_path):
+    csv_path = tmp_path / "sample.csv"
+    csv_path.write_text(
+        "Date,HomeTeam,AwayTeam,FTHG,FTAG,FTR,HS,AS,HST,AST,HC,AC,HY,AY,HR,AR,HF,AF\n"
+        "01/01/2024,A,B,1,0,H,5,3,2,1,4,2,1,0,0,0,3,5\n"
+    )
+
+    data.load_data(str(csv_path))
+    parquet_path = csv_path.with_suffix(".parquet")
+
+    time.sleep(1)
+    csv_path.write_text(
+        "Date,HomeTeam,AwayTeam,FTHG,FTAG,FTR,HS,AS,HST,AST,HC,AC,HY,AY,HR,AR,HF,AF\n"
+        "01/01/2024,A,B,1,0,H,5,3,2,1,4,2,1,0,0,0,3,5\n"
+        "02/01/2024,C,D,2,2,D,6,4,3,2,5,3,0,1,0,0,4,6\n"
+    )
+
+    df = data.load_data(str(csv_path))
+    assert len(df) == 2
+    assert parquet_path.stat().st_mtime >= csv_path.stat().st_mtime
+
+
+def test_load_data_force_refresh(tmp_path):
+    csv_path = tmp_path / "sample.csv"
+    csv_path.write_text(
+        "Date,HomeTeam,AwayTeam,FTHG,FTAG,FTR,HS,AS,HST,AST,HC,AC,HY,AY,HR,AR,HF,AF\n"
+        "01/01/2024,A,B,1,0,H,5,3,2,1,4,2,1,0,0,0,3,5\n"
+    )
+
+    data.load_data(str(csv_path))
+    parquet_path = csv_path.with_suffix(".parquet")
+    initial_mtime = parquet_path.stat().st_mtime
+
+    time.sleep(1)
+    data.load_data(str(csv_path))
+    assert parquet_path.stat().st_mtime == initial_mtime
+
+    time.sleep(1)
+    data.load_data(str(csv_path), force_refresh=True)
+    assert parquet_path.stat().st_mtime > initial_mtime
