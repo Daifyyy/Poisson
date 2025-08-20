@@ -11,6 +11,8 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
+    env:
+      FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -29,6 +31,8 @@ jobs:
           git config user.email github-actions@github.com
       - name: Update league data
         run: python update_league_data.py
+      - name: Update UEFA cups data
+        run: python scripts/update_uefa_cups.py
       - name: Commit and push changes
         run: python commit_and_push.py
         env:
