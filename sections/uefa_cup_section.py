@@ -32,7 +32,6 @@ def load_upcoming_cup_fixtures(data_dir: str | Path = "data") -> pd.DataFrame:
         DataFrame with columns ``Date``, ``Competition``, ``HomeTeam`` and
         ``AwayTeam`` for matches where scores are missing.
     """
-
     data_dir = Path(data_dir)
     path = data_dir / CUP_FILE
     if not path.exists():
@@ -68,7 +67,6 @@ def load_cup_elo_tables(data_dir: str | Path = "data") -> dict[str, pd.DataFrame
         - average points per game against strong/average/weak opponents
         - average points per game at home and away
     """
-
     data_dir = Path(data_dir)
     path = data_dir / CUP_FILE
     if not path.exists():
@@ -100,7 +98,7 @@ def load_cup_elo_tables(data_dir: str | Path = "data") -> dict[str, pd.DataFrame
                 return "Weak"
             return "Average"
 
-        # initialize team stats containers
+        # akumulace per tým
         stats: dict[str, dict] = {}
         for team, elo in elo_dict.items():
             stats[team] = {
@@ -119,7 +117,7 @@ def load_cup_elo_tables(data_dir: str | Path = "data") -> dict[str, pd.DataFrame
             home, away = row.HomeTeam, row.AwayTeam
             hg, ag = row.FTHG, row.FTAG
 
-            # home side
+            # home strana
             h_pts = 3 if hg > ag else 1 if hg == ag else 0
             stats[home]["gf"] += hg
             stats[home]["ga"] += ag
@@ -129,7 +127,7 @@ def load_cup_elo_tables(data_dir: str | Path = "data") -> dict[str, pd.DataFrame
             opp_cat = classify(elo_dict.get(away, 1500))
             stats[home]["perf"][opp_cat].append(h_pts)
 
-            # away side
+            # away strana
             a_pts = 3 if ag > hg else 1 if ag == hg else 0
             stats[away]["gf"] += ag
             stats[away]["ga"] += hg
@@ -145,16 +143,9 @@ def load_cup_elo_tables(data_dir: str | Path = "data") -> dict[str, pd.DataFrame
             vs_strong = round(sum(perf["Strong"]) / len(perf["Strong"]), 2) if perf["Strong"] else 0
             vs_avg = round(sum(perf["Average"]) / len(perf["Average"]), 2) if perf["Average"] else 0
             vs_weak = round(sum(perf["Weak"]) / len(perf["Weak"]), 2) if perf["Weak"] else 0
-            home_ppg = (
-                round(s["home_points"] / s["home_matches"], 2)
-                if s["home_matches"]
-                else 0
-            )
-            away_ppg = (
-                round(s["away_points"] / s["away_matches"], 2)
-                if s["away_matches"]
-                else 0
-            )
+            home_ppg = round(s["home_points"] / s["home_matches"], 2) if s["home_matches"] else 0
+            away_ppg = round(s["away_points"] / s["away_matches"], 2) if s["away_matches"] else 0
+
             rows.append(
                 {
                     "Team": team,
