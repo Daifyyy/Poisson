@@ -62,7 +62,7 @@ def fetch_matches(code: str, season: int, token: str) -> pd.DataFrame:
 
 def seasons_to_fetch() -> list[int]:
     """Vrací sezóny: aktuální a předchozí"""
-    return [2024, 2025]
+    return [2020,2021,2022,2023,2024, 2025]
 
 
 def main() -> None:
