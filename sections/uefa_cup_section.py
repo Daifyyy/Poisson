@@ -1,26 +1,30 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from pathlib import Path
 
 from utils.poisson_utils.cup_predictions import predict_cup_match
 from utils.poisson_utils.data import prepare_df
 from utils.poisson_utils.elo import calculate_elo_ratings
 
-CUP_FILES = {
-    "Champions League": "CL_combined_full.csv",
-    "Europa League": "EL_combined_full.csv",
-    "Conference League": "ECL_combined_full.csv",
+# Single combined CSV with all UEFA cup matches.  The ``Competition`` column
+# stores short codes (CL, EL, ECL) which we map to human readable names below.
+CUP_FILE = "all_cups_combined.csv"
+COMPETITION_NAMES = {
+    "CL": "Champions League",
+    "EL": "Europa League",
+    "ECL": "Conference League",
 }
 
 
 @st.cache_data
 def load_upcoming_cup_fixtures(data_dir: str | Path = "data") -> pd.DataFrame:
-    """Return upcoming fixtures from predefined UEFA cup CSV files.
+    """Return upcoming fixtures from the combined UEFA cup CSV file.
 
     Parameters
     ----------
     data_dir : str or Path, optional
-        Directory containing the cup CSV files. Defaults to ``"data"``.
+        Directory containing ``all_cups_combined.csv``. Defaults to ``"data"``.
 
     Returns
     -------
@@ -30,60 +34,147 @@ def load_upcoming_cup_fixtures(data_dir: str | Path = "data") -> pd.DataFrame:
     """
 
     data_dir = Path(data_dir)
-    frames: list[pd.DataFrame] = []
-    for competition, filename in CUP_FILES.items():
-        path = data_dir / filename
-        if not path.exists():
-            continue
-        try:
-            df = pd.read_csv(path)
-        except Exception:
-            continue
-        df = prepare_df(df)
-        if {"FTHG", "FTAG"}.issubset(df.columns):
-            df = df[df["FTHG"].isna() & df["FTAG"].isna()]
-        else:
-            df = df.iloc[0:0]
-        if df.empty:
-            continue
-        df = df[["Date", "HomeTeam", "AwayTeam"]].copy()
-        df["Competition"] = competition
-        frames.append(df)
-
-    if not frames:
+    path = data_dir / CUP_FILE
+    if not path.exists():
         return pd.DataFrame(columns=["Date", "Competition", "HomeTeam", "AwayTeam"])
 
-    return pd.concat(frames, ignore_index=True).sort_values("Date")
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        return pd.DataFrame(columns=["Date", "Competition", "HomeTeam", "AwayTeam"])
+
+    df = prepare_df(df)
+    if {"FTHG", "FTAG"}.issubset(df.columns):
+        df = df[df["FTHG"].isna() & df["FTAG"].isna()]
+    else:
+        return pd.DataFrame(columns=["Date", "Competition", "HomeTeam", "AwayTeam"])
+
+    if df.empty:
+        return pd.DataFrame(columns=["Date", "Competition", "HomeTeam", "AwayTeam"])
+
+    df = df[["Date", "HomeTeam", "AwayTeam", "Competition"]].copy()
+    df["Competition"] = df["Competition"].map(COMPETITION_NAMES).fillna(df["Competition"])
+    return df.sort_values("Date").reset_index(drop=True)
 
 
 @st.cache_data
 def load_cup_elo_tables(data_dir: str | Path = "data") -> dict[str, pd.DataFrame]:
-    """Return ELO rating tables for available UEFA cups."""
+    """Return enriched ELO tables for each competition.
+
+    The table for each competition includes:
+        - current ELO rating
+        - total points and goal stats
+        - strength category based on ELO quantiles
+        - average points per game against strong/average/weak opponents
+        - average points per game at home and away
+    """
 
     data_dir = Path(data_dir)
+    path = data_dir / CUP_FILE
+    if not path.exists():
+        return {}
+
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        return {}
+
+    df = prepare_df(df)
+    if not {"FTHG", "FTAG", "Competition"}.issubset(df.columns):
+        return {}
+
+    df = df.dropna(subset=["FTHG", "FTAG"])
+    if df.empty:
+        return {}
+
     tables: dict[str, pd.DataFrame] = {}
-    for competition, filename in CUP_FILES.items():
-        path = data_dir / filename
-        if not path.exists():
-            continue
-        try:
-            df = pd.read_csv(path)
-        except Exception:
-            continue
-        df = prepare_df(df)
-        if {"FTHG", "FTAG"}.issubset(df.columns):
-            df = df.dropna(subset=["FTHG", "FTAG"])
-        else:
-            continue
-        if df.empty:
-            continue
-        elo_dict = calculate_elo_ratings(df)
-        elo_table = (
-            pd.DataFrame({"Team": elo_dict.keys(), "ELO": elo_dict.values()})
-            .sort_values("ELO", ascending=False)
-            .reset_index(drop=True)
-        )
-        tables[competition] = elo_table
+    for comp_code, comp_df in df.groupby("Competition"):
+        elo_dict = calculate_elo_ratings(comp_df)
+        elo_values = list(elo_dict.values())
+        p30, p70 = np.percentile(elo_values, [30, 70])
+
+        def classify(e: float) -> str:
+            if e >= p70:
+                return "Strong"
+            if e <= p30:
+                return "Weak"
+            return "Average"
+
+        # initialize team stats containers
+        stats: dict[str, dict] = {}
+        for team, elo in elo_dict.items():
+            stats[team] = {
+                "elo": elo,
+                "gf": 0,
+                "ga": 0,
+                "points": 0,
+                "home_points": 0,
+                "away_points": 0,
+                "home_matches": 0,
+                "away_matches": 0,
+                "perf": {"Strong": [], "Average": [], "Weak": []},
+            }
+
+        for row in comp_df.itertuples(index=False):
+            home, away = row.HomeTeam, row.AwayTeam
+            hg, ag = row.FTHG, row.FTAG
+
+            # home side
+            h_pts = 3 if hg > ag else 1 if hg == ag else 0
+            stats[home]["gf"] += hg
+            stats[home]["ga"] += ag
+            stats[home]["points"] += h_pts
+            stats[home]["home_points"] += h_pts
+            stats[home]["home_matches"] += 1
+            opp_cat = classify(elo_dict.get(away, 1500))
+            stats[home]["perf"][opp_cat].append(h_pts)
+
+            # away side
+            a_pts = 3 if ag > hg else 1 if ag == hg else 0
+            stats[away]["gf"] += ag
+            stats[away]["ga"] += hg
+            stats[away]["points"] += a_pts
+            stats[away]["away_points"] += a_pts
+            stats[away]["away_matches"] += 1
+            opp_cat = classify(elo_dict.get(home, 1500))
+            stats[away]["perf"][opp_cat].append(a_pts)
+
+        rows: list[dict] = []
+        for team, s in stats.items():
+            perf = s["perf"]
+            vs_strong = round(sum(perf["Strong"]) / len(perf["Strong"]), 2) if perf["Strong"] else 0
+            vs_avg = round(sum(perf["Average"]) / len(perf["Average"]), 2) if perf["Average"] else 0
+            vs_weak = round(sum(perf["Weak"]) / len(perf["Weak"]), 2) if perf["Weak"] else 0
+            home_ppg = (
+                round(s["home_points"] / s["home_matches"], 2)
+                if s["home_matches"]
+                else 0
+            )
+            away_ppg = (
+                round(s["away_points"] / s["away_matches"], 2)
+                if s["away_matches"]
+                else 0
+            )
+            rows.append(
+                {
+                    "Team": team,
+                    "ELO": round(s["elo"], 1),
+                    "Points": s["points"],
+                    "GF": s["gf"],
+                    "GA": s["ga"],
+                    "GD": s["gf"] - s["ga"],
+                    "Strength": classify(s["elo"]),
+                    "PPG vs Strong": vs_strong,
+                    "PPG vs Avg": vs_avg,
+                    "PPG vs Weak": vs_weak,
+                    "Home PPG": home_ppg,
+                    "Away PPG": away_ppg,
+                }
+            )
+
+        elo_table = pd.DataFrame(rows).sort_values("ELO", ascending=False).reset_index(drop=True)
+        comp_name = COMPETITION_NAMES.get(comp_code, comp_code)
+        tables[comp_name] = elo_table
 
     return tables
 
