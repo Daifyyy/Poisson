@@ -17,7 +17,6 @@ COMPETITION_NAMES = {
     "ECL": "Conference League",
 }
 
-
 @st.cache_data
 def load_upcoming_cup_fixtures(
     data_dir: str | Path = "data", mtime: float | None = None
@@ -29,8 +28,7 @@ def load_upcoming_cup_fixtures(
     data_dir : str or Path, optional
         Directory containing ``all_cups_combined.csv``. Defaults to ``"data"``.
     mtime : float, optional
-        Last modification time of the CSV file.  Included solely to invalidate
-        the Streamlit cache when the file changes.
+        Last modification time of the CSV file. Only to invalidate Streamlit cache.
 
     Returns
     -------
@@ -38,10 +36,10 @@ def load_upcoming_cup_fixtures(
         DataFrame with columns ``Date``, ``Competition``, ``HomeTeam`` and
         ``AwayTeam`` for matches where scores are missing.
     """
-
     data_dir = Path(data_dir)
     path = data_dir / CUP_FILE
-    _ = mtime  # only used to bust Streamlit cache when the file changes
+    _ = mtime  # cache-buster only
+
     if not path.exists():
         return pd.DataFrame(columns=["Date", "Competition", "HomeTeam", "AwayTeam"])
 
@@ -51,6 +49,7 @@ def load_upcoming_cup_fixtures(
         return pd.DataFrame(columns=["Date", "Competition", "HomeTeam", "AwayTeam"])
 
     df = prepare_df(df)
+
     if {"FTHG", "FTAG"}.issubset(df.columns):
         df = df[df["FTHG"].isna() & df["FTAG"].isna()]
     else:
@@ -64,23 +63,24 @@ def load_upcoming_cup_fixtures(
     return df.sort_values("Date").reset_index(drop=True)
 
 
+
 @st.cache_data
 def load_cup_elo_tables(
     data_dir: str | Path = "data", mtime: float | None = None
 ) -> dict[str, pd.DataFrame]:
     """Return enriched ELO tables for each competition.
 
-    The table for each competition includes:
-        - current ELO rating
-        - total points and goal stats
-        - strength category based on ELO quantiles
-        - average points per game against strong/average/weak opponents
-        - average points per game at home and away
+    Includes:
+      - current ELO rating
+      - total points and goal stats (GF/GA/GD)
+      - strength category (Strong/Average/Weak) via ELO quantiles
+      - PPG vs Strong/Average/Weak
+      - Home/Away PPG
     """
-
     data_dir = Path(data_dir)
     path = data_dir / CUP_FILE
-    _ = mtime  # only used to bust Streamlit cache when the file changes
+    _ = mtime  # cache-buster only
+
     if not path.exists():
         return {}
 
@@ -110,7 +110,7 @@ def load_cup_elo_tables(
                 return "Weak"
             return "Average"
 
-        # initialize team stats containers
+        # agregace statistik
         stats: dict[str, dict] = {}
         for team, elo in elo_dict.items():
             stats[team] = {
@@ -129,25 +129,23 @@ def load_cup_elo_tables(
             home, away = row.HomeTeam, row.AwayTeam
             hg, ag = row.FTHG, row.FTAG
 
-            # home side
+            # home
             h_pts = 3 if hg > ag else 1 if hg == ag else 0
             stats[home]["gf"] += hg
             stats[home]["ga"] += ag
             stats[home]["points"] += h_pts
             stats[home]["home_points"] += h_pts
             stats[home]["home_matches"] += 1
-            opp_cat = classify(elo_dict.get(away, 1500))
-            stats[home]["perf"][opp_cat].append(h_pts)
+            stats[home]["perf"][classify(elo_dict.get(away, 1500))].append(h_pts)
 
-            # away side
+            # away
             a_pts = 3 if ag > hg else 1 if ag == hg else 0
             stats[away]["gf"] += ag
             stats[away]["ga"] += hg
             stats[away]["points"] += a_pts
             stats[away]["away_points"] += a_pts
             stats[away]["away_matches"] += 1
-            opp_cat = classify(elo_dict.get(home, 1500))
-            stats[away]["perf"][opp_cat].append(a_pts)
+            stats[away]["perf"][classify(elo_dict.get(home, 1500))].append(a_pts)
 
         rows: list[dict] = []
         for team, s in stats.items():
@@ -155,16 +153,9 @@ def load_cup_elo_tables(
             vs_strong = round(sum(perf["Strong"]) / len(perf["Strong"]), 2) if perf["Strong"] else 0
             vs_avg = round(sum(perf["Average"]) / len(perf["Average"]), 2) if perf["Average"] else 0
             vs_weak = round(sum(perf["Weak"]) / len(perf["Weak"]), 2) if perf["Weak"] else 0
-            home_ppg = (
-                round(s["home_points"] / s["home_matches"], 2)
-                if s["home_matches"]
-                else 0
-            )
-            away_ppg = (
-                round(s["away_points"] / s["away_matches"], 2)
-                if s["away_matches"]
-                else 0
-            )
+            home_ppg = round(s["home_points"] / s["home_matches"], 2) if s["home_matches"] else 0
+            away_ppg = round(s["away_points"] / s["away_matches"], 2) if s["away_matches"] else 0
+
             rows.append(
                 {
                     "Team": team,
@@ -187,6 +178,7 @@ def load_cup_elo_tables(
         tables[comp_name] = elo_table
 
     return tables
+
 
 
 def render_uefa_cup_predictions(cross_league_df: pd.DataFrame, data_dir: str | Path = "data") -> None:
