@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from pathlib import Path
 
 from utils.poisson_utils.cup_predictions import predict_cup_match
@@ -31,7 +32,6 @@ def load_upcoming_cup_fixtures(data_dir: str | Path = "data") -> pd.DataFrame:
         DataFrame with columns ``Date``, ``Competition``, ``HomeTeam`` and
         ``AwayTeam`` for matches where scores are missing.
     """
-
     data_dir = Path(data_dir)
     path = data_dir / CUP_FILE
     if not path.exists():
@@ -58,8 +58,15 @@ def load_upcoming_cup_fixtures(data_dir: str | Path = "data") -> pd.DataFrame:
 
 @st.cache_data
 def load_cup_elo_tables(data_dir: str | Path = "data") -> dict[str, pd.DataFrame]:
-    """Return ELO rating tables for each competition in the combined CSV."""
+    """Return enriched ELO tables for each competition.
 
+    The table for each competition includes:
+        - current ELO rating
+        - total points and goal stats
+        - strength category based on ELO quantiles
+        - average points per game against strong/average/weak opponents
+        - average points per game at home and away
+    """
     data_dir = Path(data_dir)
     path = data_dir / CUP_FILE
     if not path.exists():
@@ -81,11 +88,82 @@ def load_cup_elo_tables(data_dir: str | Path = "data") -> dict[str, pd.DataFrame
     tables: dict[str, pd.DataFrame] = {}
     for comp_code, comp_df in df.groupby("Competition"):
         elo_dict = calculate_elo_ratings(comp_df)
-        elo_table = (
-            pd.DataFrame({"Team": elo_dict.keys(), "ELO": elo_dict.values()})
-            .sort_values("ELO", ascending=False)
-            .reset_index(drop=True)
-        )
+        elo_values = list(elo_dict.values())
+        p30, p70 = np.percentile(elo_values, [30, 70])
+
+        def classify(e: float) -> str:
+            if e >= p70:
+                return "Strong"
+            if e <= p30:
+                return "Weak"
+            return "Average"
+
+        # akumulace per tým
+        stats: dict[str, dict] = {}
+        for team, elo in elo_dict.items():
+            stats[team] = {
+                "elo": elo,
+                "gf": 0,
+                "ga": 0,
+                "points": 0,
+                "home_points": 0,
+                "away_points": 0,
+                "home_matches": 0,
+                "away_matches": 0,
+                "perf": {"Strong": [], "Average": [], "Weak": []},
+            }
+
+        for row in comp_df.itertuples(index=False):
+            home, away = row.HomeTeam, row.AwayTeam
+            hg, ag = row.FTHG, row.FTAG
+
+            # home strana
+            h_pts = 3 if hg > ag else 1 if hg == ag else 0
+            stats[home]["gf"] += hg
+            stats[home]["ga"] += ag
+            stats[home]["points"] += h_pts
+            stats[home]["home_points"] += h_pts
+            stats[home]["home_matches"] += 1
+            opp_cat = classify(elo_dict.get(away, 1500))
+            stats[home]["perf"][opp_cat].append(h_pts)
+
+            # away strana
+            a_pts = 3 if ag > hg else 1 if ag == hg else 0
+            stats[away]["gf"] += ag
+            stats[away]["ga"] += hg
+            stats[away]["points"] += a_pts
+            stats[away]["away_points"] += a_pts
+            stats[away]["away_matches"] += 1
+            opp_cat = classify(elo_dict.get(home, 1500))
+            stats[away]["perf"][opp_cat].append(a_pts)
+
+        rows: list[dict] = []
+        for team, s in stats.items():
+            perf = s["perf"]
+            vs_strong = round(sum(perf["Strong"]) / len(perf["Strong"]), 2) if perf["Strong"] else 0
+            vs_avg = round(sum(perf["Average"]) / len(perf["Average"]), 2) if perf["Average"] else 0
+            vs_weak = round(sum(perf["Weak"]) / len(perf["Weak"]), 2) if perf["Weak"] else 0
+            home_ppg = round(s["home_points"] / s["home_matches"], 2) if s["home_matches"] else 0
+            away_ppg = round(s["away_points"] / s["away_matches"], 2) if s["away_matches"] else 0
+
+            rows.append(
+                {
+                    "Team": team,
+                    "ELO": round(s["elo"], 1),
+                    "Points": s["points"],
+                    "GF": s["gf"],
+                    "GA": s["ga"],
+                    "GD": s["gf"] - s["ga"],
+                    "Strength": classify(s["elo"]),
+                    "PPG vs Strong": vs_strong,
+                    "PPG vs Avg": vs_avg,
+                    "PPG vs Weak": vs_weak,
+                    "Home PPG": home_ppg,
+                    "Away PPG": away_ppg,
+                }
+            )
+
+        elo_table = pd.DataFrame(rows).sort_values("ELO", ascending=False).reset_index(drop=True)
         comp_name = COMPETITION_NAMES.get(comp_code, comp_code)
         tables[comp_name] = elo_table
 
