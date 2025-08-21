@@ -38,20 +38,46 @@ def upstream_state():
 def ensure_rebased():
     run(["git", "fetch", "--all", "--prune"])
     state = upstream_state()
+
     if state in ("behind", "diverged"):
-        print("🔄 Remote branch has new commits – performing rebase...")
+        print("🔄 Remote branch has new commits – attempting rebase...")
+
+        # Detekuj, zda jsou nějaké untracked soubory, které by mohly způsobit konflikt
+        ls = run(["git", "ls-files", "--others", "--exclude-standard"])
+        untracked_files = ls.stdout.strip().splitlines()
+
+        # Pokud jsou untracked .csv soubory, přesuň je bokem
+        moved = []
+        for file in untracked_files:
+            if file.endswith(".csv") and Path(file).exists():
+                bak_path = Path(file).with_suffix(".csv.bak")
+                Path(file).rename(bak_path)
+                moved.append((file, str(bak_path)))
+                print(f"⚠️ Přesunut untracked soubor: {file} → {bak_path}")
+
         pull = run(["git", "pull", "--rebase", "--autostash"], check=False)
         if pull.returncode != 0:
-            print("❌ Rebase failed:")
+            print("❌ Rebase selhal:")
             print(pull.stderr or pull.stdout)
+            # Obnov soubory zpět
+            for original, backup in moved:
+                Path(backup).rename(original)
+                print(f"↩️ Obnoven: {backup} → {original}")
             sys.exit(pull.returncode)
-        print("✅ Rebase successful, continuing.")
+
+        print("✅ Rebase proběhl úspěšně.")
+
+        # Obnov soubory zpět po úspěšném rebase
+        for original, backup in moved:
+            Path(backup).rename(original)
+            print(f"↩️ Obnoven: {backup} → {original}")
+
     elif state == "uptodate":
-        print("✔️ Branch is up-to-date with upstream.")
+        print("✔️ Větev je aktuální s upstreamem.")
     elif state == "ahead":
-        print("ℹ️ Local branch is ahead of upstream (OK).")
+        print("ℹ️ Lokální větev je napřed – pokračujeme.")
     else:
-        print("ℹ️ No upstream configured – skipping pull.")
+        print("ℹ️ Není nastaven upstream – pull přeskakuji.")
 
 def main():
     # Step 1: Sync with remote (rebase if needed)
