@@ -56,6 +56,17 @@ from utils.anomaly_detection import (
     calculate_confidence_index
 )
 from utils import bet_db
+from utils.ml.random_forest import (
+    load_model,
+    construct_features_for_match,
+    predict_proba,
+)
+
+@st.cache_resource
+def get_rf_model():
+    return load_model()
+
+RF_MODEL, RF_FEATURE_NAMES, RF_LABEL_ENCODER = get_rf_model()
 
 @st.cache_data
 def load_upcoming_xg() -> pd.DataFrame:
@@ -239,6 +250,8 @@ def display_metrics(
     corner_line: float,
     outcomes_xg: Optional[Dict[str, float]] = None,
     over25_xg: Optional[float] = None,
+    secondary_outcomes: Optional[Dict[str, float]] = None,
+    secondary_label: str = "Random Forest",
 ) -> None:
     """Display key statistical metrics and outcome probabilities."""
     st.markdown("## 📊 Klíčové metriky")
@@ -300,6 +313,13 @@ def display_metrics(
                             f"{1 / (over25_xg / 100):.2f}")
         else:
             cols3[3].markdown(" ")
+
+    if secondary_outcomes:
+        st.markdown(f"### {secondary_label} model")
+        cols_rf = responsive_columns(3)
+        cols_rf[0].metric("🏠 Výhra domácích", f"{secondary_outcomes['Home Win']:.1f}%")
+        cols_rf[1].metric("🤝 Remíza", f"{secondary_outcomes['Draw']:.1f}%")
+        cols_rf[2].metric("🚶‍♂️ Výhra hostů", f"{secondary_outcomes['Away Win']:.1f}%")
 
 
 
@@ -419,6 +439,16 @@ def render_single_match_prediction(
     corner_matrix = poisson_corner_matrix(corner_home_exp, corner_away_exp)
     corner_probs = corner_over_under_prob(corner_matrix, corner_line)
 
+    rf_features = construct_features_for_match(df, home_team, away_team, elo_dict)
+    rf_outcomes = predict_proba(
+        rf_features,
+        model_data=(RF_MODEL, RF_FEATURE_NAMES, RF_LABEL_ENCODER),
+    )
+    use_rf = st.sidebar.toggle("Use Random Forest probabilities", False)
+    primary_outcomes = rf_outcomes if use_rf else outcomes
+    secondary_outcomes = outcomes if use_rf else rf_outcomes
+    secondary_label = "Poisson" if use_rf else "Random Forest"
+
     display_metrics(
         home_team,
         away_team,
@@ -429,7 +459,7 @@ def render_single_match_prediction(
         xpoints,
         btts,
         over_under,
-        outcomes,
+        primary_outcomes,
         confidence_index,
         corner_home_exp,
         corner_away_exp,
@@ -437,6 +467,8 @@ def render_single_match_prediction(
         corner_line,
         outcomes_xg,
         over25_xg,
+        secondary_outcomes,
+        secondary_label,
     )
 
     with st.form("bet_form"):
