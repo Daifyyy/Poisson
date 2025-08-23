@@ -16,13 +16,14 @@ following attributes:
     Difference in rolling average goals scored (home minus away) over the last
     five matches, serving as a proxy for expected goals.
 
-During training :func:`train_model` performs a simple 80/20 train/validation
-split using ``train_test_split`` with stratification to preserve outcome
-distribution.  The returned ``score`` represents accuracy on the hold‑out set
-and should be monitored to detect drift when retraining.  Because only a small
-set of features is used, the resulting probabilities remain relatively
-interpretable and can be calibrated further via conventional techniques (e.g.
-Platt scaling) if required.
+During training :func:`train_model` applies a chronological cross‑validation
+using ``TimeSeriesSplit`` (default five folds).  Each fold trains on all
+matches prior to the validation chunk so temporal order is preserved.  The
+returned ``score`` represents the average accuracy across folds and should be
+monitored to detect drift when retraining.  Because only a small set of
+features is used, the resulting probabilities remain relatively interpretable
+and can be calibrated further via conventional techniques (e.g. Platt
+scaling) if required.
 
 The public API exposes three functions:
 
@@ -135,37 +136,57 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
     return X, y, features, label_enc
 
 
-def train_model(data_dir: str | Path = "data") -> Tuple[Any, Iterable[str], Any, float]:
+def train_model(
+    data_dir: str | Path = "data",
+    n_splits: int = 5,
+    recent_years: int | None = None,
+) -> Tuple[Any, Iterable[str], Any, float]:
     """Train a ``RandomForestClassifier`` on historical data.
 
     Parameters
     ----------
     data_dir:
         Directory containing historical CSV files.
+    n_splits:
+        Number of chronological folds used by ``TimeSeriesSplit``.
+    recent_years:
+        If provided, only matches within the last ``recent_years`` years are
+        used for training.
 
     Returns
     -------
     model:
-        Trained ``RandomForestClassifier``.
+        Trained ``RandomForestClassifier`` on all available data.
     feature_names:
         Iterable of feature column names used for training.
     label_encoder:
         Encoder translating between labels and ``'H'``/``'D'``/``'A'``.
     score:
-        Validation accuracy on the hold-out set.
+        Average validation accuracy across ``n_splits`` folds.
     """
     from sklearn.ensemble import RandomForestClassifier  # lazy import
-    from sklearn.model_selection import train_test_split  # lazy import
+    from sklearn.model_selection import TimeSeriesSplit  # lazy import
+
     df = _load_matches(data_dir)
+    if recent_years is not None and "Date" in df.columns:
+        cutoff = df["Date"].max() - pd.DateOffset(years=recent_years)
+        df = df[df["Date"] >= cutoff]
+
     X, y, feature_names, label_enc = _prepare_features(df)
 
-    X_train, X_val, y_train, y_val = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
-    model = RandomForestClassifier(n_estimators=200, max_depth=10, random_state=42)
-    model.fit(X_train, y_train)
-    score = model.score(X_val, y_val)
-    return model, feature_names, label_enc, score
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+    scores: list[float] = []
+    for train_idx, val_idx in tscv.split(X):
+        model = RandomForestClassifier(n_estimators=200, max_depth=10, random_state=42)
+        model.fit(X.iloc[train_idx], y[train_idx])
+        scores.append(model.score(X.iloc[val_idx], y[val_idx]))
+
+    score = float(np.mean(scores))
+
+    final_model = RandomForestClassifier(n_estimators=200, max_depth=10, random_state=42)
+    final_model.fit(X, y)
+
+    return final_model, feature_names, label_enc, score
 
 
 def save_model(
