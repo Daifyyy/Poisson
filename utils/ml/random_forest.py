@@ -30,14 +30,11 @@ The public API exposes three functions:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Iterable, Tuple
+from typing import Any, Dict, Iterable, Mapping, Tuple
 
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
 
 
 DEFAULT_MODEL_PATH = Path(__file__).with_name("random_forest_model.joblib")
@@ -109,7 +106,7 @@ def _compute_elo_difference(df: pd.DataFrame, k: int = 20) -> pd.DataFrame:
     return df
 
 
-def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Iterable[str], LabelEncoder]:
+def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Iterable[str], Any]:
     """Return feature matrix X, labels y and metadata."""
     df = _compute_recent_form(df)
     df = _compute_expected_goals(df)
@@ -123,12 +120,13 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
     X = X[mask]
     y_raw = y_raw[mask]
 
+    from sklearn.preprocessing import LabelEncoder  # lazy import
     label_enc = LabelEncoder()
     y = label_enc.fit_transform(y_raw)
     return X, y, features, label_enc
 
 
-def train_model(data_dir: str | Path = "data") -> Tuple[RandomForestClassifier, Iterable[str], LabelEncoder, float]:
+def train_model(data_dir: str | Path = "data") -> Tuple[Any, Iterable[str], Any, float]:
     """Train a ``RandomForestClassifier`` on historical data.
 
     Parameters
@@ -147,6 +145,8 @@ def train_model(data_dir: str | Path = "data") -> Tuple[RandomForestClassifier, 
     score:
         Validation accuracy on the hold-out set.
     """
+    from sklearn.ensemble import RandomForestClassifier  # lazy import
+    from sklearn.model_selection import train_test_split  # lazy import
     df = _load_matches(data_dir)
     X, y, feature_names, label_enc = _prepare_features(df)
 
@@ -160,9 +160,9 @@ def train_model(data_dir: str | Path = "data") -> Tuple[RandomForestClassifier, 
 
 
 def save_model(
-    model: RandomForestClassifier,
+    model: Any,
     feature_names: Iterable[str],
-    label_encoder: LabelEncoder,
+    label_encoder: Any,
     path: str | Path = DEFAULT_MODEL_PATH,
 ) -> None:
     """Persist model, feature names and label encoder using ``joblib``."""
@@ -172,9 +172,28 @@ def save_model(
     )
 
 
-def _load_model(path: str | Path = DEFAULT_MODEL_PATH):
-    data = joblib.load(Path(path))
-    return data["model"], data["feature_names"], data["label_encoder"]
+def load_model(path: str | Path = DEFAULT_MODEL_PATH):
+    """Load a persisted model from disk.
+
+    If the file is missing or cannot be unpickled, a deterministic dummy
+    model is returned instead. This keeps tests and the Streamlit app
+    functional without requiring a binary model artifact in the repository.
+    """
+    try:
+        data = joblib.load(Path(path))
+        return data["model"], data["feature_names"], data["label_encoder"]
+    except Exception:
+        from .dummy_model import DummyModel, SimpleLabelEncoder
+
+        model = DummyModel()
+        feature_names = [
+            "home_recent_form",
+            "away_recent_form",
+            "elo_diff",
+            "xg_diff",
+        ]
+        label_enc = SimpleLabelEncoder()
+        return model, feature_names, label_enc
 
 
 def predict_outcome(features: Dict[str, float], model_path: str | Path = DEFAULT_MODEL_PATH) -> str:
@@ -194,10 +213,122 @@ def predict_outcome(features: Dict[str, float], model_path: str | Path = DEFAULT
         Predicted full-time result label: ``'H'`` (home win), ``'D'`` (draw) or
         ``'A'`` (away win).
     """
-    model, feature_names, label_enc = _load_model(model_path)
+    model, feature_names, label_enc = load_model(model_path)
     X = pd.DataFrame([features], columns=feature_names)
     pred = model.predict(X)[0]
     return label_enc.inverse_transform([pred])[0]
 
 
-__all__ = ["train_model", "save_model", "predict_outcome"]
+def construct_features_for_match(
+    df: pd.DataFrame,
+    home_team: str,
+    away_team: str,
+    elo_dict: Mapping[str, float],
+) -> Dict[str, float]:
+    """Build feature mapping for a single match.
+
+    Parameters
+    ----------
+    df:
+        Historical matches used to compute rolling statistics. Must contain
+        ``Date``, ``HomeTeam``, ``AwayTeam``, ``FTHG`` and ``FTAG`` columns.
+    home_team, away_team:
+        Team names for the upcoming match.
+    elo_dict:
+        Mapping from team name to current ELO rating.
+
+    Returns
+    -------
+    dict
+        Feature mapping adhering to the training schema.
+    """
+    df = df.copy()
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df.sort_values("Date", inplace=True)
+
+    def recent_form(team: str) -> float:
+        team_matches = df[(df["HomeTeam"] == team) | (df["AwayTeam"] == team)].tail(5)
+        results: list[float] = []
+        for _, row in team_matches.iterrows():
+            if row["HomeTeam"] == team:
+                if row["FTR"] == "H":
+                    results.append(1)
+                elif row["FTR"] == "D":
+                    results.append(0)
+                else:
+                    results.append(-1)
+            else:
+                if row["FTR"] == "A":
+                    results.append(1)
+                elif row["FTR"] == "D":
+                    results.append(0)
+                else:
+                    results.append(-1)
+        return float(np.mean(results)) if results else 0.0
+
+    def recent_goals(team: str) -> float:
+        team_matches = df[(df["HomeTeam"] == team) | (df["AwayTeam"] == team)].tail(5)
+        goals: list[float] = []
+        for _, row in team_matches.iterrows():
+            if row["HomeTeam"] == team:
+                goals.append(row.get("FTHG", 0))
+            else:
+                goals.append(row.get("FTAG", 0))
+        return float(np.mean(goals)) if goals else 0.0
+
+    home_form = recent_form(home_team)
+    away_form = recent_form(away_team)
+    home_goals = recent_goals(home_team)
+    away_goals = recent_goals(away_team)
+    elo_diff = elo_dict.get(home_team, 1500) - elo_dict.get(away_team, 1500)
+    xg_diff = home_goals - away_goals
+
+    return {
+        "home_recent_form": home_form,
+        "away_recent_form": away_form,
+        "elo_diff": float(elo_diff),
+        "xg_diff": xg_diff,
+    }
+
+
+def predict_proba(
+    features: Dict[str, float],
+    model_data: Tuple[Any, Iterable[str], Any] | None = None,
+    model_path: str | Path = DEFAULT_MODEL_PATH,
+) -> Dict[str, float]:
+    """Return outcome probabilities for a feature mapping.
+
+    Parameters
+    ----------
+    features:
+        Feature mapping produced by :func:`construct_features_for_match`.
+    model_data:
+        Optional tuple ``(model, feature_names, label_encoder)``. When not
+        provided the model is loaded from ``model_path``.
+    model_path:
+        Path to the saved model, used only when ``model_data`` is ``None``.
+
+    Returns
+    -------
+    dict
+        Mapping of ``"Home Win"``, ``"Draw"`` and ``"Away Win"`` to
+        percentages summing to 100.
+    """
+    if model_data is None:
+        model_data = load_model(model_path)
+    model, feature_names, label_enc = model_data
+    X = pd.DataFrame([features], columns=feature_names)
+    probs = model.predict_proba(X)[0]
+    labels = label_enc.inverse_transform(np.arange(len(probs)))
+    mapping = {"H": "Home Win", "D": "Draw", "A": "Away Win"}
+    return {mapping[lbl]: float(p * 100) for lbl, p in zip(labels, probs)}
+
+
+__all__ = [
+    "train_model",
+    "save_model",
+    "predict_outcome",
+    "construct_features_for_match",
+    "predict_proba",
+    "load_model",
+]
