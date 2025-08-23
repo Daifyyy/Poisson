@@ -177,8 +177,9 @@ def train_model(
     data_dir: str | Path = "data",
     n_splits: int = 5,
     recent_years: int | None = None,
-) -> Tuple[Any, Iterable[str], Any, float]:
-    """Train a ``RandomForestClassifier`` on historical data.
+) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any]]:
+    """Train a ``RandomForestClassifier`` on historical data using
+    ``RandomizedSearchCV``.
 
     Parameters
     ----------
@@ -199,10 +200,15 @@ def train_model(
     label_encoder:
         Encoder translating between labels and ``'H'``/``'D'``/``'A'``.
     score:
-        Average validation accuracy across ``n_splits`` folds.
+        Best cross‑validated accuracy obtained during hyperparameter search.
+    best_params:
+        Hyperparameters of the best performing model.
     """
     from sklearn.ensemble import RandomForestClassifier  # lazy import
-    from sklearn.model_selection import TimeSeriesSplit  # lazy import
+    from sklearn.model_selection import (
+        TimeSeriesSplit,
+        RandomizedSearchCV,
+    )  # lazy import
 
     df = _load_matches(data_dir)
     if recent_years is not None and "Date" in df.columns:
@@ -212,18 +218,28 @@ def train_model(
     X, y, feature_names, label_enc = _prepare_features(df)
 
     tscv = TimeSeriesSplit(n_splits=n_splits)
-    scores: list[float] = []
-    for train_idx, val_idx in tscv.split(X):
-        model = RandomForestClassifier(n_estimators=200, max_depth=10, random_state=42)
-        model.fit(X.iloc[train_idx], y[train_idx])
-        scores.append(model.score(X.iloc[val_idx], y[val_idx]))
+    param_distributions = {
+        "n_estimators": [50, 100, 200, 300],
+        "max_depth": [None, 5, 10, 20],
+        "min_samples_split": [2, 5, 10],
+        "max_features": ["sqrt", "log2", None],
+    }
+    search = RandomizedSearchCV(
+        RandomForestClassifier(random_state=42),
+        param_distributions=param_distributions,
+        n_iter=10,
+        cv=tscv,
+        random_state=42,
+        scoring="accuracy",
+        n_jobs=-1,
+    )
+    search.fit(X, y)
 
-    score = float(np.mean(scores))
+    best_model = search.best_estimator_
+    score = float(search.best_score_)
+    best_params = search.best_params_
 
-    final_model = RandomForestClassifier(n_estimators=200, max_depth=10, random_state=42)
-    final_model.fit(X, y)
-
-    return final_model, feature_names, label_enc, score
+    return best_model, feature_names, label_enc, score, best_params
 
 
 def save_model(
@@ -231,10 +247,16 @@ def save_model(
     feature_names: Iterable[str],
     label_encoder: Any,
     path: str | Path = DEFAULT_MODEL_PATH,
+    best_params: Mapping[str, Any] | None = None,
 ) -> None:
-    """Persist model, feature names and label encoder using ``joblib``."""
+    """Persist model, feature names, label encoder and parameters using ``joblib``."""
     joblib.dump(
-        {"model": model, "feature_names": list(feature_names), "label_encoder": label_encoder},
+        {
+            "model": model,
+            "feature_names": list(feature_names),
+            "label_encoder": label_encoder,
+            "best_params": best_params or {},
+        },
         Path(path),
     )
 
@@ -248,7 +270,12 @@ def load_model(path: str | Path = DEFAULT_MODEL_PATH):
     """
     try:
         data = joblib.load(Path(path))
-        return data["model"], data["feature_names"], data["label_encoder"]
+        return (
+            data["model"],
+            data["feature_names"],
+            data["label_encoder"],
+            data.get("best_params", {}),
+        )
     except Exception:
         from .dummy_model import DummyModel, SimpleLabelEncoder
 
@@ -267,7 +294,7 @@ def load_model(path: str | Path = DEFAULT_MODEL_PATH):
             "defense_strength_diff",
         ]
         label_enc = SimpleLabelEncoder()
-        return model, feature_names, label_enc
+        return model, feature_names, label_enc, {}
 
 
 def predict_outcome(features: Dict[str, float], model_path: str | Path = DEFAULT_MODEL_PATH) -> str:
@@ -287,7 +314,7 @@ def predict_outcome(features: Dict[str, float], model_path: str | Path = DEFAULT
         Predicted full-time result label: ``'H'`` (home win), ``'D'`` (draw) or
         ``'A'`` (away win).
     """
-    model, feature_names, label_enc = load_model(model_path)
+    model, feature_names, label_enc, _ = load_model(model_path)
     X = pd.DataFrame([features], columns=feature_names)
     pred = model.predict(X)[0]
     return label_enc.inverse_transform([pred])[0]
@@ -404,7 +431,7 @@ def construct_features_for_match(
 
 def predict_proba(
     features: Dict[str, float],
-    model_data: Tuple[Any, Iterable[str], Any] | None = None,
+    model_data: Tuple[Any, Iterable[str], Any] | Tuple[Any, Iterable[str], Any, Mapping[str, Any]] | None = None,
     model_path: str | Path = DEFAULT_MODEL_PATH,
 ) -> Dict[str, float]:
     """Return outcome probabilities for a feature mapping.
@@ -414,7 +441,8 @@ def predict_proba(
     features:
         Feature mapping produced by :func:`construct_features_for_match`.
     model_data:
-        Optional tuple ``(model, feature_names, label_encoder)``. When not
+        Optional tuple ``(model, feature_names, label_encoder)`` or
+        ``(model, feature_names, label_encoder, best_params)``. When not
         provided the model is loaded from ``model_path``.
     model_path:
         Path to the saved model, used only when ``model_data`` is ``None``.
@@ -427,7 +455,7 @@ def predict_proba(
     """
     if model_data is None:
         model_data = load_model(model_path)
-    model, feature_names, label_enc = model_data
+    model, feature_names, label_enc = model_data[:3]
     X = pd.DataFrame([features], columns=feature_names)
     probs = model.predict_proba(X)[0]
     labels = label_enc.inverse_transform(np.arange(len(probs)))
