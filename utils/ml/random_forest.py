@@ -1,19 +1,28 @@
 """Random Forest model for football match outcome prediction.
 
-This module trains a ``RandomForestClassifier`` on historical match data
-stored in CSV files under ``data/*_combined_full_updated.csv``. It extracts
-several pre-match numeric features and encodes the categorical full-time
-result (``FTR``) as labels.
+The model is intentionally lightweight and uses only a handful of
+interpretable pre-match features.  Historical data are loaded from
+``data/*_combined_full_updated.csv`` and each record is expanded with the
+following attributes:
 
-Expected feature schema used for both training and prediction:
-    - ``home_recent_form``: rolling average of home team's results over last
-      5 matches (1 win, 0 draw, -1 loss).
-    - ``away_recent_form``: rolling average of away team's results over last
-      5 matches.
-    - ``elo_diff``: current ELO rating difference (home - away) before the
-      match.
-    - ``xg_diff``: difference in rolling average goals scored (home - away)
-      over the last 5 matches, serving as a proxy for expected goals.
+``home_recent_form``
+    Rolling average of the home team's results over the last five matches
+    (1 win, 0 draw, -1 loss).
+``away_recent_form``
+    Rolling average of the away team's results over the last five matches.
+``elo_diff``
+    Current ELO rating difference (home minus away) before kickoff.
+``xg_diff``
+    Difference in rolling average goals scored (home minus away) over the last
+    five matches, serving as a proxy for expected goals.
+
+During training :func:`train_model` performs a simple 80/20 train/validation
+split using ``train_test_split`` with stratification to preserve outcome
+distribution.  The returned ``score`` represents accuracy on the hold‑out set
+and should be monitored to detect drift when retraining.  Because only a small
+set of features is used, the resulting probabilities remain relatively
+interpretable and can be calibrated further via conventional techniques (e.g.
+Platt scaling) if required.
 
 The public API exposes three functions:
 
