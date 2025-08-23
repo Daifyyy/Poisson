@@ -181,41 +181,12 @@ def train_model(
     """Train a ``RandomForestClassifier`` on historical data using
     ``RandomizedSearchCV``.
 
-    The function now mitigates class imbalance either via oversampling (when
-    ``imblearn`` is available) or by assigning class weights.  After training a
-    classification report with per-class precision and recall is produced.
-
-    Parameters
-    ----------
-    data_dir:
-        Directory containing historical CSV files.
-    n_splits:
-        Number of chronological folds used by ``TimeSeriesSplit``.
-    recent_years:
-        If provided, only matches within the last ``recent_years`` years are
-        used for training.
-
-    Returns
-    -------
-    model:
-        Trained ``RandomForestClassifier`` on all available data.
-    feature_names:
-        Iterable of feature column names used for training.
-    label_encoder:
-        Encoder translating between labels and ``'H'``/``'D'``/``'A'``.
-    score:
-        Best cross‑validated accuracy obtained during hyperparameter search.
-    best_params:
-        Hyperparameters of the best performing model.
-    metrics:
-        Mapping of class labels to precision and recall values.
+    The function mitigates class imbalance via oversampling (if ``imblearn`` is
+    available) or via explicit class weights. Returns a calibrated model and
+    per-class precision/recall.
     """
     from sklearn.ensemble import RandomForestClassifier  # lazy import
-    from sklearn.model_selection import (
-        TimeSeriesSplit,
-        RandomizedSearchCV,
-        cross_val_predict,
-    )  # lazy import
+    from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV, cross_val_predict
     from sklearn.calibration import CalibratedClassifierCV  # lazy import
     from sklearn.metrics import precision_recall_fscore_support  # lazy import
     from sklearn.utils.class_weight import compute_class_weight  # lazy import
@@ -228,27 +199,23 @@ def train_model(
     X, y, feature_names, label_enc = _prepare_features(df)
 
     # --- Handle class imbalance -------------------------------------------------
-    class_weight: Dict[int, float] | None = None
-    try:  # attempt oversampling if imblearn is available
+    # Prefer oversampling + BalancedRandomForest; otherwise fall back to RF with class_weight.
+    try:  # pragma: no cover - optional dependency
         from imblearn.over_sampling import RandomOverSampler  # type: ignore
+        from imblearn.ensemble import BalancedRandomForestClassifier  # type: ignore
 
         ros = RandomOverSampler(random_state=42)
         X, y = ros.fit_resample(X, y)
+        base_estimator = BalancedRandomForestClassifier(random_state=42)
     except Exception:
         classes = np.unique(y)
         weights = compute_class_weight("balanced", classes=classes, y=y)
         class_weight = {cls: weight for cls, weight in zip(classes, weights)}
+        base_estimator = RandomForestClassifier(class_weight=class_weight, random_state=42)
 
     tscv = TimeSeriesSplit(n_splits=n_splits)
 
-    # Hyperparameter search space extended to encourage more balanced
-    # predictions.  ``class_weight`` is included so the search can decide
-    # whether explicit weighting helps beyond the optional oversampling
-    # performed above.
-    class_weight_options = [None, "balanced"]
-    if class_weight is not None:
-        class_weight_options.append(class_weight)
-
+    # Hyperparameter search space – bez class_weight (kvůli BalancedRandomForest).
     param_distributions = {
         "n_estimators": [50, 100, 200, 300],
         "max_depth": [None, 5, 10, 20],
@@ -256,11 +223,10 @@ def train_model(
         "min_samples_leaf": [1, 2, 4],
         "max_features": ["sqrt", "log2", None],
         "bootstrap": [True, False],
-        "class_weight": class_weight_options,
     }
 
     search = RandomizedSearchCV(
-        RandomForestClassifier(random_state=42),
+        base_estimator,
         param_distributions=param_distributions,
         n_iter=20,
         cv=tscv,
@@ -274,25 +240,19 @@ def train_model(
     score = float(search.best_score_)
     best_params = search.best_params_
 
-    calibrated_model = CalibratedClassifierCV(
-        best_model, method="sigmoid", cv=tscv
-    )
+    calibrated_model = CalibratedClassifierCV(best_model, method="sigmoid", cv=tscv)
     calibrated_model.fit(X, y)
 
-    # --- Precision/recall metrics ------------------------------------------------
+    # --- Precision/recall metrics ----------------------------------------------
     y_pred = cross_val_predict(best_model, X, y, cv=tscv, n_jobs=-1)
-    precisions, recalls, _, _ = precision_recall_fscore_support(
-        y, y_pred, labels=np.unique(y)
-    )
+    precisions, recalls, _, _ = precision_recall_fscore_support(y, y_pred, labels=np.unique(y))
     metrics = {
         label: {"precision": float(p), "recall": float(r)}
         for label, p, r in zip(label_enc.classes_, precisions, recalls)
     }
-    print("Precision/Recall per class:")
-    for label, m in metrics.items():
-        print(f"{label}: precision={m['precision']:.3f}, recall={m['recall']:.3f}")
 
     return calibrated_model, feature_names, label_enc, score, best_params, metrics
+
 
 
 def save_model(
