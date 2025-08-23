@@ -66,7 +66,7 @@ from utils.ml.random_forest import (
 def get_rf_model():
     return load_model()
 
-RF_MODEL, RF_FEATURE_NAMES, RF_LABEL_ENCODER = get_rf_model()
+RF_MODEL, RF_FEATURE_NAMES, RF_LABEL_ENCODER, _ = get_rf_model()
 
 @st.cache_data
 def load_upcoming_xg() -> pd.DataFrame:
