@@ -30,6 +30,13 @@ def test_construct_features():
     assert feats["away_recent_form"] == pytest.approx(-2/3)
     assert feats["elo_diff"] == 100
     assert feats["xg_diff"] == pytest.approx(0.6)
+    assert feats["home_conceded"] == pytest.approx(0.8)
+    assert feats["away_conceded"] == pytest.approx(5 / 3)
+    assert feats["conceded_diff"] == pytest.approx(-13 / 15)  # -0.8666...
+    assert feats["home_advantage"] == 1.0
+    assert feats["days_since_last_match"] == 0
+    assert feats["attack_strength_diff"] == pytest.approx(0.5)
+    assert feats["defense_strength_diff"] == pytest.approx(-11 / 12)
 
 
 def test_predict_proba_deterministic():

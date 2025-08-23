@@ -85,11 +85,23 @@ def _compute_recent_form(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _compute_expected_goals(df: pd.DataFrame) -> pd.DataFrame:
-    """Approximate expected goals using rolling averages of goals scored."""
+    """Approximate expected goals using rolling averages of scored and conceded goals."""
     df = df.copy()
-    df["home_xg"] = df.groupby("HomeTeam")["FTHG"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
-    df["away_xg"] = df.groupby("AwayTeam")["FTAG"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["home_xg"] = df.groupby("HomeTeam")["FTHG"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["away_xg"] = df.groupby("AwayTeam")["FTAG"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
     df["xg_diff"] = df["home_xg"] - df["away_xg"]
+
+    df["home_conceded"] = df.groupby("HomeTeam")["FTAG"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["away_conceded"] = df.groupby("AwayTeam")["FTHG"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["conceded_diff"] = df["home_conceded"] - df["away_conceded"]
     return df
 
 
@@ -121,8 +133,33 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
     df = _compute_recent_form(df)
     df = _compute_expected_goals(df)
     df = _compute_elo_difference(df)
+    df["home_last"] = df.groupby("HomeTeam")["Date"].shift()
+    df["away_last"] = df.groupby("AwayTeam")["Date"].shift()
+    df["home_rest"] = (df["Date"] - df["home_last"]).dt.days
+    df["away_rest"] = (df["Date"] - df["away_last"]).dt.days
+    df["days_since_last_match"] = df["home_rest"] - df["away_rest"]
+    df.drop(columns=["home_last", "away_last", "home_rest", "away_rest"], inplace=True)
 
-    features = ["home_recent_form", "away_recent_form", "elo_diff", "xg_diff"]
+    from utils.poisson_utils.stats import calculate_team_strengths
+
+    attack_strength, defense_strength, _ = calculate_team_strengths(df)
+    df["attack_strength_diff"] = df["HomeTeam"].map(attack_strength) - df["AwayTeam"].map(attack_strength)
+    df["defense_strength_diff"] = df["HomeTeam"].map(defense_strength) - df["AwayTeam"].map(defense_strength)
+    df["home_advantage"] = 1.0
+
+    features = [
+        "home_recent_form",
+        "away_recent_form",
+        "elo_diff",
+        "xg_diff",
+        "home_conceded",
+        "away_conceded",
+        "conceded_diff",
+        "home_advantage",
+        "days_since_last_match",
+        "attack_strength_diff",
+        "defense_strength_diff",
+    ]
     X = df[features]
     y_raw = df["FTR"].astype(str)
 
@@ -221,6 +258,13 @@ def load_model(path: str | Path = DEFAULT_MODEL_PATH):
             "away_recent_form",
             "elo_diff",
             "xg_diff",
+            "home_conceded",
+            "away_conceded",
+            "conceded_diff",
+            "home_advantage",
+            "days_since_last_match",
+            "attack_strength_diff",
+            "defense_strength_diff",
         ]
         label_enc = SimpleLabelEncoder()
         return model, feature_names, label_enc
@@ -306,18 +350,55 @@ def construct_features_for_match(
                 goals.append(row.get("FTAG", 0))
         return float(np.mean(goals)) if goals else 0.0
 
+    def recent_conceded(team: str) -> float:
+        team_matches = df[(df["HomeTeam"] == team) | (df["AwayTeam"] == team)].tail(5)
+        goals: list[float] = []
+        for _, row in team_matches.iterrows():
+            if row["HomeTeam"] == team:
+                goals.append(row.get("FTAG", 0))
+            else:
+                goals.append(row.get("FTHG", 0))
+        return float(np.mean(goals)) if goals else 0.0
+
+    def last_match_date(team: str) -> pd.Timestamp | None:
+        team_matches = df[(df["HomeTeam"] == team) | (df["AwayTeam"] == team)]
+        if team_matches.empty:
+            return None
+        return team_matches["Date"].max()
+
     home_form = recent_form(home_team)
     away_form = recent_form(away_team)
     home_goals = recent_goals(home_team)
     away_goals = recent_goals(away_team)
+    home_conceded = recent_conceded(home_team)
+    away_conceded = recent_conceded(away_team)
     elo_diff = elo_dict.get(home_team, 1500) - elo_dict.get(away_team, 1500)
     xg_diff = home_goals - away_goals
+    conceded_diff = home_conceded - away_conceded
+    home_advantage = 1.0
+    home_last = last_match_date(home_team)
+    away_last = last_match_date(away_team)
+    days_since_last_match = (
+        float((home_last - away_last).days) if home_last and away_last else 0.0
+    )
+    from utils.poisson_utils.stats import calculate_team_strengths
+
+    attack_strength, defense_strength, _ = calculate_team_strengths(df)
+    attack_strength_diff = attack_strength.get(home_team, 0.0) - attack_strength.get(away_team, 0.0)
+    defense_strength_diff = defense_strength.get(home_team, 0.0) - defense_strength.get(away_team, 0.0)
 
     return {
         "home_recent_form": home_form,
         "away_recent_form": away_form,
         "elo_diff": float(elo_diff),
         "xg_diff": xg_diff,
+        "home_conceded": home_conceded,
+        "away_conceded": away_conceded,
+        "conceded_diff": conceded_diff,
+        "home_advantage": home_advantage,
+        "days_since_last_match": days_since_last_match,
+        "attack_strength_diff": attack_strength_diff,
+        "defense_strength_diff": defense_strength_diff,
     }
 
 
