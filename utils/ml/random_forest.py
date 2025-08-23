@@ -240,19 +240,32 @@ def train_model(
         class_weight = {cls: weight for cls, weight in zip(classes, weights)}
 
     tscv = TimeSeriesSplit(n_splits=n_splits)
+
+    # Hyperparameter search space extended to encourage more balanced
+    # predictions.  ``class_weight`` is included so the search can decide
+    # whether explicit weighting helps beyond the optional oversampling
+    # performed above.
+    class_weight_options = [None, "balanced"]
+    if class_weight is not None:
+        class_weight_options.append(class_weight)
+
     param_distributions = {
         "n_estimators": [50, 100, 200, 300],
         "max_depth": [None, 5, 10, 20],
         "min_samples_split": [2, 5, 10],
+        "min_samples_leaf": [1, 2, 4],
         "max_features": ["sqrt", "log2", None],
+        "bootstrap": [True, False],
+        "class_weight": class_weight_options,
     }
+
     search = RandomizedSearchCV(
-        RandomForestClassifier(random_state=42, class_weight=class_weight),
+        RandomForestClassifier(random_state=42),
         param_distributions=param_distributions,
-        n_iter=10,
+        n_iter=20,
         cv=tscv,
         random_state=42,
-        scoring="accuracy",
+        scoring="balanced_accuracy",
         n_jobs=-1,
     )
     search.fit(X, y)
