@@ -228,31 +228,44 @@ def train_model(
     X, y, feature_names, label_enc = _prepare_features(df)
 
     # --- Handle class imbalance -------------------------------------------------
-    class_weight: Dict[int, float] | None = None
-    try:  # attempt oversampling if imblearn is available
+    # Always attempt to equalise classes.  If ``imblearn`` is available we
+    # oversample the minority classes; otherwise ``class_weight='balanced'`` is
+    # used to bias the trees against simply picking the favourite every time.
+    try:  # pragma: no cover - optional dependency
         from imblearn.over_sampling import RandomOverSampler  # type: ignore
+        from imblearn.ensemble import BalancedRandomForestClassifier  # type: ignore
 
         ros = RandomOverSampler(random_state=42)
         X, y = ros.fit_resample(X, y)
+        base_estimator = BalancedRandomForestClassifier(random_state=42)
     except Exception:
         classes = np.unique(y)
         weights = compute_class_weight("balanced", classes=classes, y=y)
         class_weight = {cls: weight for cls, weight in zip(classes, weights)}
+        base_estimator = RandomForestClassifier(
+            class_weight=class_weight, random_state=42
+        )
 
     tscv = TimeSeriesSplit(n_splits=n_splits)
+
+    # Hyperparameter search space deliberately excludes ``class_weight`` so the
+    # model is forced to treat outcomes more evenly.
     param_distributions = {
         "n_estimators": [50, 100, 200, 300],
         "max_depth": [None, 5, 10, 20],
         "min_samples_split": [2, 5, 10],
+        "min_samples_leaf": [1, 2, 4],
         "max_features": ["sqrt", "log2", None],
+        "bootstrap": [True, False],
     }
+
     search = RandomizedSearchCV(
-        RandomForestClassifier(random_state=42, class_weight=class_weight),
+        base_estimator,
         param_distributions=param_distributions,
-        n_iter=10,
+        n_iter=20,
         cv=tscv,
         random_state=42,
-        scoring="accuracy",
+        scoring="balanced_accuracy",
         n_jobs=-1,
     )
     search.fit(X, y)
