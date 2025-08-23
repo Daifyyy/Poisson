@@ -252,7 +252,7 @@ def display_metrics(
     outcomes_xg: Optional[Dict[str, float]] = None,
     over25_xg: Optional[float] = None,
     secondary_outcomes: Optional[Dict[str, float]] = None,
-    secondary_label: str = "Random Forest",
+    secondary_label: str = "ML",
 ) -> None:
     """Display key statistical metrics and outcome probabilities."""
     st.markdown("## 📊 Klíčové metriky")
@@ -285,12 +285,21 @@ def display_metrics(
     cols[2].caption(f"Under: {corner_probs[f'Under {corner_line}']:.1f}%")
 
     if ml_probs:
-        cols = responsive_columns(1)
-        best = max(ml_probs, key=ml_probs.get)
+        cols = responsive_columns(3)
         cols[0].metric(
-            "ML prediction",
-            best,
-            f"{ml_probs[best]:.1f}%"
+            "🏠 Výhra domácích (ML)",
+            f"{ml_probs['Home Win']:.1f}%",
+            f"{1 / (ml_probs['Home Win'] / 100):.2f}",
+        )
+        cols[1].metric(
+            "🤝 Remíza (ML)",
+            f"{ml_probs['Draw']:.1f}%",
+            f"{1 / (ml_probs['Draw'] / 100):.2f}",
+        )
+        cols[2].metric(
+            "🚶‍♂️ Výhra hostů (ML)",
+            f"{ml_probs['Away Win']:.1f}%",
+            f"{1 / (ml_probs['Away Win'] / 100):.2f}",
         )
 
     st.markdown("## 🧠 Pravděpodobnosti výsledků")
@@ -454,10 +463,10 @@ def render_single_match_prediction(
         ml_features,
         model_data=(RF_MODEL, RF_FEATURE_NAMES, RF_LABEL_ENCODER),
     )
-    use_rf = st.sidebar.toggle("Use Random Forest probabilities", False)
-    primary_outcomes = ml_probs if use_rf else outcomes
-    secondary_outcomes = outcomes if use_rf else ml_probs
-    secondary_label = "Poisson" if use_rf else "Random Forest"
+    use_ml = st.sidebar.toggle("Use ML probabilities", False)
+    primary_outcomes = ml_probs if use_ml else outcomes
+    secondary_outcomes = outcomes if use_ml else ml_probs
+    secondary_label = "Poisson" if use_ml else "ML"
 
     display_metrics(
         home_team,
