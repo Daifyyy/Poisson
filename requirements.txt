@@ -10,3 +10,5 @@ openpyxl
 
 requests
 beautifulsoup4
+scikit-learn
+joblib
