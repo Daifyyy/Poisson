@@ -248,6 +248,7 @@ def display_metrics(
     corner_away_exp: float,
     corner_probs: Dict[str, float],
     corner_line: float,
+    ml_probs: Optional[Dict[str, float]] = None,
     outcomes_xg: Optional[Dict[str, float]] = None,
     over25_xg: Optional[float] = None,
     secondary_outcomes: Optional[Dict[str, float]] = None,
@@ -282,6 +283,15 @@ def display_metrics(
                    f"{corner_probs[over_key]:.1f}%",
                    f"{1 / (corner_probs[over_key] / 100):.2f}")
     cols[2].caption(f"Under: {corner_probs[f'Under {corner_line}']:.1f}%")
+
+    if ml_probs:
+        cols = responsive_columns(1)
+        best = max(ml_probs, key=ml_probs.get)
+        cols[0].metric(
+            "ML prediction",
+            best,
+            f"{ml_probs[best]:.1f}%"
+        )
 
     st.markdown("## 🧠 Pravděpodobnosti výsledků")
     cols2 = responsive_columns(4)
@@ -439,14 +449,14 @@ def render_single_match_prediction(
     corner_matrix = poisson_corner_matrix(corner_home_exp, corner_away_exp)
     corner_probs = corner_over_under_prob(corner_matrix, corner_line)
 
-    rf_features = construct_features_for_match(df, home_team, away_team, elo_dict)
-    rf_outcomes = predict_proba(
-        rf_features,
+    ml_features = construct_features_for_match(df, home_team, away_team, elo_dict)
+    ml_probs = predict_proba(
+        ml_features,
         model_data=(RF_MODEL, RF_FEATURE_NAMES, RF_LABEL_ENCODER),
     )
     use_rf = st.sidebar.toggle("Use Random Forest probabilities", False)
-    primary_outcomes = rf_outcomes if use_rf else outcomes
-    secondary_outcomes = outcomes if use_rf else rf_outcomes
+    primary_outcomes = ml_probs if use_rf else outcomes
+    secondary_outcomes = outcomes if use_rf else ml_probs
     secondary_label = "Poisson" if use_rf else "Random Forest"
 
     display_metrics(
@@ -465,6 +475,7 @@ def render_single_match_prediction(
         corner_away_exp,
         corner_probs,
         corner_line,
+        ml_probs,
         outcomes_xg,
         over25_xg,
         secondary_outcomes,
