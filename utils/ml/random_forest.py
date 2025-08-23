@@ -209,6 +209,7 @@ def train_model(
         TimeSeriesSplit,
         RandomizedSearchCV,
     )  # lazy import
+    from sklearn.calibration import CalibratedClassifierCV  # lazy import
 
     df = _load_matches(data_dir)
     if recent_years is not None and "Date" in df.columns:
@@ -239,7 +240,12 @@ def train_model(
     score = float(search.best_score_)
     best_params = search.best_params_
 
-    return best_model, feature_names, label_enc, score, best_params
+    calibrated_model = CalibratedClassifierCV(
+        best_model, method="sigmoid", cv=tscv
+    )
+    calibrated_model.fit(X, y)
+
+    return calibrated_model, feature_names, label_enc, score, best_params
 
 
 def save_model(
@@ -457,7 +463,17 @@ def predict_proba(
         model_data = load_model(model_path)
     model, feature_names, label_enc = model_data[:3]
     X = pd.DataFrame([features], columns=feature_names)
-    probs = model.predict_proba(X)[0]
+    try:
+        from sklearn.calibration import CalibratedClassifierCV  # lazy import
+
+        is_calibrated = isinstance(model, CalibratedClassifierCV)
+    except Exception:
+        is_calibrated = False
+
+    if is_calibrated:
+        probs = model.predict_proba(X)[0]
+    else:
+        probs = model.predict_proba(X)[0]
     labels = label_enc.inverse_transform(np.arange(len(probs)))
     mapping = {"H": "Home Win", "D": "Draw", "A": "Away Win"}
     return {mapping[lbl]: float(p * 100) for lbl, p in zip(labels, probs)}
