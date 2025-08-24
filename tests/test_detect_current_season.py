@@ -81,3 +81,11 @@ def test_prepare_df_removes_timezone_information():
         pd.Timestamp("2024-08-22"),
         pd.Timestamp("2024-08-29"),
     ]
+
+
+def test_detect_current_season_handles_empty_dataframe():
+    df = pd.DataFrame(columns=["Date", "HomeTeam", "AwayTeam"])
+    season_df, season_start = detect_current_season(df)
+
+    assert season_df.empty
+    assert isinstance(season_start, pd.Timestamp)
