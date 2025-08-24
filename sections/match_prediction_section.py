@@ -81,8 +81,16 @@ def load_upcoming_xg() -> pd.DataFrame:
     """
     path = "data/Footballxg.com - (F1X) xG Free Upcoming v3.1.xlsx"
     cols = [
-        "Date", "Home Team", "Away Team", "xG Home", "xG Away",
-        "Home", "Draw", "Away", ">2.5", "League",
+        "Date",
+        "Home Team",
+        "Away Team",
+        "xG Home",
+        "xG Away",
+        "Home",
+        "Draw",
+        "Away",
+        ">2.5",
+        "League",
     ]
     try:
         df = pd.read_excel(path, header=5, usecols=cols)
@@ -90,9 +98,10 @@ def load_upcoming_xg() -> pd.DataFrame:
         st.warning(f"Could not load xG workbook: {exc}")
         return pd.DataFrame(columns=cols)
 
-    # Remove placeholder rows and map league names to internal codes so
-    # downstream consumers can filter by domestic competition.
+    # odstranit placeholder řádky
     df = df.dropna(subset=["Home Team", "Away Team"])
+
+    # mapovat názvy lig na interní kódy
     league_map = {
         "England - Premier League": "E0",
         "England - Championship": "E1",
@@ -107,9 +116,11 @@ def load_upcoming_xg() -> pd.DataFrame:
         "Turkey - Super Lig": "T1",
     }
     df["LeagueCode"] = df["League"].map(league_map)
+
+    # neznámé soutěže vyhoď, ať nepadají do přehledů
+    df = df.dropna(subset=["LeagueCode"])
+
     return df
-
-
 
 def lookup_xg_row(
     df: pd.DataFrame, home_team: str, away_team: str

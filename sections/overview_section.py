@@ -219,12 +219,10 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
         def_df.head(5)[["Tým", "Defenzivní styl index"]], hide_index=True
     )
 
-    # Upcoming matches from xG data with shortcuts to predictions
-    # Upcoming matches from xG data with shortcuts to predictions
+    # Upcoming matches from xG data with shortcuts to predictions.
+    # Use the division code from the season dataset to avoid name mismatches.
     xg_df = load_upcoming_xg()
-
-    # Předpoklad: název ligy začíná kódem (např. "E0 ..."), bereme první token
-    league_code = league_name.split(" ")[0]
+    league_code = season_df["Div"].iloc[0]
 
     upcoming = (
         xg_df[xg_df["LeagueCode"] == league_code][["Date", "Home Team", "Away Team"]]
@@ -238,9 +236,7 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
             encoded_league = urllib.parse.quote_plus(league_name)
             home = urllib.parse.quote_plus(row["Home Team"])
             away = urllib.parse.quote_plus(row["Away Team"])
-            return (
-                f"?selected_league={encoded_league}&home_team={home}&away_team={away}&view=match"
-            )
+            return f"?selected_league={encoded_league}&home_team={home}&away_team={away}&view=match"
 
         display_df = upcoming.copy()
         display_df.insert(3, "Prediction", upcoming.apply(match_link, axis=1))
