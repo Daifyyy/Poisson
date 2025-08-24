@@ -70,16 +70,11 @@ def render_multi_match_predictions(session_state, home_team, away_team, league_n
                         f"{over_under['Over 1.5']:.1f}% / {over_under['Over 2.5']:.1f}% / {over_under['Over 3.5']:.1f}%"
                     )
 
-                    # Confidence index = rozdíl dvou nejvyšších outcome pravděpodobností
-                    sorted_probs = sorted(outcomes.values(), reverse=True)
-                    confidence_index = round(sorted_probs[0] - sorted_probs[1], 1) if len(sorted_probs) >= 2 else 0.0
-
                     st.markdown("#### 🧠 Pravděpodobnosti výsledků")
-                    result_cols = responsive_columns(4)
+                    result_cols = responsive_columns(3)
                     result_cols[0].metric("🏠 Výhra domácích", f"{outcomes['Home Win']:.1f}%", f"{prob_to_odds(outcomes['Home Win'])}")
                     result_cols[1].metric("🤝 Remíza", f"{outcomes['Draw']:.1f}%", f"{prob_to_odds(outcomes['Draw'])}")
                     result_cols[2].metric("🚶‍♂️ Výhra hostů", f"{outcomes['Away Win']:.1f}%", f"{prob_to_odds(outcomes['Away Win'])}")
-                    result_cols[3].metric("🔒 Confidence", f"{confidence_index:.1f} %")
 
                     top_scores = get_top_scorelines(matrix, top_n=1)
                     top_score_str = f"{top_scores[0][0][0]}:{top_scores[0][0][1]}" if top_scores else "—"
@@ -104,7 +99,6 @@ def render_multi_match_predictions(session_state, home_team, away_team, league_n
                         "Draw %": round(outcomes["Draw"], 1),
                         "Away Win %": round(outcomes["Away Win"], 1),
                         "Top Score": top_score_str,
-                        "Confidence %": confidence_index,
                     })
 
                 except Exception as e:
