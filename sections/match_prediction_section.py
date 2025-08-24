@@ -62,6 +62,20 @@ from utils.ml.random_forest import (
     predict_proba,
 )
 
+# Map team names from the external xG workbook to the naming used in our
+# datasets.  Without this normalisation query parameters constructed from the
+# workbook (e.g. "Man Utd") would not match the labels present in the league
+# data ("Man United") causing the match prediction page to default to the first
+# available team.  The mapping below covers all differences currently found in
+# the workbook.
+TEAM_NAME_MAP = {
+    "Man Utd": "Man United",
+    "Bayer Leverkusen": "Leverkusen",
+    "B Monchengladbach": "M'gladbach",
+    "Rayo Vallecano": "Vallecano",
+    "Real Sociedad": "Sociedad",
+}
+
 @st.cache_resource
 def get_rf_model():
     return load_model()
@@ -99,8 +113,12 @@ def load_upcoming_xg() -> pd.DataFrame:
     # mistakenly called ``strip`` directly on the Series object which raised
     # ``AttributeError`` because ``strip`` is a string method, not a Series
     # method.
-    df["Home Team"] = df["Home Team"].astype(str).str.strip()
-    df["Away Team"] = df["Away Team"].astype(str).str.strip()
+    df["Home Team"] = (
+        df["Home Team"].astype(str).str.strip().replace(TEAM_NAME_MAP)
+    )
+    df["Away Team"] = (
+        df["Away Team"].astype(str).str.strip().replace(TEAM_NAME_MAP)
+    )
 
     # Mapování lig na interní kódy (Div)
     league_map = {
