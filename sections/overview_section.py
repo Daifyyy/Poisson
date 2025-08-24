@@ -1,4 +1,5 @@
 import streamlit as st
+import urllib.parse
 import pandas as pd
 from utils.responsive import responsive_columns
 from utils.poisson_utils import (
@@ -219,12 +220,17 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
     )
 
     # Upcoming matches from xG data with shortcuts to predictions
+    # Upcoming matches from xG data with shortcuts to predictions
     xg_df = load_upcoming_xg()
+
+    # Předpoklad: název ligy začíná kódem (např. "E0 ..."), bereme první token
     league_code = league_name.split(" ")[0]
+
     upcoming = (
         xg_df[xg_df["LeagueCode"] == league_code][["Date", "Home Team", "Away Team"]]
         .sort_values("Date")
     )
+
     if not upcoming.empty:
         st.markdown("### 📅 Upcoming matches")
 
@@ -246,3 +252,4 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
             hide_index=True,
             use_container_width=True,
         )
+
