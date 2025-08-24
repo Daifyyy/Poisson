@@ -382,7 +382,6 @@ def display_metrics(
                             f"{1 / (over25_xg / 100):.2f}")
 
     if secondary_outcomes:
-        st.markdown(f"### {secondary_label} model")
         cols_rf = responsive_columns(4 if secondary_over25 is not None else 3)
         cols_rf[0].metric(
             f"🏠 Výhra domácích ({secondary_label})",
