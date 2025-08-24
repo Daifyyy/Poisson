@@ -58,8 +58,10 @@ from utils.anomaly_detection import (
 from utils import bet_db
 from utils.ml.random_forest import (
     load_model,
+    load_over25_model,
     construct_features_for_match,
     predict_proba,
+    predict_over25_proba,
 )
 
 # Map team names from the external xG workbook to the naming used in our
@@ -85,6 +87,14 @@ def get_rf_model():
 # return signature without raising ``ValueError`` when fewer items are
 # provided.
 RF_MODEL, RF_FEATURE_NAMES, RF_LABEL_ENCODER, *_ = get_rf_model()
+
+
+@st.cache_resource
+def get_rf_over25_model():
+    return load_over25_model()
+
+
+RF_O25_MODEL, RF_O25_FEATURE_NAMES, RF_O25_LABEL_ENCODER = get_rf_over25_model()
 
 @st.cache_data
 def load_upcoming_xg() -> pd.DataFrame:
@@ -303,6 +313,7 @@ def display_metrics(
     corner_probs: Dict[str, float],
     corner_line: float,
     ml_probs: Optional[Dict[str, float]] = None,
+    over25_ml: Optional[float] = None,
     outcomes_xg: Optional[Dict[str, float]] = None,
     over25_xg: Optional[float] = None,
     secondary_outcomes: Optional[Dict[str, float]] = None,
@@ -339,7 +350,7 @@ def display_metrics(
     cols[2].caption(f"Under: {corner_probs[f'Under {corner_line}']:.1f}%")
 
     if ml_probs:
-        cols = responsive_columns(3)
+        cols = responsive_columns(4 if over25_ml is not None else 3)
         cols[0].metric(
             "🏠 Výhra domácích (ML)",
             f"{ml_probs['Home Win']:.1f}%",
@@ -355,6 +366,12 @@ def display_metrics(
             f"{ml_probs['Away Win']:.1f}%",
             f"{1 / (ml_probs['Away Win'] / 100):.2f}",
         )
+        if over25_ml is not None:
+            cols[3].metric(
+                "⚽ Over 2.5 (ML)",
+                f"{over25_ml:.1f}%",
+                f"{1 / (over25_ml / 100):.2f}",
+            )
 
     st.markdown("## 🧠 Pravděpodobnosti výsledků")
     cols2 = responsive_columns(4)
@@ -517,6 +534,10 @@ def render_single_match_prediction(
         ml_features,
         model_data=(RF_MODEL, RF_FEATURE_NAMES, RF_LABEL_ENCODER),
     )
+    ml_over25 = predict_over25_proba(
+        ml_features,
+        model_data=(RF_O25_MODEL, RF_O25_FEATURE_NAMES, RF_O25_LABEL_ENCODER),
+    )
     use_ml = st.sidebar.toggle("Use ML probabilities", False)
     primary_outcomes = ml_probs if use_ml else outcomes
     secondary_outcomes = outcomes if use_ml else ml_probs
@@ -539,6 +560,7 @@ def render_single_match_prediction(
         corner_probs,
         corner_line,
         ml_probs,
+        ml_over25,
         outcomes_xg,
         over25_xg,
         secondary_outcomes,
