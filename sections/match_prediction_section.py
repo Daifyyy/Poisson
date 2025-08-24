@@ -58,8 +58,10 @@ from utils.anomaly_detection import (
 from utils import bet_db
 from utils.ml.random_forest import (
     load_model,
+    load_over25_model,
     construct_features_for_match,
     predict_proba,
+    predict_over25_proba,
 )
 
 # Map team names from the external xG workbook to the naming used in our
@@ -85,6 +87,14 @@ def get_rf_model():
 # return signature without raising ``ValueError`` when fewer items are
 # provided.
 RF_MODEL, RF_FEATURE_NAMES, RF_LABEL_ENCODER, *_ = get_rf_model()
+
+
+@st.cache_resource
+def get_rf_over25_model():
+    return load_over25_model()
+
+
+RF_O25_MODEL, RF_O25_FEATURE_NAMES, RF_O25_LABEL_ENCODER = get_rf_over25_model()
 
 @st.cache_data
 def load_upcoming_xg() -> pd.DataFrame:
@@ -297,15 +307,16 @@ def display_metrics(
     btts: Dict[str, float],
     over_under: Dict[str, float],
     outcomes: Dict[str, float],
+    over25: Optional[float],
     confidence_index: float,
     corner_home_exp: float,
     corner_away_exp: float,
     corner_probs: Dict[str, float],
     corner_line: float,
-    ml_probs: Optional[Dict[str, float]] = None,
     outcomes_xg: Optional[Dict[str, float]] = None,
     over25_xg: Optional[float] = None,
     secondary_outcomes: Optional[Dict[str, float]] = None,
+    secondary_over25: Optional[float] = None,
     secondary_label: str = "ML",
 ) -> None:
     """Display key statistical metrics and outcome probabilities."""
@@ -338,26 +349,8 @@ def display_metrics(
                    f"{1 / (corner_probs[over_key] / 100):.2f}")
     cols[2].caption(f"Under: {corner_probs[f'Under {corner_line}']:.1f}%")
 
-    if ml_probs:
-        cols = responsive_columns(3)
-        cols[0].metric(
-            "🏠 Výhra domácích (ML)",
-            f"{ml_probs['Home Win']:.1f}%",
-            f"{1 / (ml_probs['Home Win'] / 100):.2f}",
-        )
-        cols[1].metric(
-            "🤝 Remíza (ML)",
-            f"{ml_probs['Draw']:.1f}%",
-            f"{1 / (ml_probs['Draw'] / 100):.2f}",
-        )
-        cols[2].metric(
-            "🚶‍♂️ Výhra hostů (ML)",
-            f"{ml_probs['Away Win']:.1f}%",
-            f"{1 / (ml_probs['Away Win'] / 100):.2f}",
-        )
-
     st.markdown("## 🧠 Pravděpodobnosti výsledků")
-    cols2 = responsive_columns(4)
+    cols2 = responsive_columns(5 if over25 is not None else 4)
     cols2[0].metric("🏠 Výhra domácích",
                     f"{outcomes['Home Win']:.1f}%",
                     f"{1 / (outcomes['Home Win'] / 100):.2f}")
@@ -367,10 +360,18 @@ def display_metrics(
     cols2[2].metric("🚶‍♂️ Výhra hostů",
                     f"{outcomes['Away Win']:.1f}%",
                     f"{1 / (outcomes['Away Win'] / 100):.2f}")
-    cols2[3].metric("🔒 Confidence", f"{confidence_index:.1f} %")
+    if over25 is not None:
+        cols2[3].metric(
+            "⚽ Over 2.5",
+            f"{over25:.1f}%",
+            f"{1 / (over25 / 100):.2f}",
+        )
+        cols2[4].metric("🔒 Confidence", f"{confidence_index:.1f} %")
+    else:
+        cols2[3].metric("🔒 Confidence", f"{confidence_index:.1f} %")
 
     if outcomes_xg:
-        cols3 = responsive_columns(4)
+        cols3 = responsive_columns(4 if over25_xg is not None else 3)
         cols3[0].metric("🏠 Výhra domácích (xG)",
                         f"{outcomes_xg['Home Win']:.1f}%",
                         f"{1 / (outcomes_xg['Home Win'] / 100):.2f}")
@@ -384,15 +385,15 @@ def display_metrics(
             cols3[3].metric("Over 2.5 (xG)",
                             f"{over25_xg:.1f}%",
                             f"{1 / (over25_xg / 100):.2f}")
-        else:
-            cols3[3].markdown(" ")
 
     if secondary_outcomes:
         st.markdown(f"### {secondary_label} model")
-        cols_rf = responsive_columns(3)
+        cols_rf = responsive_columns(4 if secondary_over25 is not None else 3)
         cols_rf[0].metric("🏠 Výhra domácích", f"{secondary_outcomes['Home Win']:.1f}%")
         cols_rf[1].metric("🤝 Remíza", f"{secondary_outcomes['Draw']:.1f}%")
         cols_rf[2].metric("🚶‍♂️ Výhra hostů", f"{secondary_outcomes['Away Win']:.1f}%")
+        if secondary_over25 is not None:
+            cols_rf[3].metric("⚽ Over 2.5", f"{secondary_over25:.1f}%")
 
 
 
@@ -517,9 +518,15 @@ def render_single_match_prediction(
         ml_features,
         model_data=(RF_MODEL, RF_FEATURE_NAMES, RF_LABEL_ENCODER),
     )
+    ml_over25 = predict_over25_proba(
+        ml_features,
+        model_data=(RF_O25_MODEL, RF_O25_FEATURE_NAMES, RF_O25_LABEL_ENCODER),
+    )
     use_ml = st.sidebar.toggle("Use ML probabilities", False)
     primary_outcomes = ml_probs if use_ml else outcomes
     secondary_outcomes = outcomes if use_ml else ml_probs
+    primary_over25 = ml_over25 if use_ml else over_under["Over 2.5"]
+    secondary_over25 = over_under["Over 2.5"] if use_ml else ml_over25
     secondary_label = "Poisson" if use_ml else "ML"
 
     display_metrics(
@@ -533,15 +540,16 @@ def render_single_match_prediction(
         btts,
         over_under,
         primary_outcomes,
+        primary_over25,
         confidence_index,
         corner_home_exp,
         corner_away_exp,
         corner_probs,
         corner_line,
-        ml_probs,
         outcomes_xg,
         over25_xg,
         secondary_outcomes,
+        secondary_over25,
         secondary_label,
     )
 
