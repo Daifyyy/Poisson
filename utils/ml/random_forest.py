@@ -45,8 +45,10 @@ from typing import Any, Dict, Iterable, Mapping, Tuple
 import joblib
 import numpy as np
 import pandas as pd
+import logging
 
 
+logger = logging.getLogger(__name__)
 DEFAULT_MODEL_PATH = Path(__file__).with_name("random_forest_model.joblib")
 
 
@@ -128,6 +130,27 @@ def _compute_elo_difference(df: pd.DataFrame, k: int = 20) -> pd.DataFrame:
     return df
 
 
+def _clip_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Clip extreme feature values to reasonable ranges."""
+    bounds = {
+        "home_recent_form": (-1, 1),
+        "away_recent_form": (-1, 1),
+        "elo_diff": (-400, 400),
+        "xg_diff": (-5, 5),
+        "home_conceded": (0, 5),
+        "away_conceded": (0, 5),
+        "conceded_diff": (-5, 5),
+        "days_since_last_match": (-30, 30),
+        "attack_strength_diff": (-2, 2),
+        "defense_strength_diff": (-2, 2),
+    }
+    df = df.copy()
+    for col, (lo, hi) in bounds.items():
+        if col in df.columns:
+            df[col] = df[col].clip(lo, hi)
+    return df
+
+
 def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Iterable[str], Any]:
     """Return feature matrix X, labels y and metadata."""
     df = _compute_recent_form(df)
@@ -160,7 +183,7 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
         "attack_strength_diff",
         "defense_strength_diff",
     ]
-    X = df[features]
+    X = _clip_features(df[features])
     y_raw = df["FTR"].astype(str)
 
     mask = X.notna().all(axis=1) & y_raw.notna()
@@ -198,35 +221,48 @@ def train_model(
 
     X, y, feature_names, label_enc = _prepare_features(df)
 
-    # --- Handle class imbalance -------------------------------------------------
-    # Prefer oversampling + BalancedRandomForest; otherwise fall back to RF with class_weight.
+    # --- Handle class imbalance inside Pipeline --------------------------------
     try:  # pragma: no cover - optional dependency
         from imblearn.over_sampling import RandomOverSampler  # type: ignore
+        from imblearn.pipeline import Pipeline as ImbPipeline  # type: ignore
         from imblearn.ensemble import BalancedRandomForestClassifier  # type: ignore
 
-        ros = RandomOverSampler(random_state=42)
-        X, y = ros.fit_resample(X, y)
-        base_estimator = BalancedRandomForestClassifier(random_state=42)
+        pipeline = ImbPipeline(
+            steps=[
+                ("sampler", RandomOverSampler(random_state=42)),
+                ("model", BalancedRandomForestClassifier(random_state=42)),
+            ]
+        )
     except Exception:
+        from sklearn.pipeline import Pipeline  # lazy import
+
         classes = np.unique(y)
         weights = compute_class_weight("balanced", classes=classes, y=y)
         class_weight = {cls: weight for cls, weight in zip(classes, weights)}
-        base_estimator = RandomForestClassifier(class_weight=class_weight, random_state=42)
+        pipeline = Pipeline(
+            [
+                (
+                    "model",
+                    RandomForestClassifier(
+                        class_weight=class_weight, random_state=42
+                    ),
+                )
+            ]
+        )
 
     tscv = TimeSeriesSplit(n_splits=n_splits)
 
-    # Hyperparameter search space – bez class_weight (kvůli BalancedRandomForest).
     param_distributions = {
-        "n_estimators": [50, 100, 200, 300],
-        "max_depth": [None, 5, 10, 20],
-        "min_samples_split": [2, 5, 10],
-        "min_samples_leaf": [1, 2, 4],
-        "max_features": ["sqrt", "log2", None],
-        "bootstrap": [True, False],
+        "model__n_estimators": [50, 100, 200, 300],
+        "model__max_depth": [None, 5, 10, 20],
+        "model__min_samples_split": [2, 5, 10],
+        "model__min_samples_leaf": [1, 2, 4],
+        "model__max_features": ["sqrt", "log2", None],
+        "model__bootstrap": [True, False],
     }
 
     search = RandomizedSearchCV(
-        base_estimator,
+        pipeline,
         param_distributions=param_distributions,
         n_iter=20,
         cv=tscv,
@@ -236,15 +272,15 @@ def train_model(
     )
     search.fit(X, y)
 
-    best_model = search.best_estimator_
+    best_pipeline = search.best_estimator_
     score = float(search.best_score_)
     best_params = search.best_params_
 
-    calibrated_model = CalibratedClassifierCV(best_model, method="sigmoid", cv=tscv)
+    calibrated_model = CalibratedClassifierCV(best_pipeline, method="isotonic", cv=tscv)
     calibrated_model.fit(X, y)
 
     # --- Precision/recall metrics ----------------------------------------------
-    y_pred = cross_val_predict(best_model, X, y, cv=tscv, n_jobs=-1)
+    y_pred = cross_val_predict(best_pipeline, X, y, cv=tscv, n_jobs=-1)
     precisions, recalls, _, _ = precision_recall_fscore_support(y, y_pred, labels=np.unique(y))
     metrics = {
         label: {"precision": float(p), "recall": float(r)}
@@ -283,8 +319,12 @@ def load_model(path: str | Path = DEFAULT_MODEL_PATH):
     """
     try:
         data = joblib.load(Path(path))
+        model = data["model"]
+        logger.info("Loaded model type: %s", type(model).__name__)
+        if type(model).__name__ == "DummyModel":
+            logger.warning("Loaded fallback DummyModel; trained artifact missing?")
         return (
-            data["model"],
+            model,
             data["feature_names"],
             data["label_encoder"],
             data.get("best_params", {}),
@@ -292,6 +332,7 @@ def load_model(path: str | Path = DEFAULT_MODEL_PATH):
     except Exception:
         from .dummy_model import DummyModel, SimpleLabelEncoder
 
+        logger.warning("Falling back to DummyModel; could not load %s", path)
         model = DummyModel()
         feature_names = [
             "home_recent_form",
@@ -427,7 +468,7 @@ def construct_features_for_match(
     attack_strength_diff = attack_strength.get(home_team, 0.0) - attack_strength.get(away_team, 0.0)
     defense_strength_diff = defense_strength.get(home_team, 0.0) - defense_strength.get(away_team, 0.0)
 
-    return {
+    feats = {
         "home_recent_form": home_form,
         "away_recent_form": away_form,
         "elo_diff": float(elo_diff),
@@ -440,6 +481,7 @@ def construct_features_for_match(
         "attack_strength_diff": attack_strength_diff,
         "defense_strength_diff": defense_strength_diff,
     }
+    return _clip_features(pd.DataFrame([feats])).iloc[0].to_dict()
 
 
 def predict_proba(
@@ -469,18 +511,12 @@ def predict_proba(
     if model_data is None:
         model_data = load_model(model_path)
     model, feature_names, label_enc = model_data[:3]
-    X = pd.DataFrame([features], columns=feature_names)
-    try:
-        from sklearn.calibration import CalibratedClassifierCV  # lazy import
-
-        is_calibrated = isinstance(model, CalibratedClassifierCV)
-    except Exception:
-        is_calibrated = False
-
-    if is_calibrated:
-        probs = model.predict_proba(X)[0]
-    else:
-        probs = model.predict_proba(X)[0]
+    X = _clip_features(pd.DataFrame([features], columns=feature_names))
+    probs = model.predict_proba(X)[0]
+    # shrink towards uniform prior to dampen extreme probabilities
+    alpha = 0.15
+    probs = (1 - alpha) * probs + alpha * (1.0 / len(probs))
+    probs = probs / probs.sum()
     labels = label_enc.inverse_transform(np.arange(len(probs)))
     mapping = {"H": "Home Win", "D": "Draw", "A": "Away Win"}
     return {mapping[lbl]: float(p * 100) for lbl, p in zip(labels, probs)}
