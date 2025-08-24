@@ -230,6 +230,15 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
     )
 
     if not upcoming.empty:
+        # Only keep matches where both teams exist in the current season data.
+        teams_in_season = set(season_df["HomeTeam"].unique()) | set(
+            season_df["AwayTeam"].unique()
+        )
+        upcoming = upcoming[
+            upcoming["Home Team"].isin(teams_in_season)
+            & upcoming["Away Team"].isin(teams_in_season)
+        ]
+
         # Normalizace/parsování data a seřazení
         upcoming["Date"] = pd.to_datetime(upcoming["Date"], errors="coerce").dt.date
         upcoming = upcoming.sort_values("Date").reset_index(drop=True)
