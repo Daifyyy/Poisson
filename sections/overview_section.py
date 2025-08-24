@@ -1,4 +1,5 @@
 import streamlit as st
+import urllib.parse
 import pandas as pd
 from utils.responsive import responsive_columns
 from utils.poisson_utils import (
@@ -218,35 +219,37 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
         def_df.head(5)[["Tým", "Defenzivní styl index"]], hide_index=True
     )
 
-    # Upcoming matches from xG data with shortcuts to predictions.  Use the
-    # league code from the dataset itself rather than relying on the display
-    # name to avoid mismatches.
-    xg_df = load_upcoming_xg()
-    league_code = season_df["Div"].iloc[0]
-    upcoming = (
-        xg_df[xg_df["LeagueCode"] == league_code][["Date", "Home Team", "Away Team"]]
+# 📅 Upcoming matches from xG data with shortcuts to predictions.
+# Použijeme kód soutěže ze season_df, aby nedocházelo k nesouladu názvů.
+xg_df = load_upcoming_xg()
+league_code = season_df["Div"].iloc[0]
+
+upcoming = (
+    xg_df.loc[xg_df["LeagueCode"] == league_code, ["Date", "Home Team", "Away Team"]]
         .copy()
+)
+
+if not upcoming.empty:
+    # Normalizace/parsování data a seřazení
+    upcoming["Date"] = pd.to_datetime(upcoming["Date"], errors="coerce").dt.date
+    upcoming = upcoming.sort_values("Date").reset_index(drop=True)
+
+    st.markdown("### 📅 Upcoming matches")
+
+    def match_link(row: pd.Series) -> str:
+        encoded_league = urllib.parse.quote_plus(league_name)
+        home = urllib.parse.quote_plus(row["Home Team"])
+        away = urllib.parse.quote_plus(row["Away Team"])
+        return f"?selected_league={encoded_league}&home_team={home}&away_team={away}&view=match"
+
+    display_df = upcoming.copy()
+    display_df.insert(3, "Prediction", upcoming.apply(match_link, axis=1))
+
+    st.dataframe(
+        display_df,
+        column_config={
+            "Prediction": st.column_config.LinkColumn("Prediction", display_text="🔮"),
+        },
+        hide_index=True,
+        use_container_width=True,
     )
-    if not upcoming.empty:
-        upcoming["Date"] = pd.to_datetime(upcoming["Date"]).dt.date
-        upcoming = upcoming.sort_values("Date")
-        st.markdown("### 📅 Upcoming matches")
-
-        def match_link(row: pd.Series) -> str:
-            encoded_league = urllib.parse.quote_plus(league_name)
-            home = urllib.parse.quote_plus(row["Home Team"])
-            away = urllib.parse.quote_plus(row["Away Team"])
-            return (
-                f"?selected_league={encoded_league}&home_team={home}&away_team={away}&view=match"
-            )
-
-        display_df = upcoming.copy()
-        display_df.insert(3, "Prediction", upcoming.apply(match_link, axis=1))
-        st.dataframe(
-            display_df,
-            column_config={
-                "Prediction": st.column_config.LinkColumn("Prediction", display_text="🔮"),
-            },
-            hide_index=True,
-            use_container_width=True,
-        )

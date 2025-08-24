@@ -76,38 +76,27 @@ RF_MODEL, RF_FEATURE_NAMES, RF_LABEL_ENCODER, *_ = get_rf_model()
 def load_upcoming_xg() -> pd.DataFrame:
     """Load upcoming xG workbook with caching.
 
-    If the workbook or its engine (``openpyxl``) is missing, an empty
-    ``DataFrame`` is returned so the app can continue gracefully.
+    Pokud soubor/engine chybí, vrátí se prázdný DataFrame,
+    aby appka jela dál bez pádu.
     """
     path = "data/Footballxg.com - (F1X) xG Free Upcoming v3.1.xlsx"
     cols = [
-        "Date",
-        "Home Team",
-        "Away Team",
-        "xG Home",
-        "xG Away",
-        "Home",
-        "Draw",
-        "Away",
-        ">2.5",
-        "League",
+        "Date", "Home Team", "Away Team", "xG Home", "xG Away",
+        "Home", "Draw", "Away", ">2.5", "League",
     ]
     try:
-        df = pd.read_excel(
-            path, header=5, usecols=cols, parse_dates=["Date"]
-        )
-    except Exception as exc:  # pragma: no cover - safeguards runtime
+        df = pd.read_excel(path, header=5, usecols=cols, parse_dates=["Date"])
+    except Exception as exc:  # pragma: no cover – runtime safeguard
         st.warning(f"Could not load xG workbook: {exc}")
         return pd.DataFrame(columns=cols)
 
-    # Remove placeholder rows and normalize key fields so downstream
-    # consumers can reliably filter by competition and team names.
-    df = df.dropna(subset=["Date", "Home Team", "Away Team"])
-    df["Date"] = pd.to_datetime(df["Date"]).dt.normalize()
-    df["Home Team"] = df["Home Team"].astype(str).str.strip()
-    df["Away Team"] = df["Away Team"].astype(str).str.strip()
+    # Normalizace a čištění
+    df = df.dropna(subset=["Date", "Home Team", "Away Team"]).copy()
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.normalize()
+    df["Home Team"] = df["Home Team"].astype(str).strip()
+    df["Away Team"] = df["Away Team"].astype(str).strip()
 
-    # Map league names to internal codes for downstream filtering.
+    # Mapování lig na interní kódy (Div)
     league_map = {
         "England - Premier League": "E0",
         "England - Championship": "E1",
@@ -122,10 +111,9 @@ def load_upcoming_xg() -> pd.DataFrame:
         "Turkey - Super Lig": "T1",
     }
     df["LeagueCode"] = df["League"].map(league_map)
-    # Drop rows from competitions we don't recognise so downstream consumers
-    # (e.g. league overview) won't display fixtures that aren't actually in the
-    # xG workbook.
-    df = df.dropna(subset=["LeagueCode"])
+
+    # Vyhoď soutěže, které nemáme namapované
+    df = df.dropna(subset=["LeagueCode"]).reset_index(drop=True)
     return df
 
 
