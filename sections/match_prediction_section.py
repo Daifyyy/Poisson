@@ -93,8 +93,14 @@ def load_upcoming_xg() -> pd.DataFrame:
     # Normalizace a čištění
     df = df.dropna(subset=["Date", "Home Team", "Away Team"]).copy()
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.normalize()
-    df["Home Team"] = df["Home Team"].astype(str).strip()
-    df["Away Team"] = df["Away Team"].astype(str).strip()
+    # ``astype(str)`` converts any non-string entries (e.g. numbers or NaN)
+    # into string form.  ``Series.str.strip`` must then be used to remove
+    # leading/trailing whitespace from each element.  The previous version
+    # mistakenly called ``strip`` directly on the Series object which raised
+    # ``AttributeError`` because ``strip`` is a string method, not a Series
+    # method.
+    df["Home Team"] = df["Home Team"].astype(str).str.strip()
+    df["Away Team"] = df["Away Team"].astype(str).str.strip()
 
     # Mapování lig na interní kódy (Div)
     league_map = {
