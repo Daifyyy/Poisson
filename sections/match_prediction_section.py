@@ -85,10 +85,30 @@ def load_upcoming_xg() -> pd.DataFrame:
         "Home", "Draw", "Away", ">2.5", "League",
     ]
     try:
-        return pd.read_excel(path, header=5, usecols=cols)
+        df = pd.read_excel(path, header=5, usecols=cols)
     except Exception as exc:  # pragma: no cover - safeguards runtime
         st.warning(f"Could not load xG workbook: {exc}")
         return pd.DataFrame(columns=cols)
+
+    # Remove placeholder rows and map league names to internal codes so
+    # downstream consumers can filter by domestic competition.
+    df = df.dropna(subset=["Home Team", "Away Team"])
+    league_map = {
+        "England - Premier League": "E0",
+        "England - Championship": "E1",
+        "Spain - La Liga": "SP1",
+        "Belgium - Jupiler League": "B1",
+        "Germany - Bundesliga": "D1",
+        "Germany - 2.Bundesliga": "D2",
+        "Italy - Serie A": "I1",
+        "France - Ligue 1": "F1",
+        "Netherlands - Eredivisie": "N1",
+        "Portugal - Primeira Liga": "P1",
+        "Turkey - Super Lig": "T1",
+    }
+    df["LeagueCode"] = df["League"].map(league_map)
+    return df
+
 
 
 def lookup_xg_row(
