@@ -313,6 +313,8 @@ def display_metrics(
     corner_away_exp: float,
     corner_probs: Dict[str, float],
     corner_line: float,
+    ml_probs: Optional[Dict[str, float]] = None,
+    over25_ml: Optional[float] = None,
     outcomes_xg: Optional[Dict[str, float]] = None,
     over25_xg: Optional[float] = None,
     secondary_outcomes: Optional[Dict[str, float]] = None,
@@ -348,6 +350,31 @@ def display_metrics(
                    f"{corner_probs[over_key]:.1f}%",
                    f"{1 / (corner_probs[over_key] / 100):.2f}")
     cols[2].caption(f"Under: {corner_probs[f'Under {corner_line}']:.1f}%")
+
+    # Volitelný blok pro ML 1X2 + ML Over 2.5
+    if ml_probs:
+        cols = responsive_columns(4 if over25_ml is not None else 3)
+        cols[0].metric(
+            "🏠 Výhra domácích (ML)",
+            f"{ml_probs['Home Win']:.1f}%",
+            f"{1 / (ml_probs['Home Win'] / 100):.2f}",
+        )
+        cols[1].metric(
+            "🤝 Remíza (ML)",
+            f"{ml_probs['Draw']:.1f}%",
+            f"{1 / (ml_probs['Draw'] / 100):.2f}",
+        )
+        cols[2].metric(
+            "🚶‍♂️ Výhra hostů (ML)",
+            f"{ml_probs['Away Win']:.1f}%",
+            f"{1 / (ml_probs['Away Win'] / 100):.2f}",
+        )
+        if over25_ml is not None:
+            cols[3].metric(
+                "⚽ Over 2.5 (ML)",
+                f"{over25_ml:.1f}%",
+                f"{1 / (over25_ml / 100):.2f}",
+            )
 
     st.markdown("## 🧠 Pravděpodobnosti výsledků")
     cols2 = responsive_columns(5 if over25 is not None else 4)
@@ -394,7 +421,6 @@ def display_metrics(
         cols_rf[2].metric("🚶‍♂️ Výhra hostů", f"{secondary_outcomes['Away Win']:.1f}%")
         if secondary_over25 is not None:
             cols_rf[3].metric("⚽ Over 2.5", f"{secondary_over25:.1f}%")
-
 
 
 
@@ -546,12 +572,15 @@ def render_single_match_prediction(
         corner_away_exp,
         corner_probs,
         corner_line,
+        ml_probs,
+        ml_over25,
         outcomes_xg,
         over25_xg,
         secondary_outcomes,
         secondary_over25,
         secondary_label,
     )
+
 
     with st.form("bet_form"):
         bet_type = st.selectbox(
