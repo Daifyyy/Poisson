@@ -53,7 +53,6 @@ from utils.anomaly_detection import (
     calculate_contrarian_risk_score,
     calculate_upset_risk_score,
     colored_risk_tag,
-    calculate_confidence_index
 )
 from utils import bet_db
 from utils.ml.random_forest import (
@@ -308,7 +307,6 @@ def display_metrics(
     over_under: Dict[str, float],
     outcomes: Dict[str, float],
     over25: Optional[float],
-    confidence_index: float,
     corner_home_exp: float,
     corner_away_exp: float,
     corner_probs: Dict[str, float],
@@ -350,7 +348,7 @@ def display_metrics(
     cols[2].caption(f"Under: {corner_probs[f'Under {corner_line}']:.1f}%")
 
     st.markdown("## 🧠 Pravděpodobnosti výsledků")
-    cols2 = responsive_columns(5 if over25 is not None else 4)
+    cols2 = responsive_columns(4 if over25 is not None else 3)
     cols2[0].metric("🏠 Výhra domácích",
                     f"{outcomes['Home Win']:.1f}%",
                     f"{1 / (outcomes['Home Win'] / 100):.2f}")
@@ -366,9 +364,6 @@ def display_metrics(
             f"{over25:.1f}%",
             f"{1 / (over25 / 100):.2f}",
         )
-        cols2[4].metric("🔒 Confidence", f"{confidence_index:.1f} %")
-    else:
-        cols2[3].metric("🔒 Confidence", f"{confidence_index:.1f} %")
 
     if outcomes_xg:
         cols3 = responsive_columns(4 if over25_xg is not None else 3)
@@ -513,17 +508,6 @@ def render_single_match_prediction(
     variance_flag = scoreline_variance_warning(matrix) is not None
     form_stability_score = 1.0  # Pokud nemáš metodu, klidně ponech 1.0
 
-    confidence_index = calculate_confidence_index(
-        outcomes=outcomes,
-        poisson_matrix=matrix,
-        warning_home=warning_index_home,
-        warning_away=warning_index_away,
-        form_stability_score=form_stability_score,
-        pos_home=pos_score_home,
-        pos_away=pos_score_away,
-        variance_warning=variance_flag,
-    )
-
     corner_line = st.sidebar.slider("Rohová hranice", 5.5, 15.5, 9.5, 0.5)
     corner_matrix = poisson_corner_matrix(corner_home_exp, corner_away_exp)
     corner_probs = corner_over_under_prob(corner_matrix, corner_line)
@@ -556,7 +540,6 @@ def render_single_match_prediction(
         over_under,
         primary_outcomes,
         primary_over25,
-        confidence_index,
         corner_home_exp,
         corner_away_exp,
         corner_probs,
