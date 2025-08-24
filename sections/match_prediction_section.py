@@ -34,6 +34,7 @@ from utils.poisson_utils import (
     corner_over_under_prob,
     detect_current_season,
     get_team_xg_xga,
+    additional_opportunities_prob,
 )
 from utils.frontend_utils import display_team_status_table
 from utils.poisson_utils.match_style import tempo_tag
@@ -510,6 +511,7 @@ def render_single_match_prediction(
     corner_line = st.sidebar.slider("Rohová hranice", 5.5, 15.5, 9.5, 0.5)
     corner_matrix = poisson_corner_matrix(corner_home_exp, corner_away_exp)
     corner_probs = corner_over_under_prob(corner_matrix, corner_line)
+    additional_probs = additional_opportunities_prob(matrix)
 
     ml_features = construct_features_for_match(df, home_team, away_team, elo_dict)
     ml_probs = predict_proba(
@@ -734,9 +736,20 @@ def render_single_match_prediction(
     col1.dataframe(top_df, use_container_width=True, hide_index=True)
     col2.markdown("### 🎯 Šance na počet vstřelených gólů")
     col2.dataframe(goal_chances, use_container_width=True, hide_index=True)
+    st.markdown("## 📈 Další příležitosti")
+    opp_cols = responsive_columns(4)
+    opp_labels = [
+        ("Home Win & Over 1.5", f"🏠 {home_team} & over 1.5"),
+        ("Away Win & Over 1.5", f"🚶‍♂️ {away_team} & over 1.5"),
+        ("Home -1.0", f"🏠 {home_team} -1.0"),
+        ("Away -1.0", f"🚶‍♂️ {away_team} -1.0"),
+    ]
+    for col, (key, label) in zip(opp_cols, opp_labels):
+        prob = additional_probs.get(key, 0.0)
+        odds = float('inf') if prob == 0 else 1 / (prob / 100)
+        col.metric(label, f"{prob:.1f}%", f"{odds:.2f}")
 
 
-    
     style_home = get_team_style_vs_opponent_type(full_df, home_team, away_team)
     style_away = get_team_style_vs_opponent_type(full_df, away_team, home_team)
     st.divider()

@@ -343,3 +343,31 @@ def btts_prob(matrix: np.ndarray) -> dict:
     no_goal = matrix[0, :].sum() + matrix[:, 0].sum() - matrix[0, 0]
     btts = 1 - no_goal
     return {"BTTS Yes": round(btts * 100, 1), "BTTS No": round((1 - btts) * 100, 1)}
+
+
+def additional_opportunities_prob(matrix: np.ndarray) -> dict:
+    """Pravděpodobnosti pro vybrané kombinované sázky.
+
+    Vrací procentuální pravděpodobnosti pro následující příležitosti:
+
+    - výhra domácích a více než 1.5 gólu
+    - výhra hostů a více než 1.5 gólu
+    - výhra domácích v handicapu -1.0 (alespoň o 2 góly)
+    - výhra hostů v handicapu -1.0 (alespoň o 2 góly)
+    """
+
+    goals = np.add.outer(np.arange(matrix.shape[0]), np.arange(matrix.shape[1]))
+    home_goals = np.arange(matrix.shape[0])[:, None]
+    away_goals = np.arange(matrix.shape[1])[None, :]
+
+    home_over15 = matrix[(home_goals > away_goals) & (goals >= 2)].sum()
+    away_over15 = matrix[(away_goals > home_goals) & (goals >= 2)].sum()
+    home_minus1 = matrix[(home_goals >= away_goals + 2)].sum()
+    away_minus1 = matrix[(away_goals >= home_goals + 2)].sum()
+
+    return {
+        "Home Win & Over 1.5": round(home_over15 * 100, 1),
+        "Away Win & Over 1.5": round(away_over15 * 100, 1),
+        "Home -1.0": round(home_minus1 * 100, 1),
+        "Away -1.0": round(away_minus1 * 100, 1),
+    }
