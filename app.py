@@ -334,38 +334,56 @@ elo_dict = {team: elo_dict.get(team) for team in filtered_teams}
 if "match_list" not in st.session_state:
     st.session_state.match_list = []
 
+# --- Query params ---
+query_params = st.query_params
+view_param = query_params.get("view", None)
+if isinstance(view_param, list):
+    view_param = view_param[0]
+
+nav_options = (
+    "League overview",
+    "Match prediction",
+    "Multi predictions",
+    "Cross-league ratings",
+    "UEFA Cups",
+    "My Bets",
+)
+default_nav_idx = nav_options.index("Match prediction") if view_param == "match" else 0
+
 # --- Navigation ---
 navigation = st.sidebar.radio(
     "Navigate",
-    (
-        "League overview",
-        "Match prediction",
-        "Multi predictions",
-        "Cross-league ratings",
-        "UEFA Cups",
-        "My Bets",
-    ),
+    nav_options,
+    index=default_nav_idx,
 )
 
-# --- Query params ---
-query_params = st.query_params
-
-# Clear selected team when switching navigation to avoid stale selection
+# Clear selected team and match params when switching navigation to avoid stale selection
 if "last_navigation" not in st.session_state:
     st.session_state["last_navigation"] = navigation
 elif st.session_state["last_navigation"] != navigation:
     st.session_state["last_navigation"] = navigation
-    if "selected_team" in query_params:
-        del query_params["selected_team"]
+    for param in ("selected_team", "home_team", "away_team", "view"):
+        if param in query_params:
+            del query_params[param]
 
 # --- Výběr týmů ---
 teams_in_season = sorted(
     set(season_df["HomeTeam"].unique()) | set(season_df["AwayTeam"].unique())
 )
 home_team = away_team = None
+home_param = query_params.get("home_team", None)
+if isinstance(home_param, list):
+    home_param = home_param[0]
+home_param = urllib.parse.unquote_plus(home_param) if home_param else None
+away_param = query_params.get("away_team", None)
+if isinstance(away_param, list):
+    away_param = away_param[0]
+away_param = urllib.parse.unquote_plus(away_param) if away_param else None
 if navigation in ("Match prediction", "Multi predictions"):
-    home_team = st.sidebar.selectbox("Domácí tým", teams_in_season)
-    away_team = st.sidebar.selectbox("Hostující tým", teams_in_season)
+    home_index = teams_in_season.index(home_param) if home_param in teams_in_season else 0
+    home_team = st.sidebar.selectbox("Domácí tým", teams_in_season, index=home_index)
+    away_index = teams_in_season.index(away_param) if away_param in teams_in_season else 0
+    away_team = st.sidebar.selectbox("Hostující tým", teams_in_season, index=away_index)
 
 raw_team = query_params.get("selected_team", None)
 if isinstance(raw_team, list):

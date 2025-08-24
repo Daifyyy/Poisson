@@ -82,7 +82,7 @@ def load_upcoming_xg() -> pd.DataFrame:
     path = "data/Footballxg.com - (F1X) xG Free Upcoming v3.1.xlsx"
     cols = [
         "Date", "Home Team", "Away Team", "xG Home", "xG Away",
-        "Home", "Draw", "Away", ">2.5",
+        "Home", "Draw", "Away", ">2.5", "League",
     ]
     try:
         return pd.read_excel(path, header=5, usecols=cols)
