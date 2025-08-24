@@ -22,6 +22,7 @@ from sections.team_detail_section import render_team_detail
 from sections.my_bets_section import render_my_bets_section as render_my_bets
 from sections.cross_league_section import render_cross_league_ratings
 from sections.uefa_cup_section import render_uefa_cup_predictions
+from utils.navigation import clear_query_params_on_nav_change
 
 import urllib.parse
 
@@ -357,14 +358,12 @@ navigation = st.sidebar.radio(
     index=default_nav_idx,
 )
 
-# Clear selected team and match params when switching navigation to avoid stale selection
-if "last_navigation" not in st.session_state:
-    st.session_state["last_navigation"] = navigation
-elif st.session_state["last_navigation"] != navigation:
-    st.session_state["last_navigation"] = navigation
-    for param in ("selected_team", "home_team", "away_team", "view"):
-        if param in query_params:
-            del query_params[param]
+# Clear selected team and match params when switching navigation to avoid stale selection.
+# When navigation comes from a match link (``view=match``) the parameters must
+# remain so the match prediction page can preselect the correct teams.
+clear_query_params_on_nav_change(
+    st.session_state, query_params, navigation, view_param
+)
 
 # --- Výběr týmů ---
 teams_in_season = sorted(
