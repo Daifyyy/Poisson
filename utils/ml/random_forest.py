@@ -50,6 +50,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 DEFAULT_MODEL_PATH = Path(__file__).with_name("random_forest_model.joblib")
+DEFAULT_OVER25_MODEL_PATH = Path(__file__).with_name("random_forest_over25_model.joblib")
 
 
 def _load_matches(data_dir: str | Path) -> pd.DataFrame:
@@ -522,6 +523,54 @@ def predict_proba(
     return {mapping[lbl]: float(p * 100) for lbl, p in zip(labels, probs)}
 
 
+def load_over25_model(path: str | Path = DEFAULT_OVER25_MODEL_PATH):
+    """Load a persisted over/under 2.5 goals model.
+
+    If the artifact is missing, a deterministic dummy model returning
+    uniform probabilities is used so that the application remains
+    functional without the trained binary classifier.
+    """
+    try:
+        data = joblib.load(Path(path))
+        return data["model"], data["feature_names"], data.get("label_encoder")
+    except Exception:
+        class DummyOverModel:
+            def predict_proba(self, X):  # type: ignore[override]
+                return np.repeat([[0.5, 0.5]], len(X), axis=0)
+
+        feature_names = [
+            "home_recent_form",
+            "away_recent_form",
+            "elo_diff",
+            "xg_diff",
+            "home_conceded",
+            "away_conceded",
+            "conceded_diff",
+            "home_advantage",
+            "days_since_last_match",
+            "attack_strength_diff",
+            "defense_strength_diff",
+        ]
+        logger.warning("Falling back to dummy over/under model; could not load %s", path)
+        return DummyOverModel(), feature_names, None
+
+
+def predict_over25_proba(
+    features: Dict[str, float],
+    model_data: Tuple[Any, Iterable[str], Any] | None = None,
+    model_path: str | Path = DEFAULT_OVER25_MODEL_PATH,
+) -> float:
+    """Return the probability (0-100) that total goals exceed 2.5."""
+    if model_data is None:
+        model_data = load_over25_model(model_path)
+    model, feature_names, _ = model_data
+    X = _clip_features(pd.DataFrame([features], columns=feature_names))
+    prob = model.predict_proba(X)[0][1]
+    alpha = 0.15
+    prob = (1 - alpha) * prob + alpha * 0.5
+    return float(prob * 100)
+
+
 __all__ = [
     "train_model",
     "save_model",
@@ -529,4 +578,6 @@ __all__ = [
     "construct_features_for_match",
     "predict_proba",
     "load_model",
+    "load_over25_model",
+    "predict_over25_proba",
 ]
