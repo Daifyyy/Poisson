@@ -144,13 +144,24 @@ def detect_current_season(
     df = df[df["Date"] <= today]
 
     dates = df["Date"].drop_duplicates().sort_values().reset_index(drop=True)
-    date_diffs = dates.diff().fillna(pd.Timedelta(days=0))
-    season_breaks = dates[date_diffs > pd.Timedelta(days=gap_days)]
+
+    # ``df`` may be empty (e.g. when only future fixtures are present).  In
+    # that case we fall back to a season start derived from today's date so the
+    # function returns sensible defaults instead of raising ``IndexError``.
+    if dates.empty:
+        latest_date = today
+    else:
+        latest_date = dates.iloc[-1]
+
+    if not dates.empty:
+        date_diffs = dates.diff().fillna(pd.Timedelta(days=0))
+        season_breaks = dates[date_diffs > pd.Timedelta(days=gap_days)]
+    else:
+        season_breaks = pd.Series([], dtype="datetime64[ns]")
 
     if not season_breaks.empty:
         season_start = season_breaks.iloc[-1]
     else:
-        latest_date = dates.iloc[-1]
         if latest_date.month >= start_month:
             season_start = pd.Timestamp(
                 year=latest_date.year, month=start_month, day=1
