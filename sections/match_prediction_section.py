@@ -98,9 +98,10 @@ def load_upcoming_xg() -> pd.DataFrame:
         st.warning(f"Could not load xG workbook: {exc}")
         return pd.DataFrame(columns=cols)
 
-    # Remove placeholder rows and map league names to internal codes so
-    # downstream consumers can filter by domestic competition.
+    # odstranit placeholder řádky
     df = df.dropna(subset=["Home Team", "Away Team"])
+
+    # mapovat názvy lig na interní kódy
     league_map = {
         "England - Premier League": "E0",
         "England - Championship": "E1",
@@ -115,12 +116,11 @@ def load_upcoming_xg() -> pd.DataFrame:
         "Turkey - Super Lig": "T1",
     }
     df["LeagueCode"] = df["League"].map(league_map)
-    # Drop rows from competitions we don't recognise so downstream consumers
-    # (e.g. league overview) won't display fixtures that aren't actually in the
-    # xG workbook.
-    df = df.dropna(subset=["LeagueCode"])
-    return df
 
+    # neznámé soutěže vyhoď, ať nepadají do přehledů
+    df = df.dropna(subset=["LeagueCode"])
+
+    return df
 
 def lookup_xg_row(
     df: pd.DataFrame, home_team: str, away_team: str

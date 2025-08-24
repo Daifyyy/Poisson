@@ -1,4 +1,5 @@
 import streamlit as st
+import urllib.parse
 import pandas as pd
 from utils.responsive import responsive_columns
 from utils.poisson_utils import (
@@ -218,15 +219,16 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
         def_df.head(5)[["Tým", "Defenzivní styl index"]], hide_index=True
     )
 
-    # Upcoming matches from xG data with shortcuts to predictions.  Use the
-    # league code from the dataset itself rather than relying on the display
-    # name to avoid mismatches.
+    # Upcoming matches from xG data with shortcuts to predictions.
+    # Use the division code from the season dataset to avoid name mismatches.
     xg_df = load_upcoming_xg()
     league_code = season_df["Div"].iloc[0]
+
     upcoming = (
         xg_df[xg_df["LeagueCode"] == league_code][["Date", "Home Team", "Away Team"]]
         .sort_values("Date")
     )
+
     if not upcoming.empty:
         st.markdown("### 📅 Upcoming matches")
 
@@ -234,9 +236,7 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
             encoded_league = urllib.parse.quote_plus(league_name)
             home = urllib.parse.quote_plus(row["Home Team"])
             away = urllib.parse.quote_plus(row["Away Team"])
-            return (
-                f"?selected_league={encoded_league}&home_team={home}&away_team={away}&view=match"
-            )
+            return f"?selected_league={encoded_league}&home_team={home}&away_team={away}&view=match"
 
         display_df = upcoming.copy()
         display_df.insert(3, "Prediction", upcoming.apply(match_link, axis=1))
@@ -248,3 +248,4 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
             hide_index=True,
             use_container_width=True,
         )
+
