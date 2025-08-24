@@ -76,32 +76,27 @@ RF_MODEL, RF_FEATURE_NAMES, RF_LABEL_ENCODER, *_ = get_rf_model()
 def load_upcoming_xg() -> pd.DataFrame:
     """Load upcoming xG workbook with caching.
 
-    If the workbook or its engine (``openpyxl``) is missing, an empty
-    ``DataFrame`` is returned so the app can continue gracefully.
+    Pokud soubor/engine chybí, vrátí se prázdný DataFrame,
+    aby appka jela dál bez pádu.
     """
     path = "data/Footballxg.com - (F1X) xG Free Upcoming v3.1.xlsx"
     cols = [
-        "Date",
-        "Home Team",
-        "Away Team",
-        "xG Home",
-        "xG Away",
-        "Home",
-        "Draw",
-        "Away",
-        ">2.5",
-        "League",
+        "Date", "Home Team", "Away Team", "xG Home", "xG Away",
+        "Home", "Draw", "Away", ">2.5", "League",
     ]
     try:
-        df = pd.read_excel(path, header=5, usecols=cols)
-    except Exception as exc:  # pragma: no cover - safeguards runtime
+        df = pd.read_excel(path, header=5, usecols=cols, parse_dates=["Date"])
+    except Exception as exc:  # pragma: no cover – runtime safeguard
         st.warning(f"Could not load xG workbook: {exc}")
         return pd.DataFrame(columns=cols)
 
-    # odstranit placeholder řádky
-    df = df.dropna(subset=["Home Team", "Away Team"])
+    # Normalizace a čištění
+    df = df.dropna(subset=["Date", "Home Team", "Away Team"]).copy()
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.normalize()
+    df["Home Team"] = df["Home Team"].astype(str).strip()
+    df["Away Team"] = df["Away Team"].astype(str).strip()
 
-    # mapovat názvy lig na interní kódy
+    # Mapování lig na interní kódy (Div)
     league_map = {
         "England - Premier League": "E0",
         "England - Championship": "E1",
@@ -117,10 +112,10 @@ def load_upcoming_xg() -> pd.DataFrame:
     }
     df["LeagueCode"] = df["League"].map(league_map)
 
-    # neznámé soutěže vyhoď, ať nepadají do přehledů
-    df = df.dropna(subset=["LeagueCode"])
-
+    # Vyhoď soutěže, které nemáme namapované
+    df = df.dropna(subset=["LeagueCode"]).reset_index(drop=True)
     return df
+
 
 def lookup_xg_row(
     df: pd.DataFrame, home_team: str, away_team: str
