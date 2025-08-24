@@ -49,6 +49,7 @@ from .xg import (
     get_top_scorelines,
     btts_prob,
     expected_team_stats_weighted_by_elo,
+    additional_opportunities_prob,
 )
 
 from .team_analysis import (
