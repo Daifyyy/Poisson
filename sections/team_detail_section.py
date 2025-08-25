@@ -15,7 +15,7 @@ from utils.poisson_utils import (
     intensity_score_to_emoji, compute_score_stats, compute_form_trend,
     merged_home_away_opponent_form, classify_team_strength, calculate_advanced_team_metrics,
     calculate_team_extra_stats, get_team_record, analyze_team_profile, generate_team_comparison,
-    render_team_comparison_section
+    calculate_mdi, render_team_comparison_section
 )
 from utils.poisson_utils.team_analysis import TEAM_COMPARISON_ICON_MAP, TEAM_COMPARISON_DESC_MAP
 from utils.form_trend import get_rolling_form
@@ -47,7 +47,7 @@ def render_team_detail(
         ["Celá sezóna", "Posledních 5 zápasů", "Posledních 10 zápasů", "Posledních 5 doma", "Posledních 5 venku"]
     )
 
-    def _apply_time_filter(data: pd.DataFrame, team_name: str) -> pd.DataFrame:
+    def _apply_time_filter(data: pd.DataFrame, team_name: str):
         df_sorted = data.sort_values("Date")
         df_sorted["DateDiff"] = df_sorted["Date"].diff().dt.days
         gap_threshold = 30
@@ -56,22 +56,26 @@ def render_team_detail(
         season_start = df_sorted.loc[cutoff_idx + 1, "Date"] if cutoff_idx is not None else df_sorted["Date"].min()
         season_cutoff = data[data['Date'] >= season_start]
 
+        base_matches = season_cutoff[(season_cutoff['HomeTeam'] == team_name) | (season_cutoff['AwayTeam'] == team_name)]
+        recent_all = base_matches.sort_values("Date", ascending=False).head(5)
+        recent_home = season_cutoff[season_cutoff['HomeTeam'] == team_name].sort_values("Date", ascending=False).head(5)
+        recent_away = season_cutoff[season_cutoff['AwayTeam'] == team_name].sort_values("Date", ascending=False).head(5)
+
         if time_filter == "Posledních 5 zápasů":
-            matches = season_cutoff[(season_cutoff['HomeTeam'] == team_name) | (season_cutoff['AwayTeam'] == team_name)]
-            return matches.sort_values("Date", ascending=False).head(5)
-        if time_filter == "Posledních 10 zápasů":
-            matches = season_cutoff[(season_cutoff['HomeTeam'] == team_name) | (season_cutoff['AwayTeam'] == team_name)]
-            return matches.sort_values("Date", ascending=False).head(10)
-        if time_filter == "Posledních 5 doma":
-            matches = season_cutoff[season_cutoff['HomeTeam'] == team_name]
-            return matches.sort_values("Date", ascending=False).head(5)
-        if time_filter == "Posledních 5 venku":
-            matches = season_cutoff[season_cutoff['AwayTeam'] == team_name]
-            return matches.sort_values("Date", ascending=False).head(5)
-        return season_cutoff
+            selected = recent_all
+        elif time_filter == "Posledních 10 zápasů":
+            selected = base_matches.sort_values("Date", ascending=False).head(10)
+        elif time_filter == "Posledních 5 doma":
+            selected = recent_home
+        elif time_filter == "Posledních 5 venku":
+            selected = recent_away
+        else:
+            selected = season_cutoff
+
+        return selected, {"all": recent_all, "home": recent_home, "away": recent_away}
 
     original_df = season_df
-    filtered_df = _apply_time_filter(original_df, team)
+    filtered_df, recent_matches = _apply_time_filter(original_df, team)
 
     difficulty_filter = st.sidebar.selectbox(
         "🎯 Filtrovat podle síly soupeře:",
@@ -96,6 +100,10 @@ def render_team_detail(
 
     season_df = _apply_difficulty_filter(filtered_df)
 
+    recent_all = _apply_difficulty_filter(recent_matches["all"])
+    recent_home = _apply_difficulty_filter(recent_matches["home"])
+    recent_away = _apply_difficulty_filter(recent_matches["away"])
+
     home = season_df[season_df['HomeTeam'] == team]
     away = season_df[season_df['AwayTeam'] == team]
     all_matches = pd.concat([home, away])
@@ -104,7 +112,7 @@ def render_team_detail(
     season = str(season_start.year)
 
     if compare_team and compare_team != "Žádný" and compare_team != team:
-        compare_df = _apply_time_filter(original_df, compare_team)
+        compare_df, _ = _apply_time_filter(original_df, compare_team)
         compare_home = compare_df[compare_df['HomeTeam'] == compare_team]
         compare_away = compare_df[compare_df['AwayTeam'] == compare_team]
         compare_matches = pd.concat([compare_home, compare_away])
@@ -452,6 +460,44 @@ def render_team_detail(
     #     use_container_width=True
     # )
     st.table(styled_matches)
+
+    # 📊 Match Dominance Index (MDI)
+    league_avgs = season_df[["HS", "AS", "HST", "AST", "HC", "AC", "HF", "AF", "HY", "AY", "HR", "AR"]].mean().to_dict()
+    strength_map = {"Silní": 1.1, "Průměrní": 1.0, "Slabí": 0.9}
+
+    def build_mdi_df(df: pd.DataFrame) -> pd.DataFrame:
+        records = []
+        for _, row in df.iterrows():
+            opponent = row['AwayTeam'] if row['HomeTeam'] == team else row['HomeTeam']
+            strength_label = classify_team_strength(season_df, opponent)
+            coeff = strength_map.get(strength_label, 1.0)
+            mdi_val = calculate_mdi(row, league_avgs, coeff)
+            records.append({"Datum": row['Date'].date(), "Soupeř": opponent, "MDI": mdi_val})
+        return pd.DataFrame(records)
+
+    mdi_all = build_mdi_df(recent_all)
+    mdi_home = build_mdi_df(recent_home)
+    mdi_away = build_mdi_df(recent_away)
+
+    mdi_option = st.radio("MDI filtr", ["Posledních 5", "Posledních 5 doma", "Posledních 5 venku"])
+    mdi_df = {
+        "Posledních 5": mdi_all,
+        "Posledních 5 doma": mdi_home,
+        "Posledních 5 venku": mdi_away,
+    }[mdi_option]
+
+    if not mdi_df.empty:
+        fig_mdi = go.Figure()
+        fig_mdi.add_trace(
+            go.Bar(
+                x=mdi_df["Datum"],
+                y=mdi_df["MDI"],
+                text=mdi_df["Soupeř"],
+                hovertemplate="%{x}<br>%{text}<br>MDI: %{y:.1f}<extra></extra>",
+            )
+        )
+        fig_mdi.update_layout(xaxis_title="Datum", yaxis_title="MDI", showlegend=False)
+        st.plotly_chart(fig_mdi, use_container_width=True)
 
     # Disciplinovanost – karty na faul
     yellow_per_foul = stats['Žluté'] / stats['Fauly'] if stats['Fauly'] else 0
