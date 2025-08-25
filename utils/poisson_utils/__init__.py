@@ -98,3 +98,4 @@ from .corners import (
 from .xg_sources import get_team_xg_xga
 from .cross_league import calculate_cross_league_team_index
 from .cup_predictions import predict_cup_match
+from .mdi import calculate_mdi
