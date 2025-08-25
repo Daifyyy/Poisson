@@ -203,13 +203,6 @@ def render_team_detail(
 
         footer_cols[0].plotly_chart(fig, use_container_width=True)
 
-        return
-
-
-
-
-
-
     st.header(f"📌 Detail týmu: {team}")
 
     # Výpočet pro všechny tři varianty
@@ -461,7 +454,7 @@ def render_team_detail(
     # )
     st.table(styled_matches)
 
-    # 📊 Match Dominance Index (MDI)
+    st.markdown("### 📊 Match Dominance Index (MDI)")
     league_avgs = season_df[["HS", "AS", "HST", "AST", "HC", "AC", "HF", "AF", "HY", "AY", "HR", "AR"]].mean().to_dict()
     strength_map = {"Silní": 1.1, "Průměrní": 1.0, "Slabí": 0.9}
 
