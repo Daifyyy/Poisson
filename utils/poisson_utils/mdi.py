@@ -35,6 +35,23 @@ def calculate_mdi(
         Hodnota MDI v rozmezí 0–100.
     """
 
+    relevant_cols = [
+        "HS",
+        "AS",
+        "HST",
+        "AST",
+        "HC",
+        "AC",
+        "HF",
+        "AF",
+        "HY",
+        "AY",
+        "HR",
+        "AR",
+    ]
+    if all(pd.isna(row.get(col)) or row.get(col, 0) == 0 for col in relevant_cols):
+        return 50.0
+
     score = 0.0
 
     # Statistiky, kde vyšší hodnota je pozitivní
