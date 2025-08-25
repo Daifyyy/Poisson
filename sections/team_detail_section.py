@@ -456,10 +456,13 @@ def render_team_detail(
 
     st.subheader("📊 Match Dominance Index (MDI)")
 
+    # Ligové průměry přes časově filtrovaná data (bez zkreslení podle síly soupeřů)
     league_avgs = filtered_df[
         ["HS", "AS", "HST", "AST", "HC", "AC", "HF", "AF", "HY", "AY", "HR", "AR"]
     ].mean().to_dict()
+
     strength_map = {"Silní": 1.1, "Průměrní": 1.0, "Slabí": 0.9}
+
 
     def build_mdi_df(df: pd.DataFrame) -> pd.DataFrame:
         records = []
