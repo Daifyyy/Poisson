@@ -454,19 +454,21 @@ def render_team_detail(
     # )
     st.table(styled_matches)
 
-    st.markdown("### 📊 Match Dominance Index (MDI)")
-    league_avgs = season_df[["HS", "AS", "HST", "AST", "HC", "AC", "HF", "AF", "HY", "AY", "HR", "AR"]].mean().to_dict()
-    strength_map = {"Silní": 1.1, "Průměrní": 1.0, "Slabí": 0.9}
+  # místo konfliktu:
+  st.subheader("📊 Match Dominance Index (MDI)")
 
-    def build_mdi_df(df: pd.DataFrame) -> pd.DataFrame:
-        records = []
-        for _, row in df.iterrows():
-            opponent = row['AwayTeam'] if row['HomeTeam'] == team else row['HomeTeam']
-            strength_label = classify_team_strength(season_df, opponent)
-            coeff = strength_map.get(strength_label, 1.0)
-            mdi_val = calculate_mdi(row, league_avgs, coeff)
-            records.append({"Datum": row['Date'].date(), "Soupeř": opponent, "MDI": mdi_val})
-        return pd.DataFrame(records)
+  league_avgs = season_df[["HS", "AS", "HST", "AST", "HC", "AC", "HF", "AF", "HY", "AY", "HR", "AR"]].mean().to_dict()
+  strength_map = {"Silní": 1.1, "Průměrní": 1.0, "Slabí": 0.9}
+
+  def build_mdi_df(df: pd.DataFrame) -> pd.DataFrame:
+      records = []
+      for _, row in df.iterrows():
+          opponent = row['AwayTeam'] if row['HomeTeam'] == team else row['HomeTeam']
+          strength_label = classify_team_strength(season_df, opponent)
+          coeff = strength_map.get(strength_label, 1.0)
+          mdi_val = calculate_mdi(row, league_avgs, coeff)
+          records.append({"Datum": row['Date'].date(), "Soupeř": opponent, "MDI": mdi_val})
+      return pd.DataFrame(records)
 
     mdi_all = build_mdi_df(recent_all)
     mdi_home = build_mdi_df(recent_home)
@@ -491,6 +493,8 @@ def render_team_detail(
         )
         fig_mdi.update_layout(xaxis_title="Datum", yaxis_title="MDI", showlegend=False)
         st.plotly_chart(fig_mdi, use_container_width=True)
+    else:
+        st.info("MDI není dostupné pro zvolený filtr")
 
     # Disciplinovanost – karty na faul
     yellow_per_foul = stats['Žluté'] / stats['Fauly'] if stats['Fauly'] else 0
