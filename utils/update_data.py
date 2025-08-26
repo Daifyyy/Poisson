@@ -31,10 +31,10 @@ def normalize_keys(df):
 def update_all_leagues():
     messages = []
 
-    def fetch_league(session, code, url):
+    def fetch_league(code, url):
         try:
             print(f"🔄 Stahuji {code}...")
-            response = session.get(url, timeout=30, stream=True)
+            response = requests.get(url)
             if response.status_code != 200:
                 return code, None, f"❌ {code}: Stažení selhalo."
             df_new = pd.read_csv(StringIO(response.text))
@@ -44,10 +44,9 @@ def update_all_leagues():
             return code, None, f"❌ {code}: Chyba – {str(e)}"
 
     # Download all leagues concurrently
-    with requests.Session() as session:
-        with ThreadPoolExecutor(max_workers=len(LEAGUES)) as executor:
-            futures = [executor.submit(fetch_league, session, code, url) for code, url in LEAGUES.items()]
-            results = [future.result() for future in futures]
+    with ThreadPoolExecutor(max_workers=len(LEAGUES)) as executor:
+        futures = [executor.submit(fetch_league, code, url) for code, url in LEAGUES.items()]
+        results = [future.result() for future in futures]
 
     # Process and save after all downloads complete
     for code, df_new, error in results:
