@@ -304,11 +304,26 @@ df, season_df, gii_dict, elo_dict = load_and_prepare(
 # Zachováme kompletní dataset pro historické statistiky (H2H apod.)
 full_df = df.copy()
 
-# Cross-league ratings for all teams
-league_mtimes = {name: os.path.getmtime(path) for name, path in league_files.items()}
-cross_league_df, league_quality_df = compute_cross_league_index(
-    league_files, league_mtimes
-)
+# Lazily compute cross-league ratings so the app starts faster when this data
+# is not needed (e.g. when using match predictions only).  The computation can
+# be expensive because it aggregates data from all available leagues.  We wrap
+# it in a helper function that is only invoked when the user navigates to views
+# that require these ratings.
+
+
+def get_cross_league_data() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return cross-league team and league ratings.
+
+    The function simply gathers modification times for all league files and
+    forwards them to :func:`compute_cross_league_index` which is cached via
+    ``st.cache_data``.  Calling this function repeatedly is cheap because the
+    heavy computation runs only once per data change.
+    """
+
+    league_mtimes = {
+        name: os.path.getmtime(path) for name, path in league_files.items()
+    }
+    return compute_cross_league_index(league_files, league_mtimes)
 
 # --- Date range filtr ---
 overall_start = df["Date"].min().date()
@@ -436,9 +451,11 @@ elif navigation == "Multi predictions":
     )
 
 elif navigation == "Cross-league ratings":
+    cross_league_df, league_quality_df = get_cross_league_data()
     render_cross_league_ratings(cross_league_df, league_quality_df)
 
 elif navigation == "UEFA Cups":
+    cross_league_df, _ = get_cross_league_data()
     render_uefa_cup_predictions(cross_league_df, ROOT / "data")
 
 elif selected_team:
