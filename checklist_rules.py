@@ -146,8 +146,16 @@ def over25_checklist(data: Dict[str, float], threshold: int = 7) -> ChecklistRes
 def home_win_checklist(data: Dict[str, float], threshold: int = 7) -> ChecklistResult:
     """Checklist recommending a ``Home win`` bet."""
     rules: List[Rule] = [
-        ("Home >2 points per game (last5 at home)", lambda d: d.get("home_ppg_home5", 0) > 2.0),
-        ("ELO home - away >= 50", lambda d: d.get("elo_home", 0) - d.get("elo_away", 0) >= 50),
+        (
+            "Home >2 points per game (last5 at home)",
+            lambda d: _to_float(d.get("home_ppg_home5")) > 2.0,
+        ),
+        (
+            "ELO home - away >= 50",
+            lambda d: _to_float(d.get("elo_home"))
+            - _to_float(d.get("elo_away"))
+            >= 50,
+        ),
         (
             "Home attack >1.8 at home",
             lambda d: _select_stat(
@@ -160,13 +168,31 @@ def home_win_checklist(data: Dict[str, float], threshold: int = 7) -> ChecklistR
                 d, "away_goals_against_away_avg", "away_goals_against_season_avg", "away_matches_away"
             ) > 1.5,
         ),
-        ("Home momentum positive", lambda d: d.get("momentum_home", 0) > 0),
-        ("Away Warning Index >0.5", lambda d: d.get("warning_index_away", 0) > 0.5),
-        ("Head-to-head home wins >50%", lambda d: d.get("h2h_home_win_pct", 0) > 0.5),
-        ("Home advantage above league avg",
-         lambda d: d.get("home_advantage_home", 0) > d.get("league_home_adv_avg", 0)),
-        ("Last5 home ppg >=2", lambda d: d.get("home_ppg_home5", 0) >= 2.0),
-        ("Last5 away ppg <1", lambda d: d.get("away_ppg_away5", 0) < 1.0),
+        (
+            "Home momentum positive",
+            lambda d: _to_float(d.get("momentum_home")) > 0,
+        ),
+        (
+            "Away Warning Index >0.5",
+            lambda d: _to_float(d.get("warning_index_away")) > 0.5,
+        ),
+        (
+            "Head-to-head home wins >50%",
+            lambda d: _to_float(d.get("h2h_home_win_pct")) > 0.5,
+        ),
+        (
+            "Home advantage above league avg",
+            lambda d: _to_float(d.get("home_advantage_home"))
+            > _to_float(d.get("league_home_adv_avg")),
+        ),
+        (
+            "Last5 home ppg >=2",
+            lambda d: _to_float(d.get("home_ppg_home5")) >= 2.0,
+        ),
+        (
+            "Last5 away ppg <1",
+            lambda d: _to_float(d.get("away_ppg_away5")) < 1.0,
+        ),
     ]
     return _evaluate_checklist(data, rules, threshold)
 
@@ -174,8 +200,16 @@ def home_win_checklist(data: Dict[str, float], threshold: int = 7) -> ChecklistR
 def away_win_checklist(data: Dict[str, float], threshold: int = 7) -> ChecklistResult:
     """Checklist recommending an ``Away win`` bet."""
     rules: List[Rule] = [
-        ("Away >2 points per game (last5 away)", lambda d: d.get("away_ppg_away5", 0) > 2.0),
-        ("ELO away - home >= 50", lambda d: d.get("elo_away", 0) - d.get("elo_home", 0) >= 50),
+        (
+            "Away >2 points per game (last5 away)",
+            lambda d: _to_float(d.get("away_ppg_away5")) > 2.0,
+        ),
+        (
+            "ELO away - home >= 50",
+            lambda d: _to_float(d.get("elo_away"))
+            - _to_float(d.get("elo_home"))
+            >= 50,
+        ),
         (
             "Away attack >1.8 away",
             lambda d: _select_stat(
@@ -188,13 +222,31 @@ def away_win_checklist(data: Dict[str, float], threshold: int = 7) -> ChecklistR
                 d, "home_goals_against_home_avg", "home_goals_against_season_avg", "home_matches_home"
             ) > 1.5,
         ),
-        ("Away momentum positive", lambda d: d.get("momentum_away", 0) > 0),
-        ("Home Warning Index >0.5", lambda d: d.get("warning_index_home", 0) > 0.5),
-        ("Head-to-head away wins >50%", lambda d: d.get("h2h_away_win_pct", 0) > 0.5),
-        ("Away advantage above league avg",
-         lambda d: d.get("away_advantage_away", 0) > d.get("league_away_adv_avg", 0)),
-        ("Last5 away ppg >=2", lambda d: d.get("away_ppg_away5", 0) >= 2.0),
-        ("Last5 home ppg <1", lambda d: d.get("home_ppg_home5", 0) < 1.0),
+        (
+            "Away momentum positive",
+            lambda d: _to_float(d.get("momentum_away")) > 0,
+        ),
+        (
+            "Home Warning Index >0.5",
+            lambda d: _to_float(d.get("warning_index_home")) > 0.5,
+        ),
+        (
+            "Head-to-head away wins >50%",
+            lambda d: _to_float(d.get("h2h_away_win_pct")) > 0.5,
+        ),
+        (
+            "Away advantage above league avg",
+            lambda d: _to_float(d.get("away_advantage_away"))
+            > _to_float(d.get("league_away_adv_avg")),
+        ),
+        (
+            "Last5 away ppg >=2",
+            lambda d: _to_float(d.get("away_ppg_away5")) >= 2.0,
+        ),
+        (
+            "Last5 home ppg <1",
+            lambda d: _to_float(d.get("home_ppg_home5")) < 1.0,
+        ),
     ]
     return _evaluate_checklist(data, rules, threshold)
 
