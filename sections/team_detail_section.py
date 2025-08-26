@@ -192,6 +192,10 @@ def render_team_detail(
 
         footer_cols[0].plotly_chart(fig, use_container_width=True)
 
+        # If a comparison team is selected, stop rendering the rest of the
+        # team detail view so that only the comparison section is displayed.
+        return
+
     st.header(f"📌 Detail týmu: {team}")
 
     # Výpočty
