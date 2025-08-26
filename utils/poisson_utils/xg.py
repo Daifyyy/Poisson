@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Tuple, Optional
 
-from .data import prepare_df
+from .data import prepare_df, detect_current_season, ensure_min_season_matches
 from .prediction import poisson_prediction
 
 
@@ -126,10 +126,11 @@ def expected_goals_weighted_by_elo(df: pd.DataFrame, home_team: str, away_team: 
     if cache_key in league_cache:
         return league_cache[cache_key]
 
-    latest_date = df['Date'].max()
-    one_year_ago = latest_date - pd.Timedelta(days=365)
-    df_hist = df[df['Date'] < one_year_ago]
-    df_season = df[df['Date'] >= one_year_ago]
+    season_df, season_start = detect_current_season(df, prepared=True)
+    df_hist = df[df['Date'] < season_start]
+    df_season = ensure_min_season_matches(
+        df, season_df, season_start, [home_team, away_team]
+    )
     df_last10 = df[
         (df['HomeTeam'] == home_team) | (df['AwayTeam'] == home_team) |
         (df['HomeTeam'] == away_team) | (df['AwayTeam'] == away_team)
