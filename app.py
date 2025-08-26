@@ -4,7 +4,6 @@ import time
 import sys
 import os
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
 
 import streamlit as st
 import pandas as pd
@@ -185,32 +184,13 @@ def compute_cross_league_index(
         Team ratings and league quality tables.
     """
 
-    required_columns = [
-        "Div",
-        "Date",
-        "HomeTeam",
-        "AwayTeam",
-        "FTHG",
-        "FTAG",
-        "HS",
-        "AS",
-        "HST",
-        "AST",
-    ]
-
-    with ThreadPoolExecutor() as executor:
-        league_dfs = list(
-            executor.map(
-                lambda path: load_data(path, columns=required_columns),
-                files.values(),
-            )
-        )
-
     team_frames = []
     match_frames = []
     team_league_map = {}
 
-    for league_df in league_dfs:
+    for _, path in files.items():
+        league_df = load_data(path)
+
         match_frames.append(
             league_df[["Date", "HomeTeam", "AwayTeam", "FTHG", "FTAG"]]
         )
