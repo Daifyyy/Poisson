@@ -456,19 +456,18 @@ def render_team_detail(
         fig_mdi = go.Figure()
         fig_mdi.add_trace(
             go.Bar(
-                x=mdi_df["MDI"],
-                y=mdi_df["Soupeř a výsledek"],
+                x=mdi_df["Soupeř a výsledek"],
+                y=mdi_df["MDI"],
                 customdata=mdi_df["Datum"],
-                orientation="h",
-                hovertemplate="%{y}<br>Datum: %{customdata}<br>MDI: %{x:.1f}<extra></extra>",
+                hovertemplate="Soupeř: %{x}<br>Datum: %{customdata}<br>MDI: %{y:.1f}<extra></extra>",
             )
         )
         # Referenční čára na MDI=50
-        fig_mdi.add_vline(x=50, line_dash="dash", line_color="red")
+        fig_mdi.add_hline(y=50, line_dash="dash", line_color="red")
         fig_mdi.update_layout(
-            xaxis_title="MDI",
-            yaxis_title="Soupeř",
-            xaxis=dict(range=[0, 100]),
+            xaxis_title="Soupeř",
+            yaxis_title="MDI",
+            yaxis=dict(range=[0, 100]),
             showlegend=False,
         )
         st.plotly_chart(fig_mdi, use_container_width=True)
