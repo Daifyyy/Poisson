@@ -61,7 +61,7 @@ def load_data(
             parse_dates=["Date"],
             usecols=columns,
         )
-        df_csv.to_parquet(parquet_path, index=False)
+        df_csv.to_parquet(parquet_path, index=False, engine="pyarrow")
         return df_csv
 
     if parquet_path.exists() and not force_refresh:
@@ -76,13 +76,13 @@ def load_data(
             ):
                 df = _read_csv()
             else:
-                df = pd.read_parquet(parquet_path, columns=columns)
+                df = pd.read_parquet(parquet_path, columns=columns, engine="pyarrow")
         else:
-            df = pd.read_parquet(parquet_path, columns=columns)
+            df = pd.read_parquet(parquet_path, columns=columns, engine="pyarrow")
     elif force_refresh and file_path.exists():
         df = _read_csv()
     elif parquet_path.exists():
-        df = pd.read_parquet(parquet_path, columns=columns)
+        df = pd.read_parquet(parquet_path, columns=columns, engine="pyarrow")
     else:
         df = _read_csv()
 
