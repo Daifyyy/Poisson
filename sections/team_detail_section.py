@@ -28,18 +28,7 @@ def render_team_detail(
     league_name: str,
     gii_dict: Dict[str, float],
 ) -> None:
-    """Render detailed information for a selected team.
-
-    Args:
-        _df: Unused historical dataset (kept for backward compatibility).
-        season_df: DataFrame with season data for statistics.
-        team: Team name to display.
-        league_name: Name of the league.
-        gii_dict: Mapping of teams to intensity index values.
-
-    Returns:
-        None
-    """
+    """Render detailed information for a selected team."""
     st.sidebar.markdown("### ⏱️ Časový filtr")
 
     time_filter = st.sidebar.radio(
@@ -205,13 +194,11 @@ def render_team_detail(
 
     st.header(f"📌 Detail týmu: {team}")
 
-    # Výpočet pro všechny tři varianty
     # Výpočty
     record_all = get_team_record(season_df, team)
     record_home = get_team_record(season_df, team, side="home")
     record_away = get_team_record(season_df, team, side="away")
 
-    # Výpis bilance
     st.markdown(
         f"**📊 Bilance:** &nbsp;&nbsp;&nbsp;"
         f"🟦 Celkem – ✅ {record_all[0]} | 🤝 {record_all[1]} | ❌ {record_all[2]} &nbsp;&nbsp;&nbsp;"
@@ -220,9 +207,7 @@ def render_team_detail(
         unsafe_allow_html=True
     )
 
-    # Sezónní xG a xGA ze dostupného poskytovatele (Understat, FBref nebo pseudo)
     ws_stats = get_team_xg_xga(team, season, season_df)
-
     team_xg = ws_stats.get("xg", np.nan)
     team_xga = ws_stats.get("xga", np.nan)
 
@@ -235,42 +220,21 @@ def render_team_detail(
         st.error(f"Tým '{team}' nebyl nalezen v datech. Zkontroluj správnost názvu.")
         st.stop()
 
-    
-    # Ligový průměr
     league_avg = team_stats.mean()
-    def compare_stat(name, team_value, league_avg):
-        league_value = league_avg.get(name, 0)
-        diff = team_value - league_value
-        return f" *(liga: {league_value:.1f}, Δ {diff:+.1f})*"
 
     advanced_stats = calculate_advanced_team_metrics(season_df)
     league_avg_advanced = advanced_stats.mean()
 
-    
-    
-    
     stats = team_stats.loc[team]
-    #card_stats = get_team_card_stats(season_df, team)
-    # stats['Žluté'] = card_stats['yellow']
-    # stats['Červené'] = card_stats['red']
 
-    # ✅ Kontrola rozsahu dat a počtu zápasů
     st.caption(f"Počet zápasů v aktuálním datasetu: {len(season_df)}")
     st.caption(f"Rozsah dat: {season_df['Date'].min().date()} až {season_df['Date'].max().date()}")
 
-    # Poskytovatel nevrací rozdělení na domácí a venkovní zápasy, použijeme celkový průměr
     home_xg = away_xg = team_xg
     home_xga = away_xga = team_xga
 
-    #card_stats = get_team_card_stats(season_df, team)
-    # yellow_per_foul = card_stats["yellow"] / card_stats["fouls"] if card_stats["fouls"] else 0
-    # red_per_foul = card_stats["red"] / card_stats["fouls"] if card_stats["fouls"] else 0
-
-    # ✅ Očekávané body
     xp_data = calculate_expected_and_actual_points(season_df).get(team, {})
     expected_points = xp_data.get("expected_points", 0)
-
-    
 
     def calc_metrics(df, is_home=None):
         if is_home is None:  # All matches
@@ -303,7 +267,6 @@ def render_team_detail(
             "Červené": red,
         }
 
-    # Výpočet metrik a ligového průměru
     metrics_all = calc_metrics(all_matches)
     metrics_home = calc_metrics(home, is_home=True)
     metrics_away = calc_metrics(away, is_home=False)
@@ -311,7 +274,6 @@ def render_team_detail(
     extra_all = calculate_team_extra_stats(all_matches, team)
     extra_home = calculate_team_extra_stats(home, team)
     extra_away = calculate_team_extra_stats(away, team)
-
 
     st.markdown("### 📊 Průměrné statistiky – Celkem / Doma / Venku")
 
@@ -390,29 +352,18 @@ def render_team_detail(
 
     st.markdown("---")
 
-    
-    
     # ✅ Připrav zápasy týmu
     df_team = season_df[(season_df['HomeTeam'] == team) | (season_df['AwayTeam'] == team)].copy()
-
-    # Přidat info o soupeři
     df_team['Opponent'] = df_team.apply(lambda row: row['AwayTeam'] if row['HomeTeam'] == team else row['HomeTeam'], axis=1)
     df_team['H/A'] = df_team.apply(lambda row: 'H' if row['HomeTeam'] == team else 'A', axis=1)
-
-    # ✅ Kategorizace síly soupeře
     df_team['Soupeř síla'] = df_team['Opponent'].apply(lambda opp: classify_team_strength(season_df, opp))
 
-    # ✅ Aplikace filtru podle obtížnosti
     if difficulty_filter != "Vše":
         df_team = df_team[df_team["Soupeř síla"] == difficulty_filter]
 
-    # Remove matches without a final score to avoid processing upcoming fixtures
     df_team = df_team.dropna(subset=["FTHG", "FTAG"])
-
-    # Posledních 5 zápasů
     last_matches = df_team.sort_values("Date", ascending=False).head(5)
 
-    # ✅ Formátování do tabulky
     def format_result(row):
         is_home = row['HomeTeam'] == team
         opponent = row['AwayTeam'] if is_home else row['HomeTeam']
@@ -420,7 +371,7 @@ def render_team_detail(
         opp_goals = row['FTAG'] if is_home else row['FTHG']
         return pd.Series({
             "Datum": row['Date'].date(),
-            "Soupeř": opponent,  # ❌ žádný prefix
+            "Soupeř": opponent,
             "H/A": "H" if is_home else "A",
             "Skóre": f"{team_goals}:{opp_goals}",
             "Střely": row['HS'] if is_home else row['AS'],
@@ -430,9 +381,7 @@ def render_team_detail(
             "Červené": row['HR'] if is_home else row['AR'],
         })
 
-    # ✅ Převod a styling
-    match_details = last_matches.apply(format_result, axis=1)
-    match_details = match_details.reset_index(drop=True)  # ✅ odstraní indexový sloupec
+    match_details = last_matches.apply(format_result, axis=1).reset_index(drop=True)
 
     def highlight_result(row):
         score = row["Skóre"].split(":")
@@ -444,25 +393,17 @@ def render_team_detail(
 
     styled_matches = match_details.style.apply(highlight_result, axis=1).format(precision=1)
 
-    # ✅ Výstup
     st.markdown("### 🕵️ Posledních 5 zápasů")
-    # st.dataframe(
-    #     styled_matches.hide(axis="index").set_table_attributes('style="width: 100%;"').set_table_styles([
-    #         {"selector": "th", "props": [("text-align", "left")]}
-    #     ]),
-    #     use_container_width=True
-    # )
     st.table(styled_matches)
 
     st.subheader("📊 Match Dominance Index (MDI)")
 
-    # Ligové průměry přes časově filtrovaná data (bez zkreslení podle síly soupeřů)
+    # Ligové průměry přes časově filtrovaná data
     league_avgs = filtered_df[
         ["HS", "AS", "HST", "AST", "HC", "AC", "HF", "AF", "HY", "AY", "HR", "AR"]
     ].mean().to_dict()
 
     strength_map = {"Silní": 1.1, "Průměrní": 1.0, "Slabí": 0.9}
-
 
     def build_mdi_df(df: pd.DataFrame) -> pd.DataFrame:
         records = []
@@ -515,13 +456,15 @@ def render_team_detail(
         fig_mdi = go.Figure()
         fig_mdi.add_trace(
             go.Bar(
-                y=mdi_df["Soupeř a výsledek"],
                 x=mdi_df["MDI"],
+                y=mdi_df["Soupeř a výsledek"],
                 customdata=mdi_df["Datum"],
                 orientation="h",
                 hovertemplate="%{y}<br>Datum: %{customdata}<br>MDI: %{x:.1f}<extra></extra>",
             )
         )
+        # Referenční čára na MDI=50
+        fig_mdi.add_vline(x=50, line_dash="dash", line_color="red")
         fig_mdi.update_layout(
             xaxis_title="MDI",
             yaxis_title="Soupeř",
@@ -536,10 +479,7 @@ def render_team_detail(
     yellow_per_foul = stats['Žluté'] / stats['Fauly'] if stats['Fauly'] else 0
     red_per_foul = stats.get('Červené', 0) / stats['Fauly'] if stats['Fauly'] else 0
 
-    # # Defenzivní efektivita – gól na střelu
     defensive_efficiency = (stats['Obdržené góly'] / stats['Střely']) if stats['Střely'] else 0
-
-    # # Přesnost a konverze
     conversion_rate = (stats['Góly'] / stats['Střely']) if stats['Střely'] else 0
 
     df_team = season_df[(season_df['HomeTeam'] == team) | (season_df['AwayTeam'] == team)].copy()
@@ -581,7 +521,6 @@ def render_team_detail(
             st.markdown("### 🧩 Další pozorování")
             for tag in profile["profilové hodnocení"]:
                 st.markdown(f"- {tag}")
-
 
     # 📈 ELO rating progression
     elo_prog = elo_history(season_df, team)
@@ -635,63 +574,3 @@ def render_team_detail(
     footer_cols[0].plotly_chart(fig, use_container_width=True)
 
     return
-
-    
-    # def extract_match_stats(row):
-    #     is_home = row['HomeTeam'] == team
-    #     return pd.Series({
-    #         "Soupeř": row['Opponent'],
-    #         "Typ soupeře": row['Strength'],
-    #         "Góly": row['FTHG'] if is_home else row['FTAG'],
-    #         "Střely": row['HS'] if is_home else row['AS'],
-    #         "Na branku": row['HST'] if is_home else row['AST'],
-    #         "Fauly": row['HF'] if is_home else row['AF'],
-    #         "Žluté": row['HY'] if is_home else row['AY'],
-    #         "Červené": row['HR'] if is_home else row['AR']
-    #     })
-
-    # detailed_stats = df_team.apply(extract_match_stats, axis=1)
-    # numeric_columns = detailed_stats.select_dtypes(include='number').columns
-    # avg_by_strength = detailed_stats.groupby("Typ soupeře")[numeric_columns].mean().round(2)
-    # st.markdown("---")
-    # st.subheader("📉 Výkonnost proti kategoriím soupeřů")
-    # st.markdown("Souhrnné statistiky proti různě silným soupeřům")
-    # # Shrnutí disciplíny
-    # if yellow_per_foul > 0.25:
-    #     st.markdown(f"🟡 Tým fauluje poměrně neukázněně – **{yellow_per_foul:.2f}** žlutých na 1 faul.")
-    # else:
-    #     st.markdown(f"🟢 Tým je relativně disciplinovaný – **{yellow_per_foul:.2f}** žlutých na 1 faul.")
-
-    # if red_per_foul > 0.05:
-    #     st.markdown(f"🔴 Relativně vysoký výskyt červených karet: **{red_per_foul:.2f}** na faul.")
-
-    # # Shrnutí konverze a obrany
-    # if conversion_rate > 0.15 and defensive_efficiency > 0.12:
-    #     st.markdown("🔁 **Souhrn:** Tým má ofenzivní sílu, ale defenzivní slabiny.")
-    # elif conversion_rate < 0.08 and defensive_efficiency < 0.07:
-    #     st.markdown("🧤 **Souhrn:** Tým je defenzivně pevný, ale v útoku neefektivní.")
-    # elif conversion_rate > 0.15 and defensive_efficiency < 0.07:
-    #     st.markdown("💪 **Souhrn:** Tým je dominantní na obou stranách – silný útok i obrana.")
-    # elif conversion_rate < 0.08 and defensive_efficiency > 0.12:
-    #     st.markdown("⚠️ **Souhrn:** Tým má potíže v útoku i v obraně.")
-
-    # if conversion_rate > 0.15:
-    #     st.markdown(f"⚽ Tým má vysokou konverzní míru – **{conversion_rate*100:.1f}%** střel končí gólem.")
-    # elif conversion_rate < 0.08:
-    #     st.markdown(f"🚫 Nízká konverzní míra – pouze **{conversion_rate*100:.1f}%** střel je gólových.")
-
-    # if defensive_efficiency > 0.12:
-    #     st.markdown(f"❗ Tým dostává gól z každé 8. střely – defenziva je zranitelná.")
-    # st.table(avg_by_strength.style.format("{:.2f}"))
-
-    # # Verbální shrnutí výkonu proti kategoriím soupeřů
-    # if set(["Silný", "Slabý"]).issubset(avg_by_strength.index):
-    #     g_strong = avg_by_strength.loc["Silný", "Góly"]
-    #     g_weak = avg_by_strength.loc["Slabý", "Góly"]
-    #     d_strong = avg_by_strength.loc["Silný", "Na branku"]
-    #     d_weak = avg_by_strength.loc["Slabý", "Na branku"]
-    #     delta_g = g_weak - g_strong
-    #     delta_s = d_weak - d_strong
-    #     desc = "📌 Proti silným týmům tým skóruje méně" if delta_g > 0.3 else "📌 Výkon proti silným je vyrovnaný"
-    #     desc += f", rozdíl v průměru gólů: **{delta_g:.2f}**, střel na branku: **{delta_s:.2f}**."
-    #     st.markdown(desc)

@@ -78,5 +78,6 @@ def calculate_mdi(
         away_norm = _norm(away_col)
         score += (away_norm - home_norm) * WEIGHTS[weight_key]
 
-    score *= 100 * opponent_strength
+    score *= opponent_strength
+    score = 50 + score * 50
     return float(max(0.0, min(100.0, score)))
