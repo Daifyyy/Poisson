@@ -3,6 +3,7 @@ from .data import (
     load_data,
     detect_current_season,
     get_last_n_matches,
+    ensure_min_season_matches,
 )
 
 from .stats import (
@@ -29,6 +30,7 @@ __all__ = [
     "load_data",
     "detect_current_season",
     "get_last_n_matches",
+    "ensure_min_season_matches",
     "aggregate_team_stats",
     "calculate_points",
     "add_btts_column",

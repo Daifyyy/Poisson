@@ -3,7 +3,12 @@ import numpy as np
 from scipy.stats import poisson
 import streamlit as st
 
-from .data import prepare_df, get_last_n_matches, detect_current_season
+from .data import (
+    prepare_df,
+    get_last_n_matches,
+    detect_current_season,
+    ensure_min_season_matches,
+)
 from .stats import calculate_points
 from .prediction import poisson_over25_probability, expected_goals_vs_similar_elo_weighted
 from .xg_sources import get_team_xg_xga
@@ -467,11 +472,11 @@ def expected_goals_weighted_by_home_away(df, home_team, away_team, elo_dict) -> 
     """
     df = prepare_df(df)
 
-    latest_date = df['Date'].max()
-    one_year_ago = latest_date - pd.Timedelta(days=365)
-
-    df_hist = df[df['Date'] < one_year_ago]
-    df_season = df[df['Date'] >= one_year_ago]
+    season_df, season_start = detect_current_season(df, prepared=True)
+    df_hist = df[df['Date'] < season_start]
+    df_season = ensure_min_season_matches(
+        df, season_df, season_start, [home_team, away_team]
+    )
     df_last10 = df[
         (df['HomeTeam'] == home_team) | (df['AwayTeam'] == home_team) |
         (df['HomeTeam'] == away_team) | (df['AwayTeam'] == away_team)
@@ -597,11 +602,11 @@ def expected_goals_combined_homeaway_allmatches(
     weight_matchup: float = 0.3,
 ) -> tuple[float, float]:
     df = prepare_df(df)
-    latest_date = df['Date'].max()
-    one_year_ago = latest_date - pd.Timedelta(days=365)
-
-    df_hist = df[df['Date'] < one_year_ago]
-    df_season = df[df['Date'] >= one_year_ago]
+    season_df, season_start = detect_current_season(df, prepared=True)
+    df_hist = df[df['Date'] < season_start]
+    df_season = ensure_min_season_matches(
+        df, season_df, season_start, [home_team, away_team]
+    )
 
     # posledních 5 zápasů
     df_last5_home = get_last_n_matches(df, home_team, role="home")
