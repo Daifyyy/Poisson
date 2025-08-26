@@ -75,6 +75,40 @@ def test_stronger_opponent_produces_higher_mdi():
     assert weak < strong
 
 
+def test_calculate_mdi_balanced_stats_is_50():
+    row = pd.Series(
+        {
+            "HS": 10,
+            "AS": 10,
+            "HST": 5,
+            "AST": 5,
+            "HC": 3,
+            "AC": 3,
+            "HF": 9,
+            "AF": 9,
+            "HY": 3,
+            "AY": 3,
+            "HR": 1,
+            "AR": 1,
+        }
+    )
+    league_avgs = {
+        "HS": 10,
+        "AS": 10,
+        "HST": 5,
+        "AST": 5,
+        "HC": 3,
+        "AC": 3,
+        "HF": 9,
+        "AF": 9,
+        "HY": 3,
+        "AY": 3,
+        "HR": 1,
+        "AR": 1,
+    }
+    assert calculate_mdi(row, league_avgs, opponent_strength=1.0) == 50.0
+
+
 @pytest.mark.parametrize(
     "row",
     [
