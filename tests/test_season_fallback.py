@@ -29,6 +29,7 @@ def test_ensure_min_season_matches_adds_previous_season():
     season_df, season_start = detect_current_season(df, prepared=True)
     augmented = ensure_min_season_matches(df, season_df, season_start, ['A'])
     team_matches = augmented[(augmented['HomeTeam'] == 'A') | (augmented['AwayTeam'] == 'A')]
+    # Očekáváme, že se k aktuálním 3 zápasům přidá 10 z minulé sezóny => 13 celkem
     assert len(team_matches) == len(curr) + 10
 
 
@@ -63,5 +64,6 @@ def test_ensure_min_season_matches_handles_multiple_teams():
     augmented = ensure_min_season_matches(df, season_df, season_start, ['A', 'B'])
     count_a = len(augmented[(augmented['HomeTeam'] == 'A') | (augmented['AwayTeam'] == 'A')])
     count_b = len(augmented[(augmented['HomeTeam'] == 'B') | (augmented['AwayTeam'] == 'B')])
+    # Každý tým má být dorovnán aspoň na 12 zápasů
     assert count_a == 12
     assert count_b == 12
