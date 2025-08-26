@@ -25,7 +25,17 @@ def test_update_all_leagues_adds_new_matches(tmp_path, monkeypatch):
             self.status_code = 200
             self.text = text
 
-    monkeypatch.setattr(update_data.requests, "get", lambda url: DummyResp(new_csv))
+    class DummySession:
+        def get(self, url, timeout=None, stream=False):
+            return DummyResp(new_csv)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+    monkeypatch.setattr(update_data.requests, "Session", lambda: DummySession())
     monkeypatch.chdir(tmp_path)
 
     messages = update_data.update_all_leagues()
