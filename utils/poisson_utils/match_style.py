@@ -312,11 +312,30 @@ def calculate_full_attacking_pressure(df: pd.DataFrame, team: str) -> float:
 
     return round(attacking_pressure, 2)
 
-def get_team_style_vs_opponent_type(df: pd.DataFrame, team: str, opponent_team: str) -> float:
+def get_team_style_vs_opponent_type(df: pd.DataFrame, team: str, opponent_team: str) -> dict:
+    """Vrátí průměrné komponenty herního stylu proti soupeřům podobné síly.
+
+    Funkce vybere všechny zápasy daného ``teamu`` proti soupeřům, kteří
+    spadají do stejné kategorie síly jako ``opponent_team``.  Z těchto
+    zápasů se spočítá průměr normalizovaných složek stylu hry a hodnoty se
+    škálují na rozsah 0–100 pro snadné vizualizace v radarovém grafu.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Datový rámec se zápasy.
+    team : str
+        Název týmu, pro který se styl počítá.
+    opponent_team : str
+        Soupeř, podle jehož síly se vybere kategorie protivníků.
+
+    Returns
+    -------
+    dict
+        Mapa názvů metrik (``Tempo``, ``Góly``, ``Konverze``, ``Agrese``)
+        na průměrné hodnoty v intervalu 0–100.  Pokud nejsou dostupná
+        žádná data, vrací se prázdný slovník.
     """
-    Vrací průměrný MatchStyleScore (nebo GII), když tým hrál proti soupeřům stejné kategorie jako `opponent_team`.
-    """
-    
 
     df = calculate_match_style_score_per_match(df)
     df = prepare_df(df)
@@ -325,23 +344,31 @@ def get_team_style_vs_opponent_type(df: pd.DataFrame, team: str, opponent_team: 
     opponent_class = classify_team_strength(df, opponent_team)
 
     # Najdi všechny zápasy daného týmu
-    matches = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)].copy()
+    matches = df[(df["HomeTeam"] == team) | (df["AwayTeam"] == team)].copy()
     matches["Opponent"] = matches.apply(
         lambda row: row["AwayTeam"] if row["HomeTeam"] == team else row["HomeTeam"], axis=1
     )
 
     # Zjisti sílu každého soupeře
-    matches["OpponentClass"] = matches["Opponent"].apply(lambda opp: classify_team_strength(df, opp))
+    matches["OpponentClass"] = matches["Opponent"].apply(
+        lambda opp: classify_team_strength(df, opp)
+    )
 
     # Filtrovat pouze zápasy proti stejné kategorii
     filtered = matches[matches["OpponentClass"] == opponent_class]
 
     if filtered.empty:
         print(f"[{team}] ⚠️ Žádné zápasy proti {opponent_class} týmům.")
-        return None
+        return {}
 
-    # Výpočet průměrného stylu (MatchStyleScore)
-    return round(filtered["MatchStyleScore"].mean(), 1)
+    metric_map = {
+        "Tempo_norm": "Tempo",
+        "Goly_norm": "Góly",
+        "Konverze_norm": "Konverze",
+        "Agrese_norm": "Agrese",
+    }
+    averages = filtered[list(metric_map.keys())].mean()
+    return {metric_map[col]: round(val * 100, 1) for col, val in averages.items()}
 
 
 def get_team_average_gii(df: pd.DataFrame) -> dict:
