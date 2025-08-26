@@ -113,22 +113,32 @@ def over25_checklist(data: Dict[str, float], threshold: int = 7) -> ChecklistRes
         ),
         (
             "Both teams BTTS% >55%",
-            lambda d: d.get("btts_pct_home", 0) > 0.55 and d.get("btts_pct_away", 0) > 0.55,
+            lambda d: _to_float(d.get("btts_pct_home")) > 0.55
+            and _to_float(d.get("btts_pct_away")) > 0.55,
         ),
         (
             "Both teams Over2.5% >55%",
-            lambda d: d.get("over25_pct_home", 0) > 0.55 and d.get("over25_pct_away", 0) > 0.55,
+            lambda d: _to_float(d.get("over25_pct_home")) > 0.55
+            and _to_float(d.get("over25_pct_away")) > 0.55,
         ),
         (
             "Expected goals sum >2.8",
-            lambda d: d.get("poisson_home_exp", 0) + d.get("poisson_away_exp", 0) > 2.8,
+            lambda d: _to_float(d.get("poisson_home_exp"))
+            + _to_float(d.get("poisson_away_exp"))
+            > 2.8,
         ),
-        ("Expected tempo >40", lambda d: d.get("expected_tempo", 0) > 40),
+        (
+            "Expected tempo >40",
+            lambda d: _to_float(d.get("expected_tempo")) > 40,
+        ),
         (
             "Both teams GII >0.3",
             lambda d: _to_float(d.get("gii_home")) > 0.3 and _to_float(d.get("gii_away")) > 0.3,
         ),
-        ("Score variance >2.0", lambda d: d.get("score_var", 0) > 2.0),
+        (
+            "Score variance >2.0",
+            lambda d: _to_float(d.get("score_var")) > 2.0,
+        ),
     ]
     return _evaluate_checklist(data, rules, threshold)
 
