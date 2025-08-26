@@ -39,7 +39,10 @@ from utils.poisson_utils import (
 from utils.frontend_utils import display_team_status_table
 from utils.poisson_utils.match_style import tempo_tag
 from utils.radar_chart import plot_style_radar
-from utils.poisson_utils.team_analysis import TEAM_COMPARISON_DESC_MAP
+from utils.poisson_utils.team_analysis import (
+    TEAM_COMPARISON_DESC_MAP,
+    calculate_team_home_advantage,
+)
 from utils.export_utils import generate_excel_analysis_export
 from utils.utils_warnings import (
     scoreline_variance_warning,
@@ -63,6 +66,12 @@ from utils.ml.random_forest import (
     predict_proba,
     predict_over25_proba,
 )
+from checklist_rules import (
+    over25_checklist,
+    home_win_checklist,
+    away_win_checklist,
+)
+from utils.poisson_utils.stats import compute_score_stats, calculate_points
 
 # Map team names from the external xG workbook to the naming used in our
 # datasets.  Without this normalisation query parameters constructed from the
@@ -407,6 +416,18 @@ def display_metrics(
             )
 
 
+def display_checklists(results: List[Tuple[str, Any]]) -> None:
+    """Render checklist evaluation results in expandable sections."""
+    st.markdown("## ✅ Checklisty")
+    for name, res in results:
+        status = "✅" if res.passed else "❌"
+        header = f"{status} {name} ({res.score}/{res.threshold})"
+        with st.expander(header):
+            for desc, ok in res.rule_results.items():
+                icon = "✅" if ok else "❌"
+                st.write(f"{icon} {desc}")
+
+
 
 
 
@@ -688,10 +709,122 @@ def render_single_match_prediction(
         strength_away,
     )
 
+    h2h = get_head_to_head_stats(full_df, home_team, away_team, last_n=None)
+
+    # Checklist evaluation
+    home_home = df[df["HomeTeam"] == home_team]
+    away_away = df[df["AwayTeam"] == away_team]
+
+    def _avg(series: pd.Series) -> float:
+        return float(series.mean()) if not series.empty else 0.0
+
+    def _ppg_last5(matches: pd.DataFrame, is_home: bool) -> float:
+        recent = matches.sort_values("Date").tail(5)
+        pts = [calculate_points(row, is_home) for _, row in recent.iterrows()]
+        return float(np.mean(pts)) if pts else 0.0
+
+    home_all = df[(df["HomeTeam"] == home_team) | (df["AwayTeam"] == home_team)]
+    away_all = df[(df["HomeTeam"] == away_team) | (df["AwayTeam"] == away_team)]
+
+    def _for_against(matches: pd.DataFrame, team: str) -> Tuple[float, float]:
+        gf, ga = [], []
+        for _, r in matches.iterrows():
+            if r["HomeTeam"] == team:
+                gf.append(r["FTHG"])
+                ga.append(r["FTAG"])
+            else:
+                gf.append(r["FTAG"])
+                ga.append(r["FTHG"])
+        return (_avg(pd.Series(gf)), _avg(pd.Series(ga)))
+
+    hgfh = _avg(home_home["FTHG"])
+    hgah = _avg(home_home["FTAG"])
+    agfa = _avg(away_away["FTAG"])
+    agaa = _avg(away_away["FTHG"])
+
+    hgfs, hgas = _for_against(home_all, home_team)
+    agfs, agas = _for_against(away_all, away_team)
+
+    btts_home = (
+        ((home_home["FTHG"] > 0) & (home_home["FTAG"] > 0)).mean()
+        if not home_home.empty
+        else 0.0
+    )
+    btts_away = (
+        ((away_away["FTHG"] > 0) & (away_away["FTAG"] > 0)).mean()
+        if not away_away.empty
+        else 0.0
+    )
+    over_home = (
+        ((home_home["FTHG"] + home_home["FTAG"]) > 2.5).mean()
+        if not home_home.empty
+        else 0.0
+    )
+    over_away = (
+        ((away_away["FTHG"] + away_away["FTAG"]) > 2.5).mean()
+        if not away_away.empty
+        else 0.0
+    )
+
+    _, _, var_home = compute_score_stats(df, home_team)
+    _, _, var_away = compute_score_stats(df, away_team)
+    score_var = float(np.nan_to_num((var_home + var_away) / 2))
+
+    league_home_adv = _avg(df["FTHG"]) - _avg(df["FTAG"])
+
+    _, momentum_home, _ = detect_overperformance_and_momentum(df, home_team)
+    _, momentum_away, _ = detect_overperformance_and_momentum(df, away_team)
+
+    h2h_home_pct = h2h["home_wins"] / h2h["matches"] if h2h else 0.0
+    h2h_away_pct = h2h["away_wins"] / h2h["matches"] if h2h else 0.0
+
+    checklist_data = {
+        "home_goals_for_home_avg": hgfh,
+        "home_goals_for_season_avg": hgfs,
+        "home_matches_home": len(home_home),
+        "away_goals_for_away_avg": agfa,
+        "away_goals_for_season_avg": agfs,
+        "away_matches_away": len(away_away),
+        "home_goals_against_home_avg": hgah,
+        "home_goals_against_season_avg": hgas,
+        "away_goals_against_away_avg": agaa,
+        "away_goals_against_season_avg": agas,
+        "btts_pct_home": btts_home,
+        "btts_pct_away": btts_away,
+        "over25_pct_home": over_home,
+        "over25_pct_away": over_away,
+        "poisson_home_exp": home_exp,
+        "poisson_away_exp": away_exp,
+        "expected_tempo": expected_tempo,
+        "gii_home": gii_dict.get(home_team, 0.0),
+        "gii_away": gii_dict.get(away_team, 0.0),
+        "score_var": score_var,
+        "home_ppg_home5": _ppg_last5(home_home, True),
+        "away_ppg_away5": _ppg_last5(away_away, False),
+        "elo_home": elo_dict.get(home_team, 1500),
+        "elo_away": elo_dict.get(away_team, 1500),
+        "momentum_home": momentum_home,
+        "momentum_away": momentum_away,
+        "warning_index_home": warning_index_home,
+        "warning_index_away": warning_index_away,
+        "h2h_home_win_pct": h2h_home_pct,
+        "h2h_away_win_pct": h2h_away_pct,
+        "home_advantage_home": calculate_team_home_advantage(df, home_team),
+        "league_home_adv_avg": league_home_adv,
+        "away_advantage_away": -calculate_team_home_advantage(df, away_team),
+        "league_away_adv_avg": -league_home_adv,
+    }
+
+    checklist_results = [
+        ("Over 2.5", over25_checklist(checklist_data)),
+        ("Home win", home_win_checklist(checklist_data)),
+        ("Away win", away_win_checklist(checklist_data)),
+    ]
+    display_checklists(checklist_results)
+
     # Head-to-head statistiky
     # Head-to-Head – kompaktní přehled
     st.markdown("## 💬 Head-to-Head")
-    h2h = get_head_to_head_stats(full_df, home_team, away_team, last_n=None)
 
     if h2h:
         h2h_cols = responsive_columns(6)
@@ -709,14 +842,20 @@ def render_single_match_prediction(
         h2h_cols[3].markdown(f"<h3 style='margin-top:-5px'>{h2h['away_wins']}</h3>", unsafe_allow_html=True)
 
         h2h_cols[4].markdown("🎯 **Průměr gólů**")
-        h2h_cols[4].markdown(f"<h3 style='margin-top:-5px'>{h2h['avg_goals']}</h3>", unsafe_allow_html=True)
+        h2h_cols[4].markdown(
+            f"<h3 style='margin-top:-5px'>{h2h['avg_goals']}</h3>",
+            unsafe_allow_html=True,
+        )
 
         h2h_cols[5].markdown("🤝 **BTTS / Over 2.5**")
-        h2h_cols[5].markdown(f"<h3 style='margin-top:-5px'>{h2h['btts_pct']}% / {h2h['over25_pct']}%</h3>", unsafe_allow_html=True)
+        h2h_cols[5].markdown(
+            f"<h3 style='margin-top:-5px'>{h2h['btts_pct']}% / {h2h['over25_pct']}%</h3>",
+            unsafe_allow_html=True,
+        )
     else:
         st.warning("⚠️ Nenašly se žádné vzájemné zápasy.")
 
-        
+
     # Nejpravděpodobnější výsledky
     top_scores = get_top_scorelines(matrix, top_n=5)
     home_probs, away_probs = get_goal_probabilities(matrix)
