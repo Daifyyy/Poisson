@@ -150,7 +150,8 @@ def over25_checklist(data: Dict[str, float], threshold: int = 7) -> ChecklistRes
         ),
         (
             "Both teams GII >0.3",
-            lambda d: d.get("gii_home", 0) > 0.3 and d.get("gii_away", 0) > 0.3,
+            lambda d: float(d.get("gii_home") or 0) > 0.3
+            and float(d.get("gii_away") or 0) > 0.3,
         ),
         (
             "Score variance >2.0",
