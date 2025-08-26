@@ -14,14 +14,20 @@ def prepare_df(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def load_data(file_path: str, *, force_refresh: bool = False) -> pd.DataFrame:
+def load_data(
+    file_path: str,
+    *,
+    columns: list[str] | None = None,
+    force_refresh: bool = False,
+) -> pd.DataFrame:
     """Načte CSV soubor a připraví ho.
 
     Pokud existuje soubor ``.parquet`` se stejným názvem, funkce porovná
     časy poslední úpravy a velikosti obou souborů.  Novější nebo velikostně
     odlišný ``.csv`` přepíše cache v ``.parquet``.  Volitelným parametrem
     ``force_refresh`` lze vynutit načtení z ``.csv`` bez ohledu na tyto
-    kontroly.
+    kontroly.  Parametr ``columns`` dovoluje načíst jen vybraný podmnožinu
+    sloupců, která je předána ``pandas.read_csv`` nebo ``pandas.read_parquet``.
     """
     numeric_columns = [
         "FTHG",
@@ -44,8 +50,17 @@ def load_data(file_path: str, *, force_refresh: bool = False) -> pd.DataFrame:
     parquet_path = file_path.with_suffix(".parquet")
 
     def _read_csv() -> pd.DataFrame:
-        dtype_mapping = {col: "Int64" for col in numeric_columns}
-        df_csv = pd.read_csv(file_path, dtype=dtype_mapping, parse_dates=["Date"])
+        dtype_mapping = {
+            col: "Int64"
+            for col in numeric_columns
+            if columns is None or col in columns
+        }
+        df_csv = pd.read_csv(
+            file_path,
+            dtype=dtype_mapping,
+            parse_dates=["Date"],
+            usecols=columns,
+        )
         df_csv.to_parquet(parquet_path, index=False)
         return df_csv
 
@@ -61,38 +76,42 @@ def load_data(file_path: str, *, force_refresh: bool = False) -> pd.DataFrame:
             ):
                 df = _read_csv()
             else:
-                df = pd.read_parquet(parquet_path)
+                df = pd.read_parquet(parquet_path, columns=columns)
         else:
-            df = pd.read_parquet(parquet_path)
+            df = pd.read_parquet(parquet_path, columns=columns)
     elif force_refresh and file_path.exists():
         df = _read_csv()
     elif parquet_path.exists():
-        df = pd.read_parquet(parquet_path)
+        df = pd.read_parquet(parquet_path, columns=columns)
     else:
         df = _read_csv()
 
     df = prepare_df(df)
-    required_columns = [
-        "Date",
-        "HomeTeam",
-        "AwayTeam",
-        "FTHG",
-        "FTAG",
-        "HS",
-        "AS",
-        "HST",
-        "AST",
-        "HC",
-        "AC",
-        "FTR",
-        "HY",
-        "AY",
-        "HR",
-        "AR",
-        "HF",
-        "AF",
-    ]
-    missing_columns = set(required_columns) - set(df.columns)
+    required_columns = (
+        columns
+        if columns is not None
+        else [
+            "Date",
+            "HomeTeam",
+            "AwayTeam",
+            "FTHG",
+            "FTAG",
+            "HS",
+            "AS",
+            "HST",
+            "AST",
+            "HC",
+            "AC",
+            "FTR",
+            "HY",
+            "AY",
+            "HR",
+            "AR",
+            "HF",
+            "AF",
+        ]
+    )
+    missing_columns = set(required_columns or []) - set(df.columns)
     if missing_columns:
         raise ValueError(f"Missing columns: {', '.join(sorted(missing_columns))}")
 
