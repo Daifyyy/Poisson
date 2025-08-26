@@ -185,6 +185,40 @@ def get_last_n_matches(df, team, role="both", n=10):
     return matches.sort_values("Date").tail(n)
 
 
+def ensure_min_season_matches(
+    df: pd.DataFrame,
+    season_df: pd.DataFrame,
+    season_start: pd.Timestamp,
+    teams: list[str],
+    min_required: int = 10,
+    fallback_n: int = 10,
+) -> pd.DataFrame:
+    """Doplní zápasy z minulé sezony, pokud je aktuální vzorek malý.
+
+    Pokud má některý tým v ``season_df`` méně než ``min_required`` zápasů,
+    přidá se mu posledních ``fallback_n`` utkání před ``season_start``.
+    """
+
+    result = season_df.copy()
+    for team in teams:
+        # počítáme pouze zápasy z aktuální sezóny, abychom zabránili tomu, že
+        # zápasy přidané pro jiný tým uměle navýší počet utkání tohoto týmu
+        season_mask = (season_df["HomeTeam"] == team) | (
+            season_df["AwayTeam"] == team
+        )
+        if season_mask.sum() < min_required:
+            prev = df[
+                (df["Date"] < season_start)
+                & ((df["HomeTeam"] == team) | (df["AwayTeam"] == team))
+            ].sort_values("Date").tail(fallback_n)
+            result = pd.concat([result, prev], ignore_index=True)
+
+    return (
+        result.drop_duplicates(subset=["Date", "HomeTeam", "AwayTeam"])
+        .sort_values("Date")
+    )
+
+
 def load_cup_matches(team_league_map: dict[str, str], data_dir: str | Path = "data") -> pd.DataFrame:
     """Load cup fixtures and map teams to their domestic leagues.
 

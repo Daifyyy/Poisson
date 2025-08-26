@@ -7,6 +7,7 @@ from .data import (
     get_last_n_matches,
     load_cup_matches,
     load_cup_team_stats,
+    ensure_min_season_matches,
 )
 
 from .stats import (
