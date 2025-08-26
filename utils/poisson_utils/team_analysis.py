@@ -537,12 +537,14 @@ def expected_goals_vs_opponent_strength_weighted(df, team, opponent, elo_dict, i
 
     team_matches = df[df['HomeTeam'] == team] if is_home else df[df['AwayTeam'] == team]
     team_matches = team_matches.tail(n)
-    if team_matches.empty:
-        return 1.0  # fallback
 
-    team_col = 'HomeTeam' if is_home else 'AwayTeam'
-    opp_col = 'AwayTeam' if is_home else 'HomeTeam'
     gf_col = 'FTHG' if is_home else 'FTAG'
+    league_avg = df[gf_col].mean()
+
+    if team_matches.empty:
+        return round(league_avg, 2)  # fallback
+
+    opp_col = 'AwayTeam' if is_home else 'HomeTeam'
 
     team_matches = team_matches.copy()
     team_matches["Opponent"] = team_matches[opp_col]
@@ -568,7 +570,8 @@ def expected_goals_vs_opponent_strength_weighted(df, team, opponent, elo_dict, i
     gfs = {}
     for group in ["strong", "average", "weak"]:
         sub = team_matches[team_matches["OppStrength"] == group]
-        gfs[group] = sub[gf_col].mean() if not sub.empty else 1.0
+        group_mean = sub[gf_col].mean() if not sub.empty else league_avg
+        gfs[group] = group_mean / league_avg
 
     weights = {
         "strong": 0.6 if current_strength == "strong" else 0.2,
@@ -576,11 +579,13 @@ def expected_goals_vs_opponent_strength_weighted(df, team, opponent, elo_dict, i
         "weak": 0.6 if current_strength == "weak" else 0.2,
     }
 
-    expected = (
+    expected_ratio = (
         weights["strong"] * gfs["strong"] +
         weights["average"] * gfs["average"] +
         weights["weak"] * gfs["weak"]
     )
+
+    expected = league_avg * expected_ratio
 
     return round(expected, 2)
 
