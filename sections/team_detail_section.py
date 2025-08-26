@@ -467,11 +467,36 @@ def render_team_detail(
     def build_mdi_df(df: pd.DataFrame) -> pd.DataFrame:
         records = []
         for _, row in df.iterrows():
-            opponent = row['AwayTeam'] if row['HomeTeam'] == team else row['HomeTeam']
+            is_home = row['HomeTeam'] == team
+            opponent = row['AwayTeam'] if is_home else row['HomeTeam']
             strength_label = classify_team_strength(season_df, opponent)
             coeff = strength_map.get(strength_label, 1.0)
-            mdi_val = calculate_mdi(row, league_avgs, coeff)
-            records.append({"Datum": row['Date'].date(), "Soupeř": opponent, "MDI": mdi_val})
+
+            # Přepočet statistik na perspektivu zvoleného týmu
+            row_for_mdi = row.copy()
+            if not is_home:
+                swap_cols = {
+                    "HS": "AS", "AS": "HS",
+                    "HST": "AST", "AST": "HST",
+                    "HC": "AC", "AC": "HC",
+                    "HF": "AF", "AF": "HF",
+                    "HY": "AY", "AY": "HY",
+                    "HR": "AR", "AR": "HR",
+                }
+                row_for_mdi = row_for_mdi.rename(swap_cols)
+
+            mdi_val = calculate_mdi(row_for_mdi, league_avgs, coeff)
+
+            team_goals = row['FTHG'] if is_home else row['FTAG']
+            opp_goals = row['FTAG'] if is_home else row['FTHG']
+            records.append(
+                {
+                    "Datum": row['Date'].date(),
+                    "Soupeř": opponent,
+                    "Výsledek": f"{team_goals}-{opp_goals}",
+                    "MDI": mdi_val,
+                }
+            )
         return pd.DataFrame(records)
 
     mdi_all = build_mdi_df(recent_all)
@@ -486,16 +511,23 @@ def render_team_detail(
     }[mdi_option]
 
     if not mdi_df.empty:
+        mdi_df["Soupeř a výsledek"] = mdi_df["Soupeř"] + " " + mdi_df["Výsledek"]
         fig_mdi = go.Figure()
         fig_mdi.add_trace(
             go.Bar(
-                x=mdi_df["Datum"],
-                y=mdi_df["MDI"],
-                text=mdi_df["Soupeř"],
-                hovertemplate="%{x}<br>%{text}<br>MDI: %{y:.1f}<extra></extra>",
+                y=mdi_df["Soupeř a výsledek"],
+                x=mdi_df["MDI"],
+                customdata=mdi_df["Datum"],
+                orientation="h",
+                hovertemplate="%{y}<br>Datum: %{customdata}<br>MDI: %{x:.1f}<extra></extra>",
             )
         )
-        fig_mdi.update_layout(xaxis_title="Datum", yaxis_title="MDI", showlegend=False)
+        fig_mdi.update_layout(
+            xaxis_title="MDI",
+            yaxis_title="Soupeř",
+            xaxis=dict(range=[0, 100]),
+            showlegend=False,
+        )
         st.plotly_chart(fig_mdi, use_container_width=True)
     else:
         st.info("MDI není dostupné pro zvolený filtr")
