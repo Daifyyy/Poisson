@@ -52,6 +52,10 @@ def calculate_mdi(
     if all(pd.isna(row.get(col)) or row.get(col, 0) == 0 for col in relevant_cols):
         return 50.0
 
+    def _norm(col: str) -> float:
+        avg = league_avgs.get(col) or 1
+        return row.get(col, 0) / avg
+
     score = 0.0
 
     # Statistiky, kde vyšší hodnota je pozitivní
@@ -60,8 +64,8 @@ def calculate_mdi(
         ("HST", "AST", "shots_on_target"),
         ("HC", "AC", "corners"),
     ]:
-        home_norm = row.get(home_col, 0) / league_avgs.get(home_col, 1)
-        away_norm = row.get(away_col, 0) / league_avgs.get(away_col, 1)
+        home_norm = _norm(home_col)
+        away_norm = _norm(away_col)
         score += (home_norm - away_norm) * WEIGHTS[weight_key]
 
     # Statistiky, kde nižší hodnota je pozitivní
@@ -70,8 +74,8 @@ def calculate_mdi(
         ("HY", "AY", "yellow_cards"),
         ("HR", "AR", "red_cards"),
     ]:
-        home_norm = row.get(home_col, 0) / league_avgs.get(home_col, 1)
-        away_norm = row.get(away_col, 0) / league_avgs.get(away_col, 1)
+        home_norm = _norm(home_col)
+        away_norm = _norm(away_col)
         score += (away_norm - home_norm) * WEIGHTS[weight_key]
 
     score *= 100 * opponent_strength
