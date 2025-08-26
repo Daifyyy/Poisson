@@ -87,8 +87,6 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Projekt využívá knihovnu `pyarrow` pro rychlejší čtení a zápis Parquet souborů, proto je zahrnuta v `requirements.txt`.
-
 Chceš-li stahovat data přes API-Football, vytvoř soubor `.env` s proměnnou `API_FOOTBALL_KEY`.
 
 ## 🚀 Spuštění aplikace
