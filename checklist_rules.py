@@ -73,6 +73,15 @@ def _evaluate_checklist(
 # ---------------------------------------------------------------------------
 
 
+def _to_float(value: float | str | None) -> float:
+    """Return ``value`` cast to ``float`` or ``0.0`` when conversion fails."""
+
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _select_stat(
     data: Dict[str, float], specific_key: str, season_key: str, matches_key: str
 ) -> float:
@@ -84,8 +93,8 @@ def _select_stat(
     """
 
     if data.get(matches_key, 0) >= 5:
-        return float(data.get(specific_key, 0.0))
-    return float(data.get(season_key, 0.0))
+        return _to_float(data.get(specific_key))
+    return _to_float(data.get(season_key))
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +159,8 @@ def over25_checklist(data: Dict[str, float], threshold: int = 7) -> ChecklistRes
         ),
         (
             "Both teams GII >0.3",
-            lambda d: d.get("gii_home", 0) > 0.3 and d.get("gii_away", 0) > 0.3,
+            lambda d: _to_float(d.get("gii_home")) > 0.3
+            and _to_float(d.get("gii_away")) > 0.3,
         ),
         (
             "Score variance >2.0",
