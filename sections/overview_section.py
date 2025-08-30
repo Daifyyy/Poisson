@@ -25,62 +25,68 @@ from sections.match_prediction_section import load_upcoming_xg
 @st.cache_data
 def compute_league_summary(season_df, gii_dict, elo_dict):
     """Return precomputed league metrics and summary table."""
+    if season_df.empty:
+        empty_cols = [
+            "Tým","Elo","SOS","Body","Form","Trend formy","Góly celkem","Rozptyl skóre",
+            "xG","xGA","Vstřelené Góly","Střely","Na branku","Rohy","Obdržené góly",
+            "Čistá konta %","Over 2.5 %","BTTS %","GII index","Intenzita"
+        ]
+        return pd.DataFrame(columns=empty_cols), 0, 0.0, 0.0, 0.0
+
     num_matches = len(season_df)
     avg_goals = round((season_df["FTHG"] + season_df["FTAG"]).mean(), 1)
+
     season_df = add_btts_column(season_df)
     btts_pct = round(100 * season_df["BTTS"].mean(), 1)
     over_25 = round(
-        100
-        * season_df[(season_df["FTHG"] + season_df["FTAG"]) > 2.5].shape[0]
-        / num_matches,
+        100 * season_df[(season_df["FTHG"] + season_df["FTAG"]) > 2.5].shape[0] / max(num_matches, 1),
         1,
     )
+
     season_start = detect_current_season(season_df, prepared=True)[1]
     season = str(season_start.year)
 
     form_emojis = calculate_form_emojis(season_df)
     points_data = calculate_expected_and_actual_points(season_df)
     team_stats = aggregate_team_stats(season_df)
+
+    # Over/BTTS per tým (domácí pohled, dle původní logiky)
     over25 = (
         season_df.groupby("HomeTeam")
         .apply(lambda x: (x["FTHG"] + x["FTAG"] > 2.5).mean() * 100)
         .round(0)
     )
     btts = season_df.groupby("HomeTeam")["BTTS"].mean().mul(100).round(0)
+
     sos_dict = calculate_strength_of_schedule(season_df, metric="elo")
 
-    trends = []
-    avg_goals_all = []
-    score_var = []
-    xg_vals = []
-    xga_vals = []
+    # Helper pro bezpečné zaokrouhlení i když je None/NaN
+    def _r(x, nd=2, default=float("nan")):
+        try:
+            return round(float(x), nd)
+        except (TypeError, ValueError):
+            return default
+
+    trends, avg_goals_all, score_var, xg_vals, xga_vals = [], [], [], [], []
 
     for team in team_stats.index:
-        score_list, avg_goals_per_match, score_variance = compute_score_stats(
-            season_df, team
-        )
+        score_list, avg_goals_per_match, score_variance = compute_score_stats(season_df, team)
         trends.append(compute_form_trend(score_list))
-        avg_goals_all.append(round(avg_goals_per_match, 1))
-        score_var.append(round(score_variance, 1))
+        avg_goals_all.append(_r(avg_goals_per_match, 1))
+        score_var.append(_r(score_variance, 1))
 
-        ws_stats = get_team_xg_xga(team, season, season_df)
+        ws_stats = get_team_xg_xga(team, season, season_df) or {}
         team_xg = ws_stats.get("xg")
         team_xga = ws_stats.get("xga")
-        xg_vals.append(round(team_xg, 2))
-        xga_vals.append(round(team_xga, 2))
+        xg_vals.append(_r(team_xg, 2))
+        xga_vals.append(_r(team_xga, 2))
 
     summary_table = pd.DataFrame(
         {
             "Tým": team_stats.index,
-            "Elo": pd.Series(team_stats.index.map(lambda t: elo_dict.get(t, 1500)))
-            .round(0)
-            .values,
-            "SOS": pd.Series(team_stats.index.map(lambda t: sos_dict.get(t, 0)))
-            .round(1)
-            .values,
-            "Body": team_stats.index.map(
-                lambda t: points_data.get(t, {}).get("points", 0)
-            ),
+            "Elo": pd.Series(team_stats.index.map(lambda t: elo_dict.get(t, 1500))).round(0).values,
+            "SOS": pd.Series(team_stats.index.map(lambda t: sos_dict.get(t, 0))).round(1).values,
+            "Body": team_stats.index.map(lambda t: points_data.get(t, {}).get("points", 0)),
             "Form": team_stats.index.map(lambda t: form_emojis.get(t, "❄️❄️❄️")),
             "Trend formy": trends,
             "Góly celkem": avg_goals_all,
@@ -92,21 +98,20 @@ def compute_league_summary(season_df, gii_dict, elo_dict):
             "Na branku": team_stats["Na branku"].round(1),
             "Rohy": team_stats["Rohy"].round(1),
             "Obdržené góly": team_stats["Obdržené góly"].round(1),
-            "Čistá konta %": team_stats.index.map(
-                lambda t: f"{calculate_clean_sheets(season_df, t)}%"
-            ),
+            "Čistá konta %": team_stats.index.map(lambda t: f"{calculate_clean_sheets(season_df, t)}%"),
             "Over 2.5 %": team_stats.index.map(over25).astype(str) + "%",
             "BTTS %": team_stats.index.map(btts).astype(str) + "%",
+            # ✅ vyřešený konflikt + robustní na None
             "GII index": pd.Series(
-                team_stats.index.map(lambda t: gii_dict.get(t))
+                [gii_dict.get(t, float("nan")) for t in team_stats.index],
+                dtype="float"
             ).round(2).values,
-            "Intenzita": team_stats.index.map(
-                lambda t: intensity_score_to_emoji(gii_dict.get(t))
-            ),
+            "Intenzita": team_stats.index.map(lambda t: intensity_score_to_emoji(gii_dict.get(t))),
         }
     )
 
     return summary_table, num_matches, avg_goals, btts_pct, over_25
+
 
 
 def render_league_overview(season_df, league_name, gii_dict, elo_dict):
