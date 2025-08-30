@@ -696,7 +696,7 @@ def render_single_match_prediction(
                 "Čistá konta %",
             ]
         ]
-        st.dataframe(df_disp, use_container_width=True)
+        st.dataframe(df_disp, width="stretch")
 
     display_merged_table(
         merged_home_away_opponent_form(full_df, home_team),
@@ -872,9 +872,9 @@ def render_single_match_prediction(
 
     col1, col2 = responsive_columns(2)
     col1.markdown("### 🏅 Nejpravděpodobnější výsledky")
-    col1.dataframe(top_df, use_container_width=True, hide_index=True)
+    col1.dataframe(top_df, width="stretch", hide_index=True)
     col2.markdown("### 🎯 Šance na počet vstřelených gólů")
-    col2.dataframe(goal_chances, use_container_width=True, hide_index=True)
+    col2.dataframe(goal_chances, width="stretch", hide_index=True)
     st.markdown("## 📈 Další příležitosti")
     opp_cols = responsive_columns(4)
     opp_labels = [
@@ -895,14 +895,14 @@ def render_single_match_prediction(
     radar_cols = st.columns(4)
     if isinstance(style_home, Mapping) and style_home:
         radar_cols[0].plotly_chart(
-            plot_style_radar(style_home), use_container_width=True
+            plot_style_radar(style_home), width="stretch"
         )
         radar_cols[0].caption(
             " | ".join(TEAM_COMPARISON_DESC_MAP.get(k, k) for k in style_home)
         )
     if isinstance(style_away, Mapping) and style_away:
         radar_cols[1].plotly_chart(
-            plot_style_radar(style_away), use_container_width=True
+            plot_style_radar(style_away), width="stretch"
         )
         radar_cols[1].caption(
             " | ".join(TEAM_COMPARISON_DESC_MAP.get(k, k) for k in style_away)

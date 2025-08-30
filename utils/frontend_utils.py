@@ -67,7 +67,7 @@ def display_team_status_table(home_team: str, away_team: str, df: pd.DataFrame, 
     })
     styled_df = style_team_table(df_status)
     st.markdown("### 📊 Porovnání týmů")
-    st.dataframe(styled_df, hide_index=True, use_container_width=True)
+    st.dataframe(styled_df, hide_index=True, width="stretch")
     return styled_df
 
 

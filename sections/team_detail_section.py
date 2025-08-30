@@ -190,7 +190,7 @@ def render_team_detail(
             legend=dict(orientation="h"),
         )
 
-        footer_cols[0].plotly_chart(fig, use_container_width=True)
+        footer_cols[0].plotly_chart(fig, width="stretch")
 
         # If a comparison team is selected, stop rendering the rest of the
         # team detail view so that only the comparison section is displayed.
@@ -474,7 +474,7 @@ def render_team_detail(
             yaxis=dict(range=[0, 100]),
             showlegend=False,
         )
-        st.plotly_chart(fig_mdi, use_container_width=True)
+        st.plotly_chart(fig_mdi, width="stretch")
     else:
         st.info("MDI není dostupné pro zvolený filtr")
 
@@ -574,6 +574,6 @@ def render_team_detail(
         legend=dict(orientation="h"),
     )
 
-    footer_cols[0].plotly_chart(fig, use_container_width=True)
+    footer_cols[0].plotly_chart(fig, width="stretch")
 
     return

@@ -201,6 +201,8 @@ def train_model(
     data_dir: str | Path = "data",
     n_splits: int = 5,
     recent_years: int | None = None,
+    n_iter: int = 20,
+    max_samples: int | None = None,
 ) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Dict[str, float]]]:
     """Train a ``RandomForestClassifier`` on historical data using
     ``RandomizedSearchCV``.
@@ -210,7 +212,7 @@ def train_model(
     per-class precision/recall.
     """
     from sklearn.ensemble import RandomForestClassifier  # lazy import
-    from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV, cross_val_predict
+    from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
     from sklearn.calibration import CalibratedClassifierCV  # lazy import
     from sklearn.metrics import precision_recall_fscore_support  # lazy import
     from sklearn.utils.class_weight import compute_class_weight  # lazy import
@@ -219,6 +221,8 @@ def train_model(
     if recent_years is not None and "Date" in df.columns:
         cutoff = df["Date"].max() - pd.DateOffset(years=recent_years)
         df = df[df["Date"] >= cutoff]
+    if max_samples is not None:
+        df = df.tail(max_samples)
 
     X, y, feature_names, label_enc = _prepare_features(df)
 
@@ -265,7 +269,7 @@ def train_model(
     search = RandomizedSearchCV(
         pipeline,
         param_distributions=param_distributions,
-        n_iter=20,
+        n_iter=n_iter,
         cv=tscv,
         random_state=42,
         scoring="balanced_accuracy",
@@ -281,7 +285,118 @@ def train_model(
     calibrated_model.fit(X, y)
 
     # --- Precision/recall metrics ----------------------------------------------
-    y_pred = cross_val_predict(best_pipeline, X, y, cv=tscv, n_jobs=-1)
+    from sklearn.base import clone  # lazy import
+
+    y_pred = np.empty_like(y)
+    for train_idx, test_idx in tscv.split(X, y):
+        model_clone = clone(best_pipeline)
+        model_clone.fit(X.iloc[train_idx], y[train_idx])
+        y_pred[test_idx] = model_clone.predict(X.iloc[test_idx])
+
+    precisions, recalls, _, _ = precision_recall_fscore_support(y, y_pred, labels=np.unique(y))
+    metrics = {
+        label: {"precision": float(p), "recall": float(r)}
+        for label, p, r in zip(label_enc.classes_, precisions, recalls)
+    }
+
+    return calibrated_model, feature_names, label_enc, score, best_params, metrics
+
+
+def train_over25_model(
+    data_dir: str | Path = "data",
+    n_splits: int = 5,
+    recent_years: int | None = None,
+    n_iter: int = 20,
+    max_samples: int | None = None,
+) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Dict[str, float]]]:
+    """Train a RandomForest model to predict if total goals exceed 2.5."""
+
+    from sklearn.ensemble import RandomForestClassifier  # lazy import
+    from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
+    from sklearn.calibration import CalibratedClassifierCV  # lazy import
+    from sklearn.metrics import precision_recall_fscore_support  # lazy import
+    from sklearn.utils.class_weight import compute_class_weight  # lazy import
+    from sklearn.preprocessing import LabelEncoder  # lazy import
+
+    df = _load_matches(data_dir)
+    if recent_years is not None and "Date" in df.columns:
+        cutoff = df["Date"].max() - pd.DateOffset(years=recent_years)
+        df = df[df["Date"] >= cutoff]
+    if max_samples is not None:
+        df = df.tail(max_samples)
+
+    df["over25"] = np.where(df["FTHG"] + df["FTAG"] > 2.5, "Over 2.5", "Under 2.5")
+    X, _, feature_names, _ = _prepare_features(df)
+    y_raw = df.loc[X.index, "over25"]
+
+    label_enc = LabelEncoder()
+    y = label_enc.fit_transform(y_raw)
+
+    try:  # pragma: no cover - optional dependency
+        from imblearn.over_sampling import RandomOverSampler  # type: ignore
+        from imblearn.pipeline import Pipeline as ImbPipeline  # type: ignore
+        from imblearn.ensemble import BalancedRandomForestClassifier  # type: ignore
+
+        pipeline = ImbPipeline(
+            steps=[
+                ("sampler", RandomOverSampler(random_state=42)),
+                ("model", BalancedRandomForestClassifier(random_state=42)),
+            ]
+        )
+    except Exception:
+        from sklearn.pipeline import Pipeline  # lazy import
+
+        classes = np.unique(y)
+        weights = compute_class_weight("balanced", classes=classes, y=y)
+        class_weight = {cls: weight for cls, weight in zip(classes, weights)}
+        pipeline = Pipeline(
+            [
+                (
+                    "model",
+                    RandomForestClassifier(
+                        class_weight=class_weight, random_state=42
+                    ),
+                )
+            ]
+        )
+
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+
+    param_distributions = {
+        "model__n_estimators": [50, 100, 200, 300],
+        "model__max_depth": [None, 5, 10, 20],
+        "model__min_samples_split": [2, 5, 10],
+        "model__min_samples_leaf": [1, 2, 4],
+        "model__max_features": ["sqrt", "log2", None],
+        "model__bootstrap": [True, False],
+    }
+
+    search = RandomizedSearchCV(
+        pipeline,
+        param_distributions=param_distributions,
+        n_iter=n_iter,
+        cv=tscv,
+        random_state=42,
+        scoring="balanced_accuracy",
+        n_jobs=-1,
+    )
+    search.fit(X, y)
+
+    best_pipeline = search.best_estimator_
+    score = float(search.best_score_)
+    best_params = search.best_params_
+
+    calibrated_model = CalibratedClassifierCV(best_pipeline, method="isotonic", cv=tscv)
+    calibrated_model.fit(X, y)
+
+    from sklearn.base import clone  # lazy import
+
+    y_pred = np.empty_like(y)
+    for train_idx, test_idx in tscv.split(X, y):
+        model_clone = clone(best_pipeline)
+        model_clone.fit(X.iloc[train_idx], y[train_idx])
+        y_pred[test_idx] = model_clone.predict(X.iloc[test_idx])
+
     precisions, recalls, _, _ = precision_recall_fscore_support(y, y_pred, labels=np.unique(y))
     metrics = {
         label: {"precision": float(p), "recall": float(r)}
@@ -331,25 +446,12 @@ def load_model(path: str | Path = DEFAULT_MODEL_PATH):
             data.get("best_params", {}),
         )
     except Exception:
-        from .dummy_model import DummyModel, SimpleLabelEncoder
-
-        logger.warning("Falling back to DummyModel; could not load %s", path)
-        model = DummyModel()
-        feature_names = [
-            "home_recent_form",
-            "away_recent_form",
-            "elo_diff",
-            "xg_diff",
-            "home_conceded",
-            "away_conceded",
-            "conceded_diff",
-            "home_advantage",
-            "days_since_last_match",
-            "attack_strength_diff",
-            "defense_strength_diff",
-        ]
-        label_enc = SimpleLabelEncoder()
-        return model, feature_names, label_enc, {}
+        logger.warning("Training RandomForest model because %s is missing", path)
+        model, feature_names, label_enc, _, params, _ = train_model(
+            n_splits=2, n_iter=1, max_samples=200
+        )
+        save_model(model, feature_names, label_enc, path, params)
+        return model, feature_names, label_enc, params
 
 
 def predict_outcome(features: Dict[str, float], model_path: str | Path = DEFAULT_MODEL_PATH) -> str:
@@ -534,25 +636,20 @@ def load_over25_model(path: str | Path = DEFAULT_OVER25_MODEL_PATH):
         data = joblib.load(Path(path))
         return data["model"], data["feature_names"], data.get("label_encoder")
     except Exception:
-        class DummyOverModel:
-            def predict_proba(self, X):  # type: ignore[override]
-                return np.repeat([[0.5, 0.5]], len(X), axis=0)
-
-        feature_names = [
-            "home_recent_form",
-            "away_recent_form",
-            "elo_diff",
-            "xg_diff",
-            "home_conceded",
-            "away_conceded",
-            "conceded_diff",
-            "home_advantage",
-            "days_since_last_match",
-            "attack_strength_diff",
-            "defense_strength_diff",
-        ]
-        logger.warning("Falling back to dummy over/under model; could not load %s", path)
-        return DummyOverModel(), feature_names, None
+        logger.warning("Training over/under model because %s is missing", path)
+        model, feature_names, label_enc, _, params, _ = train_over25_model(
+            n_splits=2, n_iter=1, max_samples=200
+        )
+        joblib.dump(
+            {
+                "model": model,
+                "feature_names": list(feature_names),
+                "label_encoder": label_enc,
+                "best_params": params,
+            },
+            Path(path),
+        )
+        return model, feature_names, label_enc
 
 
 def predict_over25_proba(
@@ -579,6 +676,7 @@ def predict_over25_proba(
 
 __all__ = [
     "train_model",
+    "train_over25_model",
     "save_model",
     "predict_outcome",
     "construct_features_for_match",

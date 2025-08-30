@@ -191,7 +191,7 @@ def render_uefa_cup_predictions(cross_league_df: pd.DataFrame, data_dir: str | P
     elo_tables = load_cup_elo_tables(data_dir, mtime)
     for competition, table in elo_tables.items():
         st.subheader(f"{competition} ELO Ratings")
-        st.dataframe(table, hide_index=True, use_container_width=True)
+        st.dataframe(table, hide_index=True, width="stretch")
 
     fixtures = load_upcoming_cup_fixtures(data_dir, mtime)
     if fixtures.empty:
@@ -225,4 +225,4 @@ def render_uefa_cup_predictions(cross_league_df: pd.DataFrame, data_dir: str | P
         return
 
     table = pd.DataFrame(rows)
-    st.dataframe(table, hide_index=True, use_container_width=True)
+    st.dataframe(table, hide_index=True, width="stretch")

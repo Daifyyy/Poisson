@@ -51,7 +51,7 @@ def render_my_bets_section() -> None:
             "created_at",
         ],
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         key="bets_editor",
     )
 

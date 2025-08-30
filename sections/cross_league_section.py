@@ -31,7 +31,7 @@ def render_cross_league_ratings(df: pd.DataFrame, league_table: pd.DataFrame) ->
         .reset_index(drop=True)
         .rename(columns=league_cols)
     )
-    st.dataframe(league_display, hide_index=True, use_container_width=True)
+    st.dataframe(league_display, hide_index=True, width="stretch")
 
     display_cols = {
         "league": "League",
@@ -47,7 +47,7 @@ def render_cross_league_ratings(df: pd.DataFrame, league_table: pd.DataFrame) ->
         .reset_index(drop=True)
         .rename(columns=display_cols)
     )
-    st.dataframe(table, hide_index=True, use_container_width=True)
+    st.dataframe(table, hide_index=True, width="stretch")
 
     st.caption(
         """
