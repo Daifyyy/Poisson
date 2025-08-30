@@ -7,7 +7,9 @@ from utils.ml.random_forest import (
     construct_features_for_match,
     predict_proba,
     load_model,
+    load_over25_model,
     train_model,
+    predict_over25_proba,
     _prepare_features,
 )
 
@@ -114,10 +116,19 @@ def test_predict_proba_deterministic():
     model_data = load_model()
     model = model_data[0]
     assert type(model).__name__ != "DummyModel"
-    probs = predict_proba(feats, model_data=model_data)
+    probs = predict_proba(feats, model_data=model_data, alpha=0.1)
     assert sum(probs.values()) == pytest.approx(100.0)
     for p in probs.values():
         assert 0 <= p <= 100
+
+
+def test_predict_over25_proba_accepts_alpha():
+    df = _sample_df()
+    elo_dict = {"A": 1600, "B": 1500}
+    feats = construct_features_for_match(df, "A", "B", elo_dict)
+    model_data = load_over25_model()
+    prob = predict_over25_proba(feats, model_data=model_data, alpha=0.1)
+    assert 0 <= prob <= 100
 
 
 def test_train_model_applies_class_weight(tmp_path):
@@ -137,3 +148,20 @@ def test_train_model_applies_class_weight(tmp_path):
     model_weights = model.estimator.named_steps["model"].class_weight
     for cls, weight in zip(classes, expected_weights):
         assert model_weights[cls] == pytest.approx(weight)
+
+
+def test_train_model_accepts_param_distributions(tmp_path):
+    df = pd.concat([_sample_df()] * 3, ignore_index=True)
+    df["Date"] = df["Date"] + pd.to_timedelta(df.index, unit="D")
+    csv_path = tmp_path / "sample_combined_full_updated.csv"
+    df.to_csv(csv_path, index=False)
+    custom = {"model__n_estimators": [10], "model__max_depth": [5]}
+    _, _, _, _, params, _ = train_model(
+        data_dir=tmp_path,
+        n_splits=2,
+        n_iter=1,
+        max_samples=50,
+        param_distributions=custom,
+    )
+    assert params["model__n_estimators"] == 10
+    assert params["model__max_depth"] == 5
