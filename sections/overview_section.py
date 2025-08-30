@@ -97,6 +97,9 @@ def compute_league_summary(season_df, gii_dict, elo_dict):
             ),
             "Over 2.5 %": team_stats.index.map(over25).astype(str) + "%",
             "BTTS %": team_stats.index.map(btts).astype(str) + "%",
+            "GII index": pd.Series(
+                team_stats.index.map(lambda t: gii_dict.get(t))
+            ).round(2).values,
             "Intenzita": team_stats.index.map(
                 lambda t: intensity_score_to_emoji(gii_dict.get(t))
             ),
