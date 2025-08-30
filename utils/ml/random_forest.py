@@ -264,20 +264,22 @@ def train_model(
             "model__bootstrap": [True, False],
         }
 
+    # Optimalizujeme log-loss, aby pravděpodobnosti lépe odpovídaly realitě
     search = RandomizedSearchCV(
         estimator=pipeline,
         param_distributions=param_distributions,
         n_iter=n_iter,
         cv=tscv,
         random_state=42,
-        scoring="accuracy",
+        scoring="neg_log_loss",
         n_jobs=-1,
     )
     fit_params = {"sample_weight": sample_weights} if sample_weights is not None else {}
     search.fit(X, y, **fit_params)
 
     best_pipeline = search.best_estimator_
-    score = float(search.best_score_)
+    # RandomizedSearchCV s "neg_log_loss" vrací záporné hodnoty, otočíme znamenko
+    score = float(-search.best_score_)
     best_params = search.best_params_
 
     calibrated_model = CalibratedClassifierCV(best_pipeline, method="isotonic", cv=tscv)
@@ -286,8 +288,9 @@ def train_model(
     else:
         calibrated_model.fit(X, y)
 
-    # per-class precision/recall z rollingu přes TimeSeriesSplit
+    # per-class precision/recall + Brier score z rollingu přes TimeSeriesSplit
     y_pred = np.empty_like(y)
+    y_proba = np.zeros((len(y), len(np.unique(y))))
     for tr, te in tscv.split(X, y):
         mdl = clone(best_pipeline)
         if sample_weights is not None:
@@ -295,14 +298,22 @@ def train_model(
         else:
             mdl.fit(X.iloc[tr], y[tr])
         y_pred[te] = mdl.predict(X.iloc[te])
+        y_proba[te] = mdl.predict_proba(X.iloc[te])
 
     precisions, recalls, _, _ = precision_recall_fscore_support(
         y, y_pred, labels=np.unique(y)
     )
-    metrics = {
-        label: {"precision": float(p), "recall": float(r)}
-        for label, p, r in zip(label_enc.classes_, precisions, recalls)
-    }
+    from sklearn.metrics import brier_score_loss
+
+    metrics = {}
+    for idx, (label, p, r) in enumerate(zip(label_enc.classes_, precisions, recalls)):
+        true = (y == idx).astype(int)
+        prob = y_proba[:, idx]
+        metrics[label] = {
+            "precision": float(p),
+            "recall": float(r),
+            "brier": float(brier_score_loss(true, prob)),
+        }
 
     return calibrated_model, feature_names, label_enc, score, best_params, metrics
 
@@ -383,25 +394,34 @@ def train_over25_model(
     search.fit(X, y)
 
     best_pipeline = search.best_estimator_
-    score = float(search.best_score_)
+    score = float(-search.best_score_)
     best_params = search.best_params_
 
     calibrated_model = CalibratedClassifierCV(best_pipeline, method="isotonic", cv=tscv)
     calibrated_model.fit(X, y)
 
     y_pred = np.empty_like(y)
+    y_proba = np.zeros((len(y), len(np.unique(y))))
     for tr, te in tscv.split(X, y):
         mdl = clone(best_pipeline)
         mdl.fit(X.iloc[tr], y[tr])
         y_pred[te] = mdl.predict(X.iloc[te])
+        y_proba[te] = mdl.predict_proba(X.iloc[te])
 
     precisions, recalls, _, _ = precision_recall_fscore_support(
         y, y_pred, labels=np.unique(y)
     )
-    metrics = {
-        label: {"precision": float(p), "recall": float(r)}
-        for label, p, r in zip(label_enc.classes_, precisions, recalls)
-    }
+    from sklearn.metrics import brier_score_loss
+
+    metrics = {}
+    for idx, (label, p, r) in enumerate(zip(label_enc.classes_, precisions, recalls)):
+        true = (y == idx).astype(int)
+        prob = y_proba[:, idx]
+        metrics[label] = {
+            "precision": float(p),
+            "recall": float(r),
+            "brier": float(brier_score_loss(true, prob)),
+        }
 
     return calibrated_model, feature_names, label_enc, score, best_params, metrics
 
