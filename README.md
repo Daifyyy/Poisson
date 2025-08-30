@@ -134,6 +134,9 @@ Hyperparametry se hledají pomocí `RandomizedSearchCV` optimalizovaného na
 `log_loss`. Skript po dokončení vypíše také Brierovy skóre a kalibrační křivky
 pro jednotlivé třídy. Parametry křížové validace i rozsah vyhledávání
 hyperparametrů lze upravit pomocí argumentů příkazové řádky:
+=======
+Parametry křížové validace i rozsah vyhledávání hyperparametrů lze upravit
+pomocí argumentů příkazové řádky:
 
 ```bash
 python scripts/train_models.py --n-iter 20 --n-splits 5 --recent-years 2
