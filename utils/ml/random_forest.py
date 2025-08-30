@@ -53,6 +53,21 @@ DEFAULT_MODEL_PATH = Path(__file__).with_name("random_forest_model.joblib")
 DEFAULT_OVER25_MODEL_PATH = Path(__file__).with_name("random_forest_over25_model.joblib")
 
 
+try:  # pragma: no cover - optional dependency
+    from imblearn.pipeline import Pipeline as _BasePipeline  # type: ignore
+except Exception:  # pragma: no cover
+    from sklearn.pipeline import Pipeline as _BasePipeline  # type: ignore
+
+
+class SampleWeightPipeline(_BasePipeline):
+    """Pipeline that forwards ``sample_weight`` to the final estimator."""
+
+    def fit(self, X, y=None, sample_weight=None, **fit_params):  # type: ignore[override]
+        if sample_weight is not None:
+            fit_params[self.steps[-1][0] + "__sample_weight"] = sample_weight
+        return super().fit(X, y, **fit_params)
+
+
 def _load_matches(data_dir: str | Path) -> pd.DataFrame:
     """Load all historical CSVs and return a concatenated DataFrame."""
     data_dir = Path(data_dir)
@@ -233,13 +248,16 @@ def train_model(
     recent_years: int | None = None,
     n_iter: int = 20,
     max_samples: int | None = None,
+    decay_factor: float | None = None,
 ) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Dict[str, float]]]:
     """Train a ``RandomForestClassifier`` on historical data using
     ``RandomizedSearchCV``.
 
     The function mitigates class imbalance via oversampling (if ``imblearn`` is
-    available) or via explicit class weights. Returns a calibrated model and
-    per-class precision/recall.
+    available) or via explicit class weights. ``decay_factor`` applies an
+    exponential time decay to older matches via ``exp(-decay_factor * age)``,
+    where ``age`` is the number of days since the most recent match. Returns a
+    calibrated model and per-class precision/recall.
     """
     from sklearn.ensemble import RandomForestClassifier  # lazy import
     from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
@@ -256,25 +274,28 @@ def train_model(
 
     X, y, feature_names, label_enc = _prepare_features(df)
 
+    sample_weights = None
+    if decay_factor is not None and "Date" in df.columns:
+        max_date = df["Date"].max()
+        age = (max_date - df.loc[X.index, "Date"]).dt.days.to_numpy()
+        sample_weights = np.exp(-decay_factor * age)
+
     # --- Handle class imbalance inside Pipeline --------------------------------
     try:  # pragma: no cover - optional dependency
         from imblearn.over_sampling import RandomOverSampler  # type: ignore
-        from imblearn.pipeline import Pipeline as ImbPipeline  # type: ignore
         from imblearn.ensemble import BalancedRandomForestClassifier  # type: ignore
 
-        pipeline = ImbPipeline(
+        pipeline = SampleWeightPipeline(
             steps=[
                 ("sampler", RandomOverSampler(random_state=42)),
                 ("model", BalancedRandomForestClassifier(random_state=42)),
             ]
         )
     except Exception:
-        from sklearn.pipeline import Pipeline  # lazy import
-
         classes = np.unique(y)
-        weights = compute_class_weight("balanced", classes=classes, y=y)
-        class_weight = {cls: weight for cls, weight in zip(classes, weights)}
-        pipeline = Pipeline(
+        class_weights = compute_class_weight("balanced", classes=classes, y=y)
+        class_weight = {cls: weight for cls, weight in zip(classes, class_weights)}
+        pipeline = SampleWeightPipeline(
             [
                 (
                     "model",
@@ -305,14 +326,18 @@ def train_model(
         scoring="balanced_accuracy",
         n_jobs=-1,
     )
-    search.fit(X, y)
+    fit_params = {"sample_weight": sample_weights} if sample_weights is not None else {}
+    search.fit(X, y, **fit_params)
 
     best_pipeline = search.best_estimator_
     score = float(search.best_score_)
     best_params = search.best_params_
 
     calibrated_model = CalibratedClassifierCV(best_pipeline, method="isotonic", cv=tscv)
-    calibrated_model.fit(X, y)
+    if sample_weights is not None:
+        calibrated_model.fit(X, y, sample_weight=sample_weights)
+    else:
+        calibrated_model.fit(X, y)
 
     # --- Precision/recall metrics ----------------------------------------------
     from sklearn.base import clone  # lazy import
@@ -320,7 +345,12 @@ def train_model(
     y_pred = np.empty_like(y)
     for train_idx, test_idx in tscv.split(X, y):
         model_clone = clone(best_pipeline)
-        model_clone.fit(X.iloc[train_idx], y[train_idx])
+        if sample_weights is not None:
+            model_clone.fit(
+                X.iloc[train_idx], y[train_idx], sample_weight=sample_weights[train_idx]
+            )
+        else:
+            model_clone.fit(X.iloc[train_idx], y[train_idx])
         y_pred[test_idx] = model_clone.predict(X.iloc[test_idx])
 
     precisions, recalls, _, _ = precision_recall_fscore_support(y, y_pred, labels=np.unique(y))
