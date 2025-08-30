@@ -137,7 +137,12 @@ def test_train_model_applies_class_weight(tmp_path):
     csv_path = tmp_path / "sample_combined_full_updated.csv"
     df.to_csv(csv_path, index=False)
     model, *_ = train_model(
-        data_dir=tmp_path, n_splits=2, n_iter=1, max_samples=50, decay_factor=0.01
+        data_dir=tmp_path,
+        n_splits=2,
+        n_iter=1,
+        max_samples=50,
+        decay_factor=0.01,
+        balance_classes=True,
     )
     assert model is not None
 
@@ -148,3 +153,14 @@ def test_train_model_applies_class_weight(tmp_path):
     model_weights = model.estimator.named_steps["model"].class_weight
     for cls, weight in zip(classes, expected_weights):
         assert model_weights[cls] == pytest.approx(weight)
+
+
+def test_train_model_no_class_weight_by_default(tmp_path):
+    df = pd.concat([_sample_df()] * 3, ignore_index=True)
+    df["Date"] = df["Date"] + pd.to_timedelta(df.index, unit="D")
+    csv_path = tmp_path / "sample_combined_full_updated.csv"
+    df.to_csv(csv_path, index=False)
+    model, *_ = train_model(
+        data_dir=tmp_path, n_splits=2, n_iter=1, max_samples=50, decay_factor=0.01
+    )
+    assert model.estimator.named_steps["model"].class_weight is None
