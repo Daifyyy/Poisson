@@ -172,6 +172,7 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
     st.dataframe(
         summary_table_display,
         column_config={
+            "Tým": st.column_config.TextColumn("Tým", pinned="left"),
             "Detail": st.column_config.LinkColumn("Detail", display_text="🔍"),
         },
         hide_index=True,
