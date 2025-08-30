@@ -563,9 +563,15 @@ def predict_over25_proba(
     """Return the probability (0-100) that total goals exceed 2.5."""
     if model_data is None:
         model_data = load_over25_model(model_path)
-    model, feature_names, _ = model_data
+    model, feature_names, label_enc = model_data
     X = _clip_features(pd.DataFrame([features], columns=feature_names))
-    prob = model.predict_proba(X)[0][1]
+    probs = model.predict_proba(X)[0]
+    if label_enc is not None:
+        classes = label_enc.inverse_transform(np.arange(len(probs)))
+        over_idx = list(classes).index("Over 2.5")
+        prob = probs[over_idx]
+    else:
+        prob = probs[1]
     alpha = 0.15
     prob = (1 - alpha) * prob + alpha * 0.5
     return float(prob * 100)
