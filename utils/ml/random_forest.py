@@ -141,6 +141,9 @@ def _clip_features(df: pd.DataFrame) -> pd.DataFrame:
         "home_conceded": (0, 5),
         "away_conceded": (0, 5),
         "conceded_diff": (-5, 5),
+        "shots_diff": (-20, 20),
+        "shot_target_diff": (-10, 10),
+        "corners_diff": (-10, 10),
         "days_since_last_match": (-30, 30),
         "attack_strength_diff": (-2, 2),
         "defense_strength_diff": (-2, 2),
@@ -157,6 +160,30 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
     df = _compute_recent_form(df)
     df = _compute_expected_goals(df)
     df = _compute_elo_difference(df)
+    # Rolling averages for shots, shots on target and corners
+    df["home_shots_avg"] = df.groupby("HomeTeam")["HS"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["away_shots_avg"] = df.groupby("AwayTeam")["AS"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["shots_diff"] = df["home_shots_avg"] - df["away_shots_avg"]
+
+    df["home_shot_target_avg"] = df.groupby("HomeTeam")["HST"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["away_shot_target_avg"] = df.groupby("AwayTeam")["AST"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["shot_target_diff"] = df["home_shot_target_avg"] - df["away_shot_target_avg"]
+
+    df["home_corners_avg"] = df.groupby("HomeTeam")["HC"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["away_corners_avg"] = df.groupby("AwayTeam")["AC"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["corners_diff"] = df["home_corners_avg"] - df["away_corners_avg"]
     df["home_last"] = df.groupby("HomeTeam")["Date"].shift()
     df["away_last"] = df.groupby("AwayTeam")["Date"].shift()
     df["home_rest"] = (df["Date"] - df["home_last"]).dt.days
@@ -179,6 +206,9 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
         "home_conceded",
         "away_conceded",
         "conceded_diff",
+        "shots_diff",
+        "shot_target_diff",
+        "corners_diff",
         "home_advantage",
         "days_since_last_match",
         "attack_strength_diff",
