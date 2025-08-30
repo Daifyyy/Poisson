@@ -253,11 +253,10 @@ def train_model(
     """Train a ``RandomForestClassifier`` on historical data using
     ``RandomizedSearchCV``.
 
-    The function mitigates class imbalance via oversampling (if ``imblearn`` is
-    available) or via explicit class weights. ``decay_factor`` applies an
-    exponential time decay to older matches via ``exp(-decay_factor * age)``,
-    where ``age`` is the number of days since the most recent match. Returns a
-    calibrated model and per-class precision/recall.
+    The function mitigates class imbalance via explicit class weights.
+    ``decay_factor`` applies an exponential time decay to older matches via
+    ``exp(-decay_factor * age)``, where ``age`` is the number of days since the
+    most recent match. Returns a calibrated model and per-class precision/recall.
     """
     from sklearn.ensemble import RandomForestClassifier  # lazy import
     from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
@@ -280,31 +279,18 @@ def train_model(
         age = (max_date - df.loc[X.index, "Date"]).dt.days.to_numpy()
         sample_weights = np.exp(-decay_factor * age)
 
-    # --- Handle class imbalance inside Pipeline --------------------------------
-    try:  # pragma: no cover - optional dependency
-        from imblearn.over_sampling import RandomOverSampler  # type: ignore
-        from imblearn.ensemble import BalancedRandomForestClassifier  # type: ignore
-
-        pipeline = SampleWeightPipeline(
-            steps=[
-                ("sampler", RandomOverSampler(random_state=42)),
-                ("model", BalancedRandomForestClassifier(random_state=42)),
-            ]
-        )
-    except Exception:
-        classes = np.unique(y)
-        class_weights = compute_class_weight("balanced", classes=classes, y=y)
-        class_weight = {cls: weight for cls, weight in zip(classes, class_weights)}
-        pipeline = SampleWeightPipeline(
-            [
-                (
-                    "model",
-                    RandomForestClassifier(
-                        class_weight=class_weight, random_state=42
-                    ),
-                )
-            ]
-        )
+    # --- Handle class imbalance via class weights ------------------------------
+    classes = np.unique(y)
+    class_weights = compute_class_weight("balanced", classes=classes, y=y)
+    class_weight = {cls: weight for cls, weight in zip(classes, class_weights)}
+    pipeline = SampleWeightPipeline(
+        [
+            (
+                "model",
+                RandomForestClassifier(class_weight=class_weight, random_state=42),
+            )
+        ]
+    )
 
     tscv = TimeSeriesSplit(n_splits=n_splits)
 
