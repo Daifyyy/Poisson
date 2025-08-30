@@ -53,22 +53,32 @@ def _compute_recent_form(df: pd.DataFrame) -> pd.DataFrame:
     df["away_result"] = -df["home_result"]
 
     df["home_recent_form"] = (
-        df.groupby("HomeTeam")["home_result"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+        df.groupby("HomeTeam")["home_result"]
+        .transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
     )
     df["away_recent_form"] = (
-        df.groupby("AwayTeam")["away_result"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+        df.groupby("AwayTeam")["away_result"]
+        .transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
     )
     return df.drop(columns=["home_result", "away_result"])
 
 
 def _compute_expected_goals(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    df["home_xg"] = df.groupby("HomeTeam")["FTHG"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
-    df["away_xg"] = df.groupby("AwayTeam")["FTAG"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["home_xg"] = df.groupby("HomeTeam")["FTHG"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["away_xg"] = df.groupby("AwayTeam")["FTAG"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
     df["xg_diff"] = df["home_xg"] - df["away_xg"]
 
-    df["home_conceded"] = df.groupby("HomeTeam")["FTAG"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
-    df["away_conceded"] = df.groupby("AwayTeam")["FTHG"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["home_conceded"] = df.groupby("HomeTeam")["FTAG"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["away_conceded"] = df.groupby("AwayTeam")["FTHG"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
     df["conceded_diff"] = df["home_conceded"] - df["away_conceded"]
     return df
 
@@ -121,16 +131,28 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
     df = _compute_elo_difference(df)
 
     # rolling střely/na branku/rohy
-    df["home_shots_avg"] = df.groupby("HomeTeam")["HS"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
-    df["away_shots_avg"] = df.groupby("AwayTeam")["AS"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["home_shots_avg"] = df.groupby("HomeTeam")["HS"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["away_shots_avg"] = df.groupby("AwayTeam")["AS"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
     df["shots_diff"] = df["home_shots_avg"] - df["away_shots_avg"]
 
-    df["home_shot_target_avg"] = df.groupby("HomeTeam")["HST"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
-    df["away_shot_target_avg"] = df.groupby("AwayTeam")["AST"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["home_shot_target_avg"] = df.groupby("HomeTeam")["HST"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["away_shot_target_avg"] = df.groupby("AwayTeam")["AST"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
     df["shot_target_diff"] = df["home_shot_target_avg"] - df["away_shot_target_avg"]
 
-    df["home_corners_avg"] = df.groupby("HomeTeam")["HC"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
-    df["away_corners_avg"] = df.groupby("AwayTeam")["AC"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["home_corners_avg"] = df.groupby("HomeTeam")["HC"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["away_corners_avg"] = df.groupby("AwayTeam")["AC"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
     df["corners_diff"] = df["home_corners_avg"] - df["away_corners_avg"]
 
     # odpočinek (rozdíl dní)
@@ -192,9 +214,9 @@ def train_model(
     param_distributions: Mapping[str, Iterable[Any]] | None = None,
     balance_classes: bool = False,
 ) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Dict[str, float]]]:
-    """
-    Train RandomForest (s časovým CV) a vrať:
-    (calibrated_model, feature_names, label_encoder, best_cv_score, best_params, per_class_metrics)
+    """Train RandomForest (H/D/A) s časovým CV a kalibrací.
+
+    Vrací: (calibrated_model, feature_names, label_encoder, best_cv_score, best_params, per_class_metrics)
     """
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
@@ -274,9 +296,13 @@ def train_model(
             mdl.fit(X.iloc[tr], y[tr])
         y_pred[te] = mdl.predict(X.iloc[te])
 
-    precisions, recalls, _, _ = precision_recall_fscore_support(y, y_pred, labels=np.unique(y))
-    metrics = {label: {"precision": float(p), "recall": float(r)}
-               for label, p, r in zip(label_enc.classes_, precisions, recalls)}
+    precisions, recalls, _, _ = precision_recall_fscore_support(
+        y, y_pred, labels=np.unique(y)
+    )
+    metrics = {
+        label: {"precision": float(p), "recall": float(r)}
+        for label, p, r in zip(label_enc.classes_, precisions, recalls)
+    }
 
     return calibrated_model, feature_names, label_enc, score, best_params, metrics
 
@@ -289,7 +315,7 @@ def train_over25_model(
     max_samples: int | None = None,
     param_distributions: Mapping[str, Iterable[Any]] | None = None,
 ) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Dict[str, float]]]:
-    """Binary RF pro Over 2.5 (s kalibrací)."""
+    """Binary RF pro Over 2.5 (s kalibrací a vyvážením tříd)."""
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
     from sklearn.calibration import CalibratedClassifierCV
@@ -312,7 +338,7 @@ def train_over25_model(
     label_enc = LabelEncoder()
     y = label_enc.fit_transform(y_raw)
 
-    # zkus balanced varianty z imblearn, pokud nejsou, použij class_weight
+    # balanced varianta s fallbackem
     try:  # pragma: no cover
         from imblearn.over_sampling import RandomOverSampler  # type: ignore
         from imblearn.pipeline import Pipeline as ImbPipeline  # type: ignore
@@ -329,7 +355,9 @@ def train_over25_model(
         classes = np.unique(y)
         weights = compute_class_weight("balanced", classes=classes, y=y)
         class_weight = {cls: w for cls, w in zip(classes, weights)}
-        pipeline = Pipeline([("model", RandomForestClassifier(class_weight=class_weight, random_state=42))])
+        pipeline = Pipeline(
+            [("model", RandomForestClassifier(class_weight=class_weight, random_state=42))]
+        )
 
     tscv = TimeSeriesSplit(n_splits=n_splits)
 
@@ -349,7 +377,7 @@ def train_over25_model(
         n_iter=n_iter,
         cv=tscv,
         random_state=42,
-        scoring="balanced_accuracy",
+        scoring="neg_log_loss",
         n_jobs=-1,
     )
     search.fit(X, y)
@@ -367,9 +395,13 @@ def train_over25_model(
         mdl.fit(X.iloc[tr], y[tr])
         y_pred[te] = mdl.predict(X.iloc[te])
 
-    precisions, recalls, _, _ = precision_recall_fscore_support(y, y_pred, labels=np.unique(y))
-    metrics = {label: {"precision": float(p), "recall": float(r)}
-               for label, p, r in zip(label_enc.classes_, precisions, recalls)}
+    precisions, recalls, _, _ = precision_recall_fscore_support(
+        y, y_pred, labels=np.unique(y)
+    )
+    metrics = {
+        label: {"precision": float(p), "recall": float(r)}
+        for label, p, r in zip(label_enc.classes_, precisions, recalls)
+    }
 
     return calibrated_model, feature_names, label_enc, score, best_params, metrics
 
@@ -403,7 +435,9 @@ def load_model(path: str | Path = DEFAULT_MODEL_PATH):
         return model, data["feature_names"], data["label_encoder"], data.get("best_params", {})
     except Exception:
         logger.warning("Training RandomForest model because %s is missing", path)
-        model, feature_names, label_enc, _, params, _ = train_model(n_splits=2, n_iter=1, max_samples=200)
+        model, feature_names, label_enc, _, params, _ = train_model(
+            n_splits=2, n_iter=1, max_samples=200
+        )
         save_model(model, feature_names, label_enc, path, params)
         return model, feature_names, label_enc, params
 
@@ -413,6 +447,7 @@ def predict_outcome(
     model_path: str | Path = DEFAULT_MODEL_PATH,
     alpha: float = 0.15,
 ) -> str:
+    """Vrať predikovaný výsledek ('H'/'D'/'A') s tlumením pravděpodobností."""
     probs = predict_proba(features, model_path=model_path, alpha=alpha)
     reverse = {"Home Win": "H", "Draw": "D", "Away Win": "A"}
     return reverse[max(probs, key=probs.get)]
@@ -495,16 +530,19 @@ def construct_features_for_match(
 
 def predict_proba(
     features: Dict[str, float],
-    model_data: Tuple[Any, Iterable[str], Any] | Tuple[Any, Iterable[str], Any, Mapping[str, Any]] | None = None,
+    model_data: Tuple[Any, Iterable[str], Any]
+    | Tuple[Any, Iterable[str], Any, Mapping[str, Any]]
+    | None = None,
     model_path: str | Path = DEFAULT_MODEL_PATH,
     alpha: float = 0.15,
 ) -> Dict[str, float]:
+    """Vrať pravděpodobnosti {'Home Win','Draw','Away Win'} v procentech (0–100)."""
     if model_data is None:
         model_data = load_model(model_path)
     model, feature_names, label_enc = model_data[:3]
     X = _clip_features(pd.DataFrame([features], columns=feature_names))
     probs = model.predict_proba(X)[0]
-    # shrink k uniformnímu prioru (tlumí extrémy)
+    # tlumení k uniformnímu prioru (snižuje extrémy)
     probs = (1 - alpha) * probs + alpha * (1.0 / len(probs))
     probs = probs / probs.sum()
     labels = label_enc.inverse_transform(np.arange(len(probs)))
@@ -518,9 +556,16 @@ def load_over25_model(path: str | Path = DEFAULT_OVER25_MODEL_PATH):
         return data["model"], data["feature_names"], data.get("label_encoder")
     except Exception:
         logger.warning("Training over/under model because %s is missing", path)
-        model, feature_names, label_enc, _, params, _ = train_over25_model(n_splits=2, n_iter=1, max_samples=200)
+        model, feature_names, label_enc, _, params, _ = train_over25_model(
+            n_splits=2, n_iter=1, max_samples=200
+        )
         joblib.dump(
-            {"model": model, "feature_names": list(feature_names), "label_encoder": label_enc, "best_params": params},
+            {
+                "model": model,
+                "feature_names": list(feature_names),
+                "label_encoder": label_enc,
+                "best_params": params,
+            },
             Path(path),
         )
         return model, feature_names, label_enc
@@ -532,17 +577,27 @@ def predict_over25_proba(
     model_path: str | Path = DEFAULT_OVER25_MODEL_PATH,
     alpha: float = 0.15,
 ) -> float:
+    """Vrať pravděpodobnost (0–100), že padne > 2.5 gólu (Over 2.5)."""
     if model_data is None:
         model_data = load_over25_model(model_path)
     model, feature_names, label_enc = model_data
     X = _clip_features(pd.DataFrame([features], columns=feature_names))
-    probs = model.predict_proba(X)[0]
+    raw_proba = model.predict_proba(X)[0]
+    raw_proba = np.clip(raw_proba, 0.01, 0.99)
+
     if label_enc is not None:
-        classes = label_enc.inverse_transform(np.arange(len(probs)))
+        expected = np.arange(len(label_enc.classes_))
+        model_classes = getattr(model, "classes_", expected)
+        probs_full = np.zeros(len(expected))
+        for p, cls in zip(raw_proba, model_classes):
+            probs_full[int(cls)] = p
+        classes = label_enc.inverse_transform(np.arange(len(expected)))
         over_idx = list(classes).index("Over 2.5")
-        prob = probs[over_idx]
+        prob = probs_full[over_idx]
     else:
-        prob = probs[1]
+        # binární model => index 1 je „Over“
+        prob = raw_proba[1]
+
     prob = (1 - alpha) * prob + alpha * 0.5
     return float(prob * 100)
 

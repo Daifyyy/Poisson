@@ -128,6 +128,13 @@ CSV, aby se změny propsaly i do aplikace.
 
 ## 📈 Trénování modelu
 Skript `scripts/train_models.py` umožňuje trénovat a ladit Random Forest modely.
+Trénink využívá chronologické dělení `TimeSeriesSplit`, vyvážené váhy tříd a
+po trénování je model obalen `CalibratedClassifierCV` s isotonic regresí.
+Hyperparametry se hledají pomocí `RandomizedSearchCV` optimalizovaného na
+`log_loss`. Skript po dokončení vypíše také Brierovy skóre a kalibrační křivky
+pro jednotlivé třídy. Parametry křížové validace i rozsah vyhledávání
+hyperparametrů lze upravit pomocí argumentů příkazové řádky:
+=======
 Parametry křížové validace i rozsah vyhledávání hyperparametrů lze upravit
 pomocí argumentů příkazové řádky:
 

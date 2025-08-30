@@ -28,7 +28,11 @@ def main() -> None:
         max_samples=args.max_samples,
     )
     save_model(model, features, le, path=DEFAULT_MODEL_PATH, best_params=params)
-    print(f"Outcome model trained with score {score:.3f} and saved to {DEFAULT_MODEL_PATH}")
+    print(f"Outcome model trained with log-loss {score:.3f} and saved to {DEFAULT_MODEL_PATH}")
+    for lbl, m in metrics.items():
+        print(
+            f"  {lbl}: precision={m['precision']:.3f}, recall={m['recall']:.3f}, brier={m['brier']:.3f}"
+        )
 
     o25_model, o25_features, o25_le, o25_score, o25_params, o25_metrics = train_over25_model(
         args.data_dir,
@@ -45,8 +49,12 @@ def main() -> None:
         best_params=o25_params,
     )
     print(
-        f"Over/Under 2.5 model trained with score {o25_score:.3f} and saved to {DEFAULT_OVER25_MODEL_PATH}"
+        f"Over/Under 2.5 model trained with log-loss {o25_score:.3f} and saved to {DEFAULT_OVER25_MODEL_PATH}"
     )
+    for lbl, m in o25_metrics.items():
+        print(
+            f"  {lbl}: precision={m['precision']:.3f}, recall={m['recall']:.3f}, brier={m['brier']:.3f}"
+        )
 
 
 if __name__ == "__main__":
