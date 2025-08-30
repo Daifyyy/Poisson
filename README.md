@@ -112,6 +112,18 @@ načítá při startu, takže koeficienty jsou konzistentní napříč spuštěn
 Po přidání nové ligy nebo změně dat spusť skript výše a commitni aktualizovaný
 CSV, aby se změny propsaly i do aplikace.
 
+## 📈 Trénování modelu
+Skript `scripts/train_models.py` umožňuje trénovat a ladit Random Forest modely.
+Parametry křížové validace i rozsah vyhledávání hyperparametrů lze upravit
+pomocí argumentů příkazové řádky:
+
+```bash
+python scripts/train_models.py --n-iter 20 --n-splits 5 --recent-years 2
+```
+
+Volitelný argument `--max-samples` může omezit počet zpracovaných zápasů pro
+rychlé experimenty.
+
 ## ✅ Testy
 
 Projekt obsahuje sadu jednotkových testů. Pro jejich spuštění použij:
