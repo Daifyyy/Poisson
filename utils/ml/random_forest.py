@@ -249,14 +249,16 @@ def train_model(
     n_iter: int = 20,
     max_samples: int | None = None,
     decay_factor: float | None = None,
+    balance_classes: bool = False,
 ) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Dict[str, float]]]:
     """Train a ``RandomForestClassifier`` on historical data using
     ``RandomizedSearchCV``.
 
-    The function mitigates class imbalance via explicit class weights.
     ``decay_factor`` applies an exponential time decay to older matches via
     ``exp(-decay_factor * age)``, where ``age`` is the number of days since the
-    most recent match. Returns a calibrated model and per-class precision/recall.
+    most recent match. When ``balance_classes`` is ``True`` the training data are
+    reweighted with ``compute_class_weight`` to counter class imbalance. Returns a
+    calibrated model and per-class precision/recall.
     """
     from sklearn.ensemble import RandomForestClassifier  # lazy import
     from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
@@ -279,10 +281,13 @@ def train_model(
         age = (max_date - df.loc[X.index, "Date"]).dt.days.to_numpy()
         sample_weights = np.exp(-decay_factor * age)
 
-    # --- Handle class imbalance via class weights ------------------------------
-    classes = np.unique(y)
-    class_weights = compute_class_weight("balanced", classes=classes, y=y)
-    class_weight = {cls: weight for cls, weight in zip(classes, class_weights)}
+    # --- Optional class balancing ------------------------------------------------
+    class_weight = None
+    if balance_classes:
+        classes = np.unique(y)
+        class_weights = compute_class_weight("balanced", classes=classes, y=y)
+        class_weight = {cls: weight for cls, weight in zip(classes, class_weights)}
+
     pipeline = SampleWeightPipeline(
         [
             (
@@ -309,7 +314,7 @@ def train_model(
         n_iter=n_iter,
         cv=tscv,
         random_state=42,
-        scoring="balanced_accuracy",
+        scoring="accuracy",
         n_jobs=-1,
     )
     fit_params = {"sample_weight": sample_weights} if sample_weights is not None else {}
