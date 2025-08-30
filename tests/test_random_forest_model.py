@@ -1,5 +1,6 @@
 import pandas as pd
 import pytest
+import numpy as np
 import pathlib, sys
 sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
 from utils.ml.random_forest import (
@@ -7,6 +8,7 @@ from utils.ml.random_forest import (
     predict_proba,
     load_model,
     train_model,
+    _prepare_features,
 )
 
 
@@ -118,7 +120,7 @@ def test_predict_proba_deterministic():
         assert 0 <= p <= 100
 
 
-def test_train_model_accepts_weights(tmp_path):
+def test_train_model_applies_class_weight(tmp_path):
     df = pd.concat([_sample_df()] * 3, ignore_index=True)
     df["Date"] = df["Date"] + pd.to_timedelta(df.index, unit="D")
     csv_path = tmp_path / "sample_combined_full_updated.csv"
@@ -127,3 +129,11 @@ def test_train_model_accepts_weights(tmp_path):
         data_dir=tmp_path, n_splits=2, n_iter=1, max_samples=50, decay_factor=0.01
     )
     assert model is not None
+
+    from sklearn.utils.class_weight import compute_class_weight
+    _, y, _, _ = _prepare_features(df)
+    classes = np.unique(y)
+    expected_weights = compute_class_weight("balanced", classes=classes, y=y)
+    model_weights = model.estimator.named_steps["model"].class_weight
+    for cls, weight in zip(classes, expected_weights):
+        assert model_weights[cls] == pytest.approx(weight)
