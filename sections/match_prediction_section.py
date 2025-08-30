@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from typing import Any, Dict, List, Tuple, Optional
 from collections.abc import Mapping
+import os
 from utils.responsive import responsive_columns
 from utils.poisson_utils import (
     expected_goals_weighted_by_elo,
@@ -104,6 +105,8 @@ def get_rf_over25_model():
 
 
 RF_O25_MODEL, RF_O25_FEATURE_NAMES, RF_O25_LABEL_ENCODER = get_rf_over25_model()
+
+PROBA_ALPHA = float(os.getenv("PROBA_ALPHA", "0.05"))
 
 @st.cache_data
 def load_upcoming_xg() -> pd.DataFrame:
@@ -538,10 +541,12 @@ def render_single_match_prediction(
     ml_probs = predict_proba(
         ml_features,
         model_data=(RF_MODEL, RF_FEATURE_NAMES, RF_LABEL_ENCODER),
+        alpha=PROBA_ALPHA,
     )
     ml_over25 = predict_over25_proba(
         ml_features,
         model_data=(RF_O25_MODEL, RF_O25_FEATURE_NAMES, RF_O25_LABEL_ENCODER),
+        alpha=PROBA_ALPHA,
     )
     use_ml = st.sidebar.toggle("Use ML probabilities", False)
     primary_outcomes = ml_probs if use_ml else outcomes

@@ -1,5 +1,7 @@
 """Train and save Random Forest models for outcome and over/under 2.5 goals."""
 
+import argparse
+
 from utils.ml.random_forest import (
     DEFAULT_MODEL_PATH,
     DEFAULT_OVER25_MODEL_PATH,
@@ -9,15 +11,35 @@ from utils.ml.random_forest import (
 )
 
 
-def main(data_dir: str = "data") -> None:
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Train Random Forest models")
+    parser.add_argument("--data-dir", default="data")
+    parser.add_argument("--n-splits", type=int, default=3)
+    parser.add_argument("--recent-years", type=int, default=1)
+    parser.add_argument("--n-iter", type=int, default=1)
+    parser.add_argument("--max-samples", type=int, default=500)
+    args = parser.parse_args()
+
     model, features, le, score, params, metrics = train_model(
-        data_dir, n_splits=3, recent_years=1, n_iter=1, max_samples=500
+        args.data_dir,
+        n_splits=args.n_splits,
+        recent_years=args.recent_years,
+        n_iter=args.n_iter,
+        max_samples=args.max_samples,
     )
     save_model(model, features, le, path=DEFAULT_MODEL_PATH, best_params=params)
-    print(f"Outcome model trained with score {score:.3f} and saved to {DEFAULT_MODEL_PATH}")
+    print(f"Outcome model trained with log-loss {score:.3f} and saved to {DEFAULT_MODEL_PATH}")
+    for lbl, m in metrics.items():
+        print(
+            f"  {lbl}: precision={m['precision']:.3f}, recall={m['recall']:.3f}, brier={m['brier']:.3f}"
+        )
 
     o25_model, o25_features, o25_le, o25_score, o25_params, o25_metrics = train_over25_model(
-        data_dir, n_splits=3, recent_years=1, n_iter=1, max_samples=500
+        args.data_dir,
+        n_splits=args.n_splits,
+        recent_years=args.recent_years,
+        n_iter=args.n_iter,
+        max_samples=args.max_samples,
     )
     save_model(
         o25_model,
@@ -27,8 +49,12 @@ def main(data_dir: str = "data") -> None:
         best_params=o25_params,
     )
     print(
-        f"Over/Under 2.5 model trained with score {o25_score:.3f} and saved to {DEFAULT_OVER25_MODEL_PATH}"
+        f"Over/Under 2.5 model trained with log-loss {o25_score:.3f} and saved to {DEFAULT_OVER25_MODEL_PATH}"
     )
+    for lbl, m in o25_metrics.items():
+        print(
+            f"  {lbl}: precision={m['precision']:.3f}, recall={m['recall']:.3f}, brier={m['brier']:.3f}"
+        )
 
 
 if __name__ == "__main__":
