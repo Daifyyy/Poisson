@@ -56,7 +56,9 @@ def poisson_over25_probability(home_exp: float, away_exp: float, max_goals: int 
     """
     goals = np.arange(0, max_goals + 1)
     matrix = np.outer(poisson.pmf(goals, home_exp), poisson.pmf(goals, away_exp))
-    prob_over = matrix[np.triu_indices_from(matrix, k=3)].sum()
+    prob_over = matrix[
+        np.add.outer(range(max_goals + 1), range(max_goals + 1)) >= 3
+    ].sum()
     return round(prob_over * 100, 2)
 
 
