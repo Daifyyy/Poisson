@@ -59,6 +59,7 @@ from .team_analysis import (
     calculate_recent_team_form,
     calculate_expected_and_actual_points,
     calculate_strength_of_schedule,
+    calculate_team_home_advantage,
     analyze_opponent_strength,
     get_head_to_head_stats,
     merged_home_away_opponent_form,
