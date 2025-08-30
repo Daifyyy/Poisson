@@ -97,6 +97,20 @@ streamlit run app.py
 
 Po spuštění otevři zobrazenou URL v prohlížeči.
 
+### Probability shrinkage
+
+Predikce lze zjemnit tzv. shrinkage faktorem `alpha`, který mísí výstupy
+modelu s neutrálním prior.
+
+- Proměnná prostředí `PROBA_ALPHA` (výchozí `0.05`) se načítá v aplikaci a
+  předává se do všech volání modelu.
+- Hodnoty blíže nule nechávají pravděpodobnosti téměř beze změny, vyšší čísla
+  je posouvají ke 33 %/33 %/33 % u výsledku zápasu nebo 50 %/50 % u over/under
+  2.5.
+- Knihovní funkce `predict_outcome`, `predict_proba` a `predict_over25_proba`
+  parametr `alpha` také přijímají, takže jej lze nastavovat i mimo
+  Streamlit aplikaci.
+
 ## 🔄 Aktualizace dat
 - **CSV z football-data.co.uk**: `python scripts/update_league_data.py`
 - **API-Football**: `python update_all_leagues_from_api.py` (vyžaduje `API_FOOTBALL_KEY`)
