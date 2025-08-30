@@ -7,7 +7,9 @@ from utils.ml.random_forest import (
     construct_features_for_match,
     predict_proba,
     load_model,
+    load_over25_model,
     train_model,
+    predict_over25_proba,
     _prepare_features,
 )
 
@@ -114,10 +116,19 @@ def test_predict_proba_deterministic():
     model_data = load_model()
     model = model_data[0]
     assert type(model).__name__ != "DummyModel"
-    probs = predict_proba(feats, model_data=model_data)
+    probs = predict_proba(feats, model_data=model_data, alpha=0.1)
     assert sum(probs.values()) == pytest.approx(100.0)
     for p in probs.values():
         assert 0 <= p <= 100
+
+
+def test_predict_over25_proba_accepts_alpha():
+    df = _sample_df()
+    elo_dict = {"A": 1600, "B": 1500}
+    feats = construct_features_for_match(df, "A", "B", elo_dict)
+    model_data = load_over25_model()
+    prob = predict_over25_proba(feats, model_data=model_data, alpha=0.1)
+    assert 0 <= prob <= 100
 
 
 def test_train_model_applies_class_weight(tmp_path):
