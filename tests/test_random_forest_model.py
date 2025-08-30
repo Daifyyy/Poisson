@@ -136,31 +136,59 @@ def test_train_model_applies_class_weight(tmp_path):
     df["Date"] = df["Date"] + pd.to_timedelta(df.index, unit="D")
     csv_path = tmp_path / "sample_combined_full_updated.csv"
     df.to_csv(csv_path, index=False)
+
     model, *_ = train_model(
         data_dir=tmp_path,
         n_splits=2,
         n_iter=1,
         max_samples=50,
         decay_factor=0.01,
-        balance_classes=True,
+        balance_classes=True,  # -> class_weight by měl být nastaven
     )
     assert model is not None
 
-    from sklearn.utils.class_weight import compute_class_weight
     _, y, _, _ = _prepare_features(df)
     classes = np.unique(y)
-    expected_weights = compute_class_weight("balanced", classes=classes, y=y)
+    expected_weights = compute_class_weight(class_weight="balanced", classes=classes, y=y)
     model_weights = model.estimator.named_steps["model"].class_weight
     for cls, weight in zip(classes, expected_weights):
         assert model_weights[cls] == pytest.approx(weight)
 
 
 def test_train_model_no_class_weight_by_default(tmp_path):
+    """Bez explicitního balance_classes by se class_weight neměl nastavovat."""
     df = pd.concat([_sample_df()] * 3, ignore_index=True)
     df["Date"] = df["Date"] + pd.to_timedelta(df.index, unit="D")
     csv_path = tmp_path / "sample_combined_full_updated.csv"
     df.to_csv(csv_path, index=False)
+
     model, *_ = train_model(
-        data_dir=tmp_path, n_splits=2, n_iter=1, max_samples=50, decay_factor=0.01
+        data_dir=tmp_path,
+        n_splits=2,
+        n_iter=1,
+        max_samples=50,
+        decay_factor=0.01,
+        # balance_classes nezadáváme -> očekáváme None
     )
     assert model.estimator.named_steps["model"].class_weight is None
+
+
+def test_train_model_accepts_param_distributions(tmp_path):
+    """Kontrola, že Grid/RandomSearch umí převzít pevné parametry."""
+    df = pd.concat([_sample_df()] * 3, ignore_index=True)
+    df["Date"] = df["Date"] + pd.to_timedelta(df.index, unit="D")
+    csv_path = tmp_path / "sample_combined_full_updated.csv"
+    df.to_csv(csv_path, index=False)
+
+    custom = {"model__n_estimators": [10], "model__max_depth": [5]}
+    # Očekáváme, že train_model vrací best_params jako pátou položku (dle
+    # stávajícího kódu v projektu). Pokud máš jiný pořádek, uprav unpacking.
+    _, _, _, _, params, _ = train_model(
+        data_dir=tmp_path,
+        n_splits=2,
+        n_iter=1,
+        max_samples=50,
+        param_distributions=custom,
+    )
+    assert params["model__n_estimators"] == 10
+    assert params["model__max_depth"] == 5
