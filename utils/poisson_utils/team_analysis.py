@@ -874,7 +874,7 @@ def render_team_comparison_section(
             .apply(_highlight, axis=1)
             .format({"team1": "{:.1f}", "team2": "{:.1f}"})
         )
-        st.dataframe(styled, hide_index=True, use_container_width=True)
+        st.dataframe(styled, hide_index=True, width="stretch")
 
     def _category_summary(df_table: pd.DataFrame) -> pd.DataFrame:
         if df_table.empty:
@@ -903,7 +903,7 @@ def render_team_comparison_section(
         if df_summary.empty:
             return
         st.markdown("#### Shrnutí kategorií")
-        st.dataframe(df_summary, hide_index=True, use_container_width=True)
+        st.dataframe(df_summary, hide_index=True, width="stretch")
 
     with tab_celkem:
         _df = _build_table(stats_total)

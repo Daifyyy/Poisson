@@ -53,7 +53,7 @@ def compute_league_summary(season_df, gii_dict, elo_dict):
 
     # Over/BTTS per tým (domácí pohled, dle původní logiky)
     over25 = (
-        season_df.groupby("HomeTeam")
+        season_df.groupby("HomeTeam")[["FTHG", "FTAG"]]
         .apply(lambda x: (x["FTHG"] + x["FTAG"] > 2.5).mean() * 100)
         .round(0)
     )
@@ -176,7 +176,7 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
             "Detail": st.column_config.LinkColumn("Detail", display_text="🔍"),
         },
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
 
     st.markdown("### 🌟 Top 5 týmy")
@@ -273,5 +273,5 @@ def render_league_overview(season_df, league_name, gii_dict, elo_dict):
                 "Prediction": st.column_config.LinkColumn("Prediction", display_text="🔮"),
             },
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
