@@ -500,7 +500,11 @@ def load_model(path: str | Path = DEFAULT_MODEL_PATH):
         return model, feature_names, label_enc, params
 
 
-def predict_outcome(features: Dict[str, float], model_path: str | Path = DEFAULT_MODEL_PATH) -> str:
+def predict_outcome(
+    features: Dict[str, float],
+    model_path: str | Path = DEFAULT_MODEL_PATH,
+    alpha: float = 0.15,
+) -> str:
     """Predict match outcome using a saved model.
 
     Parameters
@@ -510,6 +514,9 @@ def predict_outcome(features: Dict[str, float], model_path: str | Path = DEFAULT
         documented above.
     model_path:
         Path to a saved model created by :func:`save_model`.
+    alpha:
+        Shrinkage factor passed to :func:`predict_proba` to dampen extreme
+        probabilities. Values closer to zero apply less shrinkage.
 
     Returns
     -------
@@ -517,10 +524,10 @@ def predict_outcome(features: Dict[str, float], model_path: str | Path = DEFAULT
         Predicted full-time result label: ``'H'`` (home win), ``'D'`` (draw) or
         ``'A'`` (away win).
     """
-    model, feature_names, label_enc, _ = load_model(model_path)
-    X = pd.DataFrame([features], columns=feature_names)
-    pred = model.predict(X)[0]
-    return label_enc.inverse_transform([pred])[0]
+    probs = predict_proba(features, model_path=model_path, alpha=alpha)
+    reverse = {"Home Win": "H", "Draw": "D", "Away Win": "A"}
+    best = max(probs, key=probs.get)
+    return reverse[best]
 
 
 def construct_features_for_match(
@@ -637,6 +644,7 @@ def predict_proba(
     features: Dict[str, float],
     model_data: Tuple[Any, Iterable[str], Any] | Tuple[Any, Iterable[str], Any, Mapping[str, Any]] | None = None,
     model_path: str | Path = DEFAULT_MODEL_PATH,
+    alpha: float = 0.15,
 ) -> Dict[str, float]:
     """Return outcome probabilities for a feature mapping.
 
@@ -650,6 +658,10 @@ def predict_proba(
         provided the model is loaded from ``model_path``.
     model_path:
         Path to the saved model, used only when ``model_data`` is ``None``.
+    alpha:
+        Shrinkage factor applied to predicted probabilities to dampen extreme
+        values. The probabilities are blended with a uniform prior using this
+        parameter.
 
     Returns
     -------
@@ -663,7 +675,6 @@ def predict_proba(
     X = _clip_features(pd.DataFrame([features], columns=feature_names))
     probs = model.predict_proba(X)[0]
     # shrink towards uniform prior to dampen extreme probabilities
-    alpha = 0.15
     probs = (1 - alpha) * probs + alpha * (1.0 / len(probs))
     probs = probs / probs.sum()
     labels = label_enc.inverse_transform(np.arange(len(probs)))
@@ -702,8 +713,22 @@ def predict_over25_proba(
     features: Dict[str, float],
     model_data: Tuple[Any, Iterable[str], Any] | None = None,
     model_path: str | Path = DEFAULT_OVER25_MODEL_PATH,
+    alpha: float = 0.15,
 ) -> float:
-    """Return the probability (0-100) that total goals exceed 2.5."""
+    """Return the probability (0-100) that total goals exceed 2.5.
+
+    Parameters
+    ----------
+    features:
+        Feature mapping produced by :func:`construct_features_for_match`.
+    model_data:
+        Optional tuple ``(model, feature_names, label_encoder)``. When not
+        provided the model is loaded from ``model_path``.
+    model_path:
+        Path to the saved model, used only when ``model_data`` is ``None``.
+    alpha:
+        Shrinkage factor applied to the over/under probability. Values closer
+        to zero apply less shrinkage toward 50%."""
     if model_data is None:
         model_data = load_over25_model(model_path)
     model, feature_names, label_enc = model_data
@@ -715,7 +740,6 @@ def predict_over25_proba(
         prob = probs[over_idx]
     else:
         prob = probs[1]
-    alpha = 0.15
     prob = (1 - alpha) * prob + alpha * 0.5
     return float(prob * 100)
 
