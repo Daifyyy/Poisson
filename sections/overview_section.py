@@ -17,6 +17,7 @@ from utils.poisson_utils import (
     calculate_strength_of_schedule,
     detect_current_season,
     get_team_xg_xga,
+    calculate_team_home_advantage,
 )
 from utils.statistics import calculate_clean_sheets
 from sections.match_prediction_section import load_upcoming_xg
@@ -29,7 +30,7 @@ def compute_league_summary(season_df, gii_dict, elo_dict):
         empty_cols = [
             "Tým","Elo","SOS","Body","Form","Trend formy","Góly celkem","Rozptyl skóre",
             "xG","xGA","Vstřelené Góly","Střely","Na branku","Rohy","Obdržené góly",
-            "Čistá konta %","Over 2.5 %","BTTS %","GII index","Intenzita"
+            "Čistá konta %","Over 2.5 %","BTTS %","GII index","Intenzita","Domácí výhoda"
         ]
         return pd.DataFrame(columns=empty_cols), 0, 0.0, 0.0, 0.0
 
@@ -67,7 +68,7 @@ def compute_league_summary(season_df, gii_dict, elo_dict):
         except (TypeError, ValueError):
             return default
 
-    trends, avg_goals_all, score_var, xg_vals, xga_vals = [], [], [], [], []
+    trends, avg_goals_all, score_var, xg_vals, xga_vals, home_adv_vals = [], [], [], [], [], []
 
     for team in team_stats.index:
         score_list, avg_goals_per_match, score_variance = compute_score_stats(season_df, team)
@@ -80,6 +81,8 @@ def compute_league_summary(season_df, gii_dict, elo_dict):
         team_xga = ws_stats.get("xga")
         xg_vals.append(_r(team_xg, 2))
         xga_vals.append(_r(team_xga, 2))
+
+        home_adv_vals.append(_r(calculate_team_home_advantage(season_df, team)))
 
     summary_table = pd.DataFrame(
         {
@@ -107,6 +110,7 @@ def compute_league_summary(season_df, gii_dict, elo_dict):
                 dtype="float"
             ).round(2).values,
             "Intenzita": team_stats.index.map(lambda t: intensity_score_to_emoji(gii_dict.get(t))),
+            "Domácí výhoda": home_adv_vals,
         }
     )
 
