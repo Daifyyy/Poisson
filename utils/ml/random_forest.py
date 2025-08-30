@@ -242,6 +242,15 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
     return X, y, features, label_enc
 
 
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Dict, Iterable, Mapping, Tuple
+
+import numpy as np
+import pandas as pd
+
+
 def train_model(
     data_dir: str | Path = "data",
     n_splits: int = 5,
@@ -250,23 +259,28 @@ def train_model(
     max_samples: int | None = None,
     decay_factor: float | None = None,
     param_distributions: Mapping[str, Iterable[Any]] | None = None,
+    balance_classes: bool = False,
 ) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Dict[str, float]]]:
-    """Train a ``RandomForestClassifier`` on historical data using
-    ``RandomizedSearchCV``.
+    """Train a RandomForest classifier on historical data with RandomizedSearchCV.
 
-    The function mitigates class imbalance via explicit class weights.
-    ``decay_factor`` applies an exponential time decay to older matches via
-    ``exp(-decay_factor * age)``, where ``age`` is the number of days since the
-    most recent match. ``param_distributions`` allows overriding the default
-    hyperparameter search space. Returns a calibrated model and per-class
-    precision/recall.
+    - ``decay_factor`` applies an exponential time decay to older matches via
+      ``exp(-decay_factor * age_days)``.
+    - ``param_distributions`` can override the default hyperparameter search space.
+    - ``balance_classes=True`` enables class_weight balancing from the observed label distribution.
+
+    Returns
+    -------
+    (calibrated_model, feature_names, label_encoder, best_cv_score, best_params, per_class_metrics)
     """
-    from sklearn.ensemble import RandomForestClassifier  # lazy import
+    # Lazy imports (rychlejší import modulu)
+    from sklearn.ensemble import RandomForestClassifier
     from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
-    from sklearn.calibration import CalibratedClassifierCV  # lazy import
-    from sklearn.metrics import precision_recall_fscore_support  # lazy import
-    from sklearn.utils.class_weight import compute_class_weight  # lazy import
+    from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.metrics import precision_recall_fscore_support
+    from sklearn.utils.class_weight import compute_class_weight
+    from sklearn.base import clone
 
+    # Vstupní data
     df = _load_matches(data_dir)
     if recent_years is not None and "Date" in df.columns:
         cutoff = df["Date"].max() - pd.DateOffset(years=recent_years)
@@ -276,27 +290,37 @@ def train_model(
 
     X, y, feature_names, label_enc = _prepare_features(df)
 
+    # Vzorkové váhy podle stáří záznamu (exponenciální útlum)
     sample_weights = None
     if decay_factor is not None and "Date" in df.columns:
         max_date = df["Date"].max()
+        # X.index je zarovnaný s df po _prepare_features
         age = (max_date - df.loc[X.index, "Date"]).dt.days.to_numpy()
         sample_weights = np.exp(-decay_factor * age)
 
-    # --- Handle class imbalance via class weights ------------------------------
-    classes = np.unique(y)
-    class_weights = compute_class_weight("balanced", classes=classes, y=y)
-    class_weight = {cls: weight for cls, weight in zip(classes, class_weights)}
+    # Volitelné vyvážení tříd
+    class_weight = None
+    if balance_classes:
+        classes = np.unique(y)
+        weights = compute_class_weight(class_weight="balanced", classes=classes, y=y)
+        class_weight = {cls: w for cls, w in zip(classes, weights)}
+
+    # Pipeline se supportem pro sample_weight (očekává se tvoje utilita)
     pipeline = SampleWeightPipeline(
         [
             (
                 "model",
-                RandomForestClassifier(class_weight=class_weight, random_state=42),
+                RandomForestClassifier(
+                    class_weight=class_weight,
+                    random_state=42,
+                ),
             )
         ]
     )
 
     tscv = TimeSeriesSplit(n_splits=n_splits)
 
+    # Search space (přepíše se, pokud přijde param_distributions)
     if param_distributions is None:
         param_distributions = {
             "model__n_estimators": [50, 100, 200, 300],
@@ -308,14 +332,15 @@ def train_model(
         }
 
     search = RandomizedSearchCV(
-        pipeline,
+        estimator=pipeline,
         param_distributions=param_distributions,
         n_iter=n_iter,
         cv=tscv,
         random_state=42,
-        scoring="balanced_accuracy",
+        scoring="accuracy",
         n_jobs=-1,
     )
+
     fit_params = {"sample_weight": sample_weights} if sample_weights is not None else {}
     search.fit(X, y, **fit_params)
 
@@ -323,33 +348,37 @@ def train_model(
     score = float(search.best_score_)
     best_params = search.best_params_
 
+    # Kalibrace pravděpodobností (isotonic, stejné časové dělení)
     calibrated_model = CalibratedClassifierCV(best_pipeline, method="isotonic", cv=tscv)
     if sample_weights is not None:
         calibrated_model.fit(X, y, sample_weight=sample_weights)
     else:
         calibrated_model.fit(X, y)
 
-    # --- Precision/recall metrics ----------------------------------------------
-    from sklearn.base import clone  # lazy import
-
+    # Precision/Recall metriky ve stylu “rolling” time-series splitu
     y_pred = np.empty_like(y)
     for train_idx, test_idx in tscv.split(X, y):
         model_clone = clone(best_pipeline)
         if sample_weights is not None:
             model_clone.fit(
-                X.iloc[train_idx], y[train_idx], sample_weight=sample_weights[train_idx]
+                X.iloc[train_idx],
+                y[train_idx],
+                sample_weight=sample_weights[train_idx],
             )
         else:
             model_clone.fit(X.iloc[train_idx], y[train_idx])
         y_pred[test_idx] = model_clone.predict(X.iloc[test_idx])
 
-    precisions, recalls, _, _ = precision_recall_fscore_support(y, y_pred, labels=np.unique(y))
+    precisions, recalls, _, _ = precision_recall_fscore_support(
+        y, y_pred, labels=np.unique(y)
+    )
     metrics = {
         label: {"precision": float(p), "recall": float(r)}
         for label, p, r in zip(label_enc.classes_, precisions, recalls)
     }
 
     return calibrated_model, feature_names, label_enc, score, best_params, metrics
+
 
 
 def train_over25_model(
