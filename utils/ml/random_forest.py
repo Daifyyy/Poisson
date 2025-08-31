@@ -483,11 +483,17 @@ def train_over25_model(
         under_col = f"{prefix}<2.5"
         if all(c in df.columns for c in (over_col, under_col)):
             odds = df.loc[X.index, [over_col, under_col]].astype(float)
+            mask = ((odds > 0) & np.isfinite(odds)).all(axis=1)
+            odds = odds[mask]
+            if odds.empty:
+                continue
             probs = 1 / odds
             probs = probs.div(probs.sum(axis=1), axis=0)
             probs.columns = ["Over 2.5", "Under 2.5"]
             try:
-                book_ll = float(log_loss(y, probs[label_enc.classes_].to_numpy()))
+                book_ll = float(
+                    log_loss(y[mask.to_numpy()], probs[label_enc.classes_].to_numpy())
+                )
                 break
             except KeyError:
                 continue
