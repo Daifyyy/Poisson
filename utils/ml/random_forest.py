@@ -28,23 +28,6 @@ class SampleWeightPipeline(_BasePipeline):
         return super().fit(X, y, **fit_params)
 
 
-def _reliability_curve_and_ece(y_true: np.ndarray, y_prob: np.ndarray, n_bins: int = 10):
-    """Compute reliability diagram points and Expected Calibration Error."""
-    bins = np.linspace(0.0, 1.0, n_bins + 1)
-    bin_ids = np.digitize(y_prob, bins) - 1
-    bin_totals = np.bincount(bin_ids, minlength=n_bins)
-    accuracies = np.zeros(n_bins)
-    confidences = np.zeros(n_bins)
-    for b in range(n_bins):
-        if bin_totals[b] > 0:
-            mask = bin_ids == b
-            accuracies[b] = y_true[mask].mean()
-            confidences[b] = y_prob[mask].mean()
-    ece = float(np.sum(np.abs(accuracies - confidences) * bin_totals / len(y_true)))
-    centers = (bins[:-1] + bins[1:]) / 2.0
-    return centers, accuracies, confidences, ece
-
-
 # ---------------------------------------------------------------------
 # Načtení dat a příprava featur
 # ---------------------------------------------------------------------
@@ -134,12 +117,88 @@ def _clip_features(df: pd.DataFrame) -> pd.DataFrame:
         "attack_strength_diff": (-2, 2),
         "defense_strength_diff": (-2, 2),
         "home_advantage": (1.0, 1.0),
+        "abs_elo_diff": (0, 400),
+        "abs_form_diff": (0, 2),
+        "abs_xg_diff": (0, 5),
+        "abs_shots_diff": (0, 20),
+        "abs_shot_target_diff": (0, 10),
+        "abs_corners_diff": (0, 10),
+        "total_goals_proxy": (0, 5),
+        "tempo_proxy": (0, 40),
+        "pois_lambda_home": (0.05, 3.5),
+        "pois_lambda_away": (0.05, 3.5),
+        "pois_p_home": (0.0, 1.0),
+        "pois_p_draw": (0.0, 1.0),
+        "pois_p_away": (0.0, 1.0),
+        "pois_p_over25": (0.0, 1.0),
+
     }
     df = df.copy()
     for col, (lo, hi) in bounds.items():
         if col in df.columns:
             df[col] = df[col].clip(lo, hi)
     return df
+
+def _poisson_probs_from_lambdas(lh: float, la: float, max_goals: int = 12) -> Dict[str, float]:
+    """
+    Spočítá P(Home), P(Draw), P(Away), P(Over2.5) z nezávislých Poisson(λh), Poisson(λa).
+    Suma přes mřížku 0..max_goals (stačí 10–12).
+    """
+    lh = float(max(lh, 1e-6))
+    la = float(max(la, 1e-6))
+    from math import exp, factorial
+
+    # precompute pmf
+    ph = [exp(-lh) * (lh ** k) / factorial(k) for k in range(max_goals + 1)]
+    pa = [exp(-la) * (la ** k) / factorial(k) for k in range(max_goals + 1)]
+
+    p_home = 0.0
+    p_draw = 0.0
+    p_away = 0.0
+    p_over25 = 0.0
+
+    for h in range(max_goals + 1):
+        for a in range(max_goals + 1):
+            p = ph[h] * pa[a]
+            if h > a:
+                p_home += p
+            elif h == a:
+                p_draw += p
+            else:
+                p_away += p
+            if (h + a) > 2:
+                p_over25 += p
+
+    # Zbytek mimo mřížku je typicky zanedbatelný (pro λ ~ 0.5–2.5)
+    s = p_home + p_draw + p_away
+    if s > 0:
+        p_home, p_draw, p_away = p_home/s, p_draw/s, p_away/s
+    return {
+        "p_home": p_home,
+        "p_draw": p_draw,
+        "p_away": p_away,
+        "p_over25": p_over25,
+    }
+
+
+def _estimate_match_lambdas(df_row: pd.Series) -> Tuple[float, float]:
+    """
+    Odhad λh, λa pouze z *minulých* dat (rolling průměry s .shift()) připravené v _prepare_features.
+    Konzervativní směs: 50 % 'for' + 50 % 'against' protistrany + lehká domácí výhoda.
+    """
+    # bezpecne čtení s fallbacky
+    h_for = float(df_row.get("home_avg_goals_last5", 1.1))
+    a_for = float(df_row.get("away_avg_goals_last5", 1.1))
+    h_conc = float(df_row.get("home_goals_against_10", 1.1))
+    a_conc = float(df_row.get("away_goals_against_10", 1.1))
+
+    # mírná domácí výhoda ~ +7 % na λh (lze ladit)
+    lambda_home = max(0.05, 0.5 * h_for + 0.5 * a_conc) * 1.07
+    lambda_away = max(0.05, 0.5 * a_for + 0.5 * h_conc)
+
+    return lambda_home, lambda_away
+
+
 
 
 def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Iterable[str], Any]:
@@ -186,25 +245,105 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
     df["attack_strength_diff"] = df["HomeTeam"].map(attack_strength) - df["AwayTeam"].map(attack_strength)
     df["defense_strength_diff"] = df["HomeTeam"].map(defense_strength) - df["AwayTeam"].map(defense_strength)
 
+    # ... uvnitř _prepare_features po výpočtu attack_strength_diff/defense_strength_diff:
+
+    # Symetrie – menší rozdíly => vyšší prior na remízu
+    df["abs_elo_diff"] = df["elo_diff"].abs()
+    df["abs_form_diff"] = (df["home_recent_form"] - df["away_recent_form"]).abs()
+    df["abs_xg_diff"] = df["xg_diff"].abs()
+
+    # Pokud calculate_team_strengths neumí explicitně „shift před zápas“,
+    # použij bezpečnou rolling proxy (bez leakage):
+    df["home_goals_for_10"] = df.groupby("HomeTeam")["FTHG"].transform(lambda x: x.shift().rolling(10, 1).mean())
+    df["home_goals_against_10"] = df.groupby("HomeTeam")["FTAG"].transform(lambda x: x.shift().rolling(10, 1).mean())
+    df["away_goals_for_10"] = df.groupby("AwayTeam")["FTAG"].transform(lambda x: x.shift().rolling(10, 1).mean())
+    df["away_goals_against_10"] = df.groupby("AwayTeam")["FTHG"].transform(lambda x: x.shift().rolling(10, 1).mean())
+
+    df["gf_diff_10"] = df["home_goals_for_10"] - df["away_goals_for_10"]
+    df["ga_diff_10"] = df["home_goals_against_10"] - df["away_goals_against_10"]
+
+
     # konstantní home advantage (1.0) – je součástí tréninku
     df["home_advantage"] = 1.0
+    
+        # --- Symetrické featury (pro lepší zachytávání remíz) ---
+    df["abs_elo_diff"] = df["elo_diff"].abs()
+    df["abs_form_diff"] = (df["home_recent_form"] - df["away_recent_form"]).abs()
+    df["abs_xg_diff"] = df["xg_diff"].abs()
+    df["abs_shots_diff"] = df["shots_diff"].abs()
+    df["abs_shot_target_diff"] = df["shot_target_diff"].abs()
+    df["abs_corners_diff"] = df["corners_diff"].abs()
+
+    # --- Proxy pro gólovost (O/U 2.5) ---
+    # rolling průměr celkových gólů v posledních 5 zápasech týmu
+    df["home_avg_goals_last5"] = df.groupby("HomeTeam")["FTHG"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["away_avg_goals_last5"] = df.groupby("AwayTeam")["FTAG"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["total_goals_proxy"] = df["home_avg_goals_last5"] + df["away_avg_goals_last5"]
+
+    # rolling průměr střel v zápase (HS+AS) – „tempo zápasu“
+    df["home_shots_total5"] = df.groupby("HomeTeam")["HS"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["away_shots_total5"] = df.groupby("AwayTeam")["AS"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["tempo_proxy"] = df["home_shots_total5"] + df["away_shots_total5"]
+
+        # --- Poisson lambdy a pravděpodobnosti (čistě pre-match; vše je se shift()) ---
+    # Pokud nejsou sloupce zavedeny, vytvoř je (bez leakage!)
+    if "home_avg_goals_last5" not in df.columns:
+        df["home_avg_goals_last5"] = df.groupby("HomeTeam")["FTHG"].transform(
+            lambda x: x.shift().rolling(5, min_periods=1).mean()
+        )
+    if "away_avg_goals_last5" not in df.columns:
+        df["away_avg_goals_last5"] = df.groupby("AwayTeam")["FTAG"].transform(
+            lambda x: x.shift().rolling(5, min_periods=1).mean()
+        )
+    if "home_goals_against_10" not in df.columns:
+        df["home_goals_against_10"] = df.groupby("HomeTeam")["FTAG"].transform(
+            lambda x: x.shift().rolling(10, min_periods=1).mean()
+        )
+    if "away_goals_against_10" not in df.columns:
+        df["away_goals_against_10"] = df.groupby("AwayTeam")["FTHG"].transform(
+            lambda x: x.shift().rolling(10, min_periods=1).mean()
+        )
+
+    # odhad λh, λa pro každý řádek
+    lambdas = df.apply(_estimate_match_lambdas, axis=1)
+    df["pois_lambda_home"] = [lh for lh, _ in lambdas]
+    df["pois_lambda_away"] = [la for _, la in lambdas]
+
+    # Poisson pravděpodobnosti
+    def _poisson_row_probs(row):
+        pr = _poisson_probs_from_lambdas(row["pois_lambda_home"], row["pois_lambda_away"], max_goals=12)
+        return pd.Series([pr["p_home"], pr["p_draw"], pr["p_away"], pr["p_over25"]],
+                         index=["pois_p_home", "pois_p_draw", "pois_p_away", "pois_p_over25"])
+
+    df[["pois_p_home", "pois_p_draw", "pois_p_away", "pois_p_over25"]] = df.apply(_poisson_row_probs, axis=1)
+
 
     features = [
-        "home_recent_form",
-        "away_recent_form",
-        "elo_diff",
-        "xg_diff",
-        "home_conceded",
-        "away_conceded",
-        "conceded_diff",
-        "shots_diff",
-        "shot_target_diff",
-        "corners_diff",
-        "home_advantage",
-        "days_since_last_match",
-        "attack_strength_diff",
-        "defense_strength_diff",
+        "home_recent_form","away_recent_form","elo_diff","xg_diff",
+        "home_conceded","away_conceded","conceded_diff",
+        "shots_diff","shot_target_diff","corners_diff",
+        "home_advantage","days_since_last_match",
+        "attack_strength_diff","defense_strength_diff",
+
+        # symetrie (pokud je máš – ponech klidně i ty)
+        "abs_elo_diff","abs_form_diff","abs_xg_diff",
+        "abs_shots_diff","abs_shot_target_diff","abs_corners_diff",
+        "total_goals_proxy","tempo_proxy",
+
+        # NOVÉ – Poisson
+        "pois_lambda_home","pois_lambda_away",
+        "pois_p_home","pois_p_draw","pois_p_away","pois_p_over25",
     ]
+
+
     X = _clip_features(df[features])
     y_raw = df["FTR"].astype(str)
 
@@ -229,19 +368,18 @@ def train_model(
     max_samples: int | None = None,
     decay_factor: float | None = None,
     param_distributions: Mapping[str, Iterable[Any]] | None = None,
-    balance_classes: bool = False,
-) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Any]]:
+    balance_classes: bool = True,
+) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Dict[str, float]]]:
     """Train RandomForest (H/D/A) s časovým CV a kalibrací.
 
-    Vrací: (calibrated_model, feature_names, label_encoder, best_cv_score, best_params,
-    {"per_class": ..., "baselines": ...})
+    Vrací: (calibrated_model, feature_names, label_encoder, best_cv_score, best_params, per_class_metrics)
     """
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
     from sklearn.calibration import CalibratedClassifierCV
-    from sklearn.metrics import precision_recall_fscore_support, log_loss
     from sklearn.utils.class_weight import compute_class_weight
     from sklearn.base import clone
+    from sklearn.metrics import brier_score_loss, precision_recall_fscore_support
 
     df = _load_matches(data_dir)
     if recent_years is not None and "Date" in df.columns:
@@ -259,16 +397,19 @@ def train_model(
         age = (max_date - df.loc[X.index, "Date"]).dt.days.to_numpy()
         sample_weights = np.exp(-decay_factor * age)
 
-    # class_weight (volitelné)
+    # class_weight (default on)
     class_weight = None
     if balance_classes:
         classes = np.unique(y)
         weights = compute_class_weight(class_weight="balanced", classes=classes, y=y)
         class_weight = {cls: w for cls, w in zip(classes, weights)}
 
-    pipeline = SampleWeightPipeline(
-        [("model", RandomForestClassifier(class_weight=class_weight, random_state=42))]
-    )
+    pipeline = SampleWeightPipeline([
+        ("model", RandomForestClassifier(
+            class_weight=class_weight, random_state=42,
+            n_estimators=600, min_samples_leaf=2, max_features="sqrt"
+        ))
+    ])
 
     tscv = TimeSeriesSplit(n_splits=n_splits)
 
@@ -282,7 +423,7 @@ def train_model(
             "model__bootstrap": [True, False],
         }
 
-    # Optimalizujeme log-loss, aby pravděpodobnosti lépe odpovídaly realitě
+    # Optimalizace na neg_log_loss
     search = RandomizedSearchCV(
         estimator=pipeline,
         param_distributions=param_distributions,
@@ -295,71 +436,67 @@ def train_model(
     fit_params = {"sample_weight": sample_weights} if sample_weights is not None else {}
     search.fit(X, y, **fit_params)
 
+    # Empirický prior z tréninku (v pořadí tříd v y)
+    classes_sorted = np.unique(y)
+    prior = np.bincount(y, minlength=len(classes_sorted)).astype(float)
+    prior = prior / prior.sum()
+
     best_pipeline = search.best_estimator_
-    # RandomizedSearchCV s "neg_log_loss" vrací záporné hodnoty, otočíme znamenko
     score = float(-search.best_score_)
     best_params = search.best_params_
 
+    # Kalibrace (isotonic) přes time-CV
     calibrated_model = CalibratedClassifierCV(best_pipeline, method="isotonic", cv=tscv)
     if sample_weights is not None:
         calibrated_model.fit(X, y, sample_weight=sample_weights)
     else:
         calibrated_model.fit(X, y)
 
-    # per-class precision/recall + Brier score z rollingu přes TimeSeriesSplit
+    # Ulož prior a pořadí tříd do modelu (k použití v inference)
+    calibrated_model.prior_ = prior
+    calibrated_model.classes_order_ = classes_sorted
+
+    # -------- OOF predikce pro metriky (BASE -> CALIB -> predikce na te fold) --------
     y_pred = np.empty_like(y)
-    y_proba = np.zeros((len(y), len(np.unique(y))))
+    y_proba = np.zeros((len(y), len(classes_sorted)))
+
     for tr, te in tscv.split(X, y):
-        mdl = clone(best_pipeline)
+        base = clone(best_pipeline)
         if sample_weights is not None:
-            mdl.fit(X.iloc[tr], y[tr], sample_weight=sample_weights[tr])
+            base.fit(X.iloc[tr], y[tr], sample_weight=sample_weights[tr])
         else:
-            mdl.fit(X.iloc[tr], y[tr])
-        y_pred[te] = mdl.predict(X.iloc[te])
-        y_proba[te] = mdl.predict_proba(X.iloc[te])
+            base.fit(X.iloc[tr], y[tr])
 
+        calib = CalibratedClassifierCV(base, method="isotonic", cv=3)
+        if sample_weights is not None:
+            calib.fit(X.iloc[tr], y[tr], sample_weight=sample_weights[tr])
+        else:
+            calib.fit(X.iloc[tr], y[tr])
+
+        y_pred[te]  = calib.predict(X.iloc[te])
+        y_proba[te] = calib.predict_proba(X.iloc[te])
+
+    # Zarovnání pořadí tříd pro metriky:
+    # label_enc.classes_ je např. ['A','D','H']; classes_sorted je np.unique(y) ve stejném prostoru
+    # Následující výpočet PR bere y_pred vs. y v implicitním pořadí classes_sorted.
     precisions, recalls, _, _ = precision_recall_fscore_support(
-        y, y_pred, labels=np.unique(y)
+        y, y_pred, labels=classes_sorted
     )
-    from sklearn.metrics import brier_score_loss
 
-    metrics: Dict[str, Dict[str, Any]] = {}
-    for idx, (label, p, r) in enumerate(zip(label_enc.classes_, precisions, recalls)):
-        true = (y == idx).astype(int)
+    # Přemapuj indexy do pořadí label_enc.classes_ při reportu metrik
+    idx_by_label = {cls: i for i, cls in enumerate(classes_sorted)}
+    metrics: Dict[str, Dict[str, float]] = {}
+    for lbl in label_enc.classes_:
+        idx = idx_by_label[label_enc.transform([lbl])[0]]  # index třídy v classes_sorted
+        true = (y == classes_sorted[idx]).astype(int)
         prob = y_proba[:, idx]
-        centers, acc, conf, ece = _reliability_curve_and_ece(true, prob)
-        metrics[label] = {
-            "precision": float(p),
-            "recall": float(r),
+        metrics[lbl] = {
+            "precision": float(precisions[idx]),
+            "recall": float(recalls[idx]),
             "brier": float(brier_score_loss(true, prob)),
-            "ece": float(ece),
-            "reliability": {
-                "bin_centers": centers.tolist(),
-                "accuracy": acc.tolist(),
-                "confidence": conf.tolist(),
-            },
         }
 
-    freq_counts = np.bincount(y, minlength=len(label_enc.classes_))
-    freq_probs = freq_counts / freq_counts.sum()
-    freq_ll = float(log_loss(y, np.tile(freq_probs, (len(y), 1))))
-    book_ll = None
-    for prefix in ["PS", "B365", "Avg", "BW", "IW", "LB", "WH", "VC", "P"]:
-        cols = [f"{prefix}H", f"{prefix}D", f"{prefix}A"]
-        if all(c in df.columns for c in cols):
-            odds = df.loc[X.index, cols].astype(float)
-            probs = 1 / odds
-            probs = probs.div(probs.sum(axis=1), axis=0)
-            probs.columns = ["H", "D", "A"]
-            try:
-                book_ll = float(log_loss(y, probs[label_enc.classes_].to_numpy()))
-                break
-            except KeyError:
-                continue
-    baselines = {"frequency_log_loss": freq_ll, "bookmaker_log_loss": book_ll}
-    metrics_wrapped = {"per_class": metrics, "baselines": baselines}
-
-    return calibrated_model, feature_names, label_enc, score, best_params, metrics_wrapped
+    return calibrated_model, feature_names, label_enc, score, best_params, metrics
 
 
 def train_over25_model(
@@ -369,16 +506,20 @@ def train_over25_model(
     n_iter: int = 20,
     max_samples: int | None = None,
     param_distributions: Mapping[str, Iterable[Any]] | None = None,
-) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Any]]:
+) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Dict[str, float]]]:
     """Binary RF pro Over 2.5 (s kalibrací a vyvážením tříd)."""
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
     from sklearn.calibration import CalibratedClassifierCV
-    from sklearn.metrics import precision_recall_fscore_support, log_loss
+    from sklearn.metrics import precision_recall_fscore_support, brier_score_loss
     from sklearn.utils.class_weight import compute_class_weight
     from sklearn.preprocessing import LabelEncoder
     from sklearn.base import clone
+    from sklearn.pipeline import Pipeline
+    import numpy as np
+    import pandas as pd
 
+    # --- Data ---
     df = _load_matches(data_dir)
     if recent_years is not None and "Date" in df.columns:
         cutoff = df["Date"].max() - pd.DateOffset(years=recent_years)
@@ -391,34 +532,25 @@ def train_over25_model(
     y_raw = df.loc[X.index, "over25"]
 
     label_enc = LabelEncoder()
-    y = label_enc.fit_transform(y_raw)
+    y = label_enc.fit_transform(y_raw)  # 0/1 v pořadí label_enc.classes_
 
-    # balanced varianta s fallbackem
-    try:  # pragma: no cover
-        from imblearn.over_sampling import RandomOverSampler  # type: ignore
-        from imblearn.pipeline import Pipeline as ImbPipeline  # type: ignore
-        from imblearn.ensemble import BalancedRandomForestClassifier  # type: ignore
+    # --- Balanced RF (bez imblearn – robustní fallback) ---
+    classes = np.unique(y)
+    weights = compute_class_weight("balanced", classes=classes, y=y)
+    class_weight = {cls: w for cls, w in zip(classes, weights)}
 
-        pipeline = ImbPipeline(
-            steps=[
-                ("sampler", RandomOverSampler(random_state=42)),
-                ("model", BalancedRandomForestClassifier(random_state=42)),
-            ]
-        )
-    except Exception:
-        from sklearn.pipeline import Pipeline
-        classes = np.unique(y)
-        weights = compute_class_weight("balanced", classes=classes, y=y)
-        class_weight = {cls: w for cls, w in zip(classes, weights)}
-        pipeline = Pipeline(
-            [("model", RandomForestClassifier(class_weight=class_weight, random_state=42))]
-        )
+    pipeline = Pipeline([
+        ("model", RandomForestClassifier(
+            class_weight=class_weight, random_state=42,
+            n_estimators=600, min_samples_leaf=2, max_features="sqrt"
+        ))
+    ])
 
     tscv = TimeSeriesSplit(n_splits=n_splits)
 
     if param_distributions is None:
         param_distributions = {
-            "model__n_estimators": [50, 100, 200, 300],
+            "model__n_estimators": [100, 200, 300, 600],
             "model__max_depth": [None, 5, 10, 20],
             "model__min_samples_split": [2, 5, 10],
             "model__min_samples_leaf": [1, 2, 4],
@@ -426,6 +558,7 @@ def train_over25_model(
             "model__bootstrap": [True, False],
         }
 
+    # --- Hyperparam search na neg_log_loss ---
     search = RandomizedSearchCV(
         estimator=pipeline,
         param_distributions=param_distributions,
@@ -441,66 +574,45 @@ def train_over25_model(
     score = float(-search.best_score_)
     best_params = search.best_params_
 
+    # --- Kalibrace (isotonic) přes time-CV ---
     calibrated_model = CalibratedClassifierCV(best_pipeline, method="isotonic", cv=tscv)
     calibrated_model.fit(X, y)
 
+    # --- Ulož empirický prior (v pořadí label_enc.classes_) a pořadí tříd ---
+    prior = np.bincount(y, minlength=len(label_enc.classes_)).astype(float)
+    prior = prior / prior.sum()
+    calibrated_model.prior_ = prior
+    # u binární klasifikace 0..1 odpovídá label_enc.classes_
+    calibrated_model.classes_order_ = np.arange(len(label_enc.classes_))
+
+    # --- OOF metriky z KALIBROVANÝCH pravděpodobností ---
     y_pred = np.empty_like(y)
-    y_proba = np.zeros((len(y), len(np.unique(y))))
+    y_proba = np.zeros((len(y), len(classes)))
+
     for tr, te in tscv.split(X, y):
-        mdl = clone(best_pipeline)
-        mdl.fit(X.iloc[tr], y[tr])
-        y_pred[te] = mdl.predict(X.iloc[te])
-        y_proba[te] = mdl.predict_proba(X.iloc[te])
+        base = clone(best_pipeline)
+        base.fit(X.iloc[tr], y[tr])
 
-    precisions, recalls, _, _ = precision_recall_fscore_support(
-        y, y_pred, labels=np.unique(y)
-    )
-    from sklearn.metrics import brier_score_loss
+        calib = CalibratedClassifierCV(base, method="isotonic", cv=3)
+        calib.fit(X.iloc[tr], y[tr])
 
-    metrics: Dict[str, Dict[str, Any]] = {}
-    for idx, (label, p, r) in enumerate(zip(label_enc.classes_, precisions, recalls)):
+        y_pred[te]  = calib.predict(X.iloc[te])
+        y_proba[te] = calib.predict_proba(X.iloc[te])
+
+    precisions, recalls, _, _ = precision_recall_fscore_support(y, y_pred, labels=classes)
+
+    metrics: Dict[str, Dict[str, float]] = {}
+    for lbl in label_enc.classes_:
+        idx = label_enc.transform([lbl])[0]  # 0 nebo 1
         true = (y == idx).astype(int)
         prob = y_proba[:, idx]
-        centers, acc, conf, ece = _reliability_curve_and_ece(true, prob)
-        metrics[label] = {
-            "precision": float(p),
-            "recall": float(r),
+        metrics[lbl] = {
+            "precision": float(precisions[idx]),
+            "recall": float(recalls[idx]),
             "brier": float(brier_score_loss(true, prob)),
-            "ece": float(ece),
-            "reliability": {
-                "bin_centers": centers.tolist(),
-                "accuracy": acc.tolist(),
-                "confidence": conf.tolist(),
-            },
         }
 
-    freq_counts = np.bincount(y, minlength=len(label_enc.classes_))
-    freq_probs = freq_counts / freq_counts.sum()
-    freq_ll = float(log_loss(y, np.tile(freq_probs, (len(y), 1))))
-    book_ll = None
-    for prefix in ["PS", "B365", "Avg", "P", "BW", "IW", "SB", "GB"]:
-        over_col = f"{prefix}>2.5"
-        under_col = f"{prefix}<2.5"
-        if all(c in df.columns for c in (over_col, under_col)):
-            odds = df.loc[X.index, [over_col, under_col]].astype(float)
-            mask = ((odds > 0) & np.isfinite(odds)).all(axis=1)
-            odds = odds[mask]
-            if odds.empty:
-                continue
-            probs = 1 / odds
-            probs = probs.div(probs.sum(axis=1), axis=0)
-            probs.columns = ["Over 2.5", "Under 2.5"]
-            try:
-                book_ll = float(
-                    log_loss(y[mask.to_numpy()], probs[label_enc.classes_].to_numpy())
-                )
-                break
-            except KeyError:
-                continue
-    baselines = {"frequency_log_loss": freq_ll, "bookmaker_log_loss": book_ll}
-    metrics_wrapped = {"per_class": metrics, "baselines": baselines}
-
-    return calibrated_model, feature_names, label_enc, score, best_params, metrics_wrapped
+    return calibrated_model, feature_names, label_enc, score, best_params, metrics
 
 
 # ---------------------------------------------------------------------
@@ -513,15 +625,14 @@ def save_model(
     path: str | Path = DEFAULT_MODEL_PATH,
     best_params: Mapping[str, Any] | None = None,
 ) -> None:
-    joblib.dump(
-        {
-            "model": model,
-            "feature_names": list(feature_names),
-            "label_encoder": label_encoder,
-            "best_params": best_params or {},
-        },
-        Path(path),
-    )
+    joblib.dump({
+        "model": model,
+        "feature_names": list(feature_names),
+        "label_encoder": label_encoder,
+        "best_params": best_params or {},
+        "prior": getattr(model, "prior_", None),
+        "classes_order": getattr(model, "classes_order_", None),
+    }, Path(path))
 
 
 def load_model(path: str | Path = DEFAULT_MODEL_PATH):
@@ -628,20 +739,62 @@ def construct_features_for_match(
 def predict_proba(
     features: Dict[str, float],
     model_data: Tuple[Any, Iterable[str], Any]
-    | Tuple[Any, Iterable[str], Any, Mapping[str, Any]]
-    | None = None,
+        | Tuple[Any, Iterable[str], Any, Mapping[str, Any]]
+        | None = None,
     model_path: str | Path = DEFAULT_MODEL_PATH,
-    alpha: float = 0.15,
+    alpha: float = 0.08,   # shrink k prioru
+    beta: float = 0.55,    # váha Poissonu v blendu
 ) -> Dict[str, float]:
     """Vrať pravděpodobnosti {'Home Win','Draw','Away Win'} v procentech (0–100)."""
     if model_data is None:
         model_data = load_model(model_path)
     model, feature_names, label_enc = model_data[:3]
+
+    prior = getattr(model, "prior_", None)
+    classes_order = getattr(model, "classes_order_", None)
+
     X = _clip_features(pd.DataFrame([features], columns=feature_names))
-    probs = model.predict_proba(X)[0]
-    # tlumení k uniformnímu prioru (snižuje extrémy)
-    probs = (1 - alpha) * probs + alpha * (1.0 / len(probs))
-    probs = probs / probs.sum()
+    rf_probs = model.predict_proba(X)[0]
+
+    # zarovnání
+    if classes_order is not None and hasattr(model, "classes_"):
+        aligned = np.zeros(len(classes_order))
+        for i, cls in enumerate(model.classes_):
+            j = list(classes_order).index(cls)
+            aligned[j] = rf_probs[i]
+        rf_probs = aligned
+
+    # Shrink k prioru
+    if prior is None:
+        prior = np.ones_like(rf_probs) / len(rf_probs)
+    rf_probs = np.clip(rf_probs, 1e-4, 1 - 1e-4)
+    rf_probs = (1 - alpha) * rf_probs + alpha * prior
+    rf_probs = rf_probs / rf_probs.sum()
+
+    # Poisson blend (pokud máme λh/λa ve featurech)
+    pois = None
+    try:
+        lh = float(features.get("pois_lambda_home", np.nan))
+        la = float(features.get("pois_lambda_away", np.nan))
+        if np.isfinite(lh) and np.isfinite(la):
+            pp = _poisson_probs_from_lambdas(lh, la, max_goals=12)
+            # pořadí podle label_enc.classes_ (např. ['A','D','H'])
+            order = list(label_enc.classes_)
+            pois_vec = np.array([pp["p_away"], pp["p_draw"], pp["p_home"]])  # A,D,H
+            # přeuspořádej do stejného pořadí jako rf_probs
+            idx = {lbl: i for i, lbl in enumerate(["A","D","H"])}
+            pois = np.array([pois_vec[idx[l]] for l in order])
+    except Exception:
+        pois = None
+
+    if pois is not None:
+        pois = np.clip(pois, 1e-6, 1.0)
+        pois = pois / pois.sum()
+        probs = (1 - beta) * rf_probs + beta * pois
+        probs = probs / probs.sum()
+    else:
+        probs = rf_probs
+
     labels = label_enc.inverse_transform(np.arange(len(probs)))
     mapping = {"H": "Home Win", "D": "Draw", "A": "Away Win"}
     return {mapping[lbl]: float(p * 100) for lbl, p in zip(labels, probs)}
@@ -672,31 +825,56 @@ def predict_over25_proba(
     features: Dict[str, float],
     model_data: Tuple[Any, Iterable[str], Any] | None = None,
     model_path: str | Path = DEFAULT_OVER25_MODEL_PATH,
-    alpha: float = 0.15,
+    alpha: float = 0.10,   # shrink k empirickému prioru
+    beta: float = 0.5,    # váha Poissonu v blendu
 ) -> float:
     """Vrať pravděpodobnost (0–100), že padne > 2.5 gólu (Over 2.5)."""
     if model_data is None:
         model_data = load_over25_model(model_path)
     model, feature_names, label_enc = model_data
-    X = _clip_features(pd.DataFrame([features], columns=feature_names))
-    raw_proba = model.predict_proba(X)[0]
-    raw_proba = np.clip(raw_proba, 0.01, 0.99)
 
+    X = _clip_features(pd.DataFrame([features], columns=feature_names))
+    raw = model.predict_proba(X)[0]
+
+    # mapování na pořadí label_enc (0/1)
     if label_enc is not None:
         expected = np.arange(len(label_enc.classes_))
         model_classes = getattr(model, "classes_", expected)
         probs_full = np.zeros(len(expected))
-        for p, cls in zip(raw_proba, model_classes):
+        for p, cls in zip(raw, model_classes):
             probs_full[int(cls)] = p
-        classes = label_enc.inverse_transform(np.arange(len(expected)))
+        classes = label_enc.classes_
         over_idx = list(classes).index("Over 2.5")
-        prob = probs_full[over_idx]
+        rf_over = probs_full[over_idx]
     else:
-        # binární model => index 1 je „Over“
-        prob = raw_proba[1]
+        rf_over = raw[1]
 
-    prob = (1 - alpha) * prob + alpha * 0.5
+    rf_over = float(np.clip(rf_over, 1e-4, 1 - 1e-4))
+
+    # shrink k empirickému prioru
+    prior = getattr(model, "prior_", None)
+    if prior is not None and label_enc is not None:
+        over_idx = list(label_enc.classes_).index("Over 2.5")
+        prior_over = float(prior[over_idx])
+    else:
+        prior_over = 0.5
+    rf_over = (1 - alpha) * rf_over + alpha * prior_over
+
+    # Poisson blend (pokud máme λh/λa ve featurech)
+    try:
+        lh = float(features.get("pois_lambda_home", np.nan))
+        la = float(features.get("pois_lambda_away", np.nan))
+        if np.isfinite(lh) and np.isfinite(la):
+            pp = _poisson_probs_from_lambdas(lh, la, max_goals=12)
+            pois_over = float(np.clip(pp["p_over25"], 1e-6, 1 - 1e-6))
+            prob = (1 - beta) * rf_over + beta * pois_over
+        else:
+            prob = rf_over
+    except Exception:
+        prob = rf_over
+
     return float(prob * 100)
+
 
 
 __all__ = [
