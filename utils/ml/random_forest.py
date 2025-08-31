@@ -28,6 +28,23 @@ class SampleWeightPipeline(_BasePipeline):
         return super().fit(X, y, **fit_params)
 
 
+def _reliability_curve_and_ece(y_true: np.ndarray, y_prob: np.ndarray, n_bins: int = 10):
+    """Compute reliability diagram points and Expected Calibration Error."""
+    bins = np.linspace(0.0, 1.0, n_bins + 1)
+    bin_ids = np.digitize(y_prob, bins) - 1
+    bin_totals = np.bincount(bin_ids, minlength=n_bins)
+    accuracies = np.zeros(n_bins)
+    confidences = np.zeros(n_bins)
+    for b in range(n_bins):
+        if bin_totals[b] > 0:
+            mask = bin_ids == b
+            accuracies[b] = y_true[mask].mean()
+            confidences[b] = y_prob[mask].mean()
+    ece = float(np.sum(np.abs(accuracies - confidences) * bin_totals / len(y_true)))
+    centers = (bins[:-1] + bins[1:]) / 2.0
+    return centers, accuracies, confidences, ece
+
+
 # ---------------------------------------------------------------------
 # Načtení dat a příprava featur
 # ---------------------------------------------------------------------
@@ -213,15 +230,16 @@ def train_model(
     decay_factor: float | None = None,
     param_distributions: Mapping[str, Iterable[Any]] | None = None,
     balance_classes: bool = False,
-) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Dict[str, float]]]:
+) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Any]]:
     """Train RandomForest (H/D/A) s časovým CV a kalibrací.
 
-    Vrací: (calibrated_model, feature_names, label_encoder, best_cv_score, best_params, per_class_metrics)
+    Vrací: (calibrated_model, feature_names, label_encoder, best_cv_score, best_params,
+    {"per_class": ..., "baselines": ...})
     """
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
     from sklearn.calibration import CalibratedClassifierCV
-    from sklearn.metrics import precision_recall_fscore_support
+    from sklearn.metrics import precision_recall_fscore_support, log_loss
     from sklearn.utils.class_weight import compute_class_weight
     from sklearn.base import clone
 
@@ -305,17 +323,43 @@ def train_model(
     )
     from sklearn.metrics import brier_score_loss
 
-    metrics = {}
+    metrics: Dict[str, Dict[str, Any]] = {}
     for idx, (label, p, r) in enumerate(zip(label_enc.classes_, precisions, recalls)):
         true = (y == idx).astype(int)
         prob = y_proba[:, idx]
+        centers, acc, conf, ece = _reliability_curve_and_ece(true, prob)
         metrics[label] = {
             "precision": float(p),
             "recall": float(r),
             "brier": float(brier_score_loss(true, prob)),
+            "ece": float(ece),
+            "reliability": {
+                "bin_centers": centers.tolist(),
+                "accuracy": acc.tolist(),
+                "confidence": conf.tolist(),
+            },
         }
 
-    return calibrated_model, feature_names, label_enc, score, best_params, metrics
+    freq_counts = np.bincount(y, minlength=len(label_enc.classes_))
+    freq_probs = freq_counts / freq_counts.sum()
+    freq_ll = float(log_loss(y, np.tile(freq_probs, (len(y), 1))))
+    book_ll = None
+    for prefix in ["PS", "B365", "Avg", "BW", "IW", "LB", "WH", "VC", "P"]:
+        cols = [f"{prefix}H", f"{prefix}D", f"{prefix}A"]
+        if all(c in df.columns for c in cols):
+            odds = df.loc[X.index, cols].astype(float)
+            probs = 1 / odds
+            probs = probs.div(probs.sum(axis=1), axis=0)
+            probs.columns = ["H", "D", "A"]
+            try:
+                book_ll = float(log_loss(y, probs[label_enc.classes_].to_numpy()))
+                break
+            except KeyError:
+                continue
+    baselines = {"frequency_log_loss": freq_ll, "bookmaker_log_loss": book_ll}
+    metrics_wrapped = {"per_class": metrics, "baselines": baselines}
+
+    return calibrated_model, feature_names, label_enc, score, best_params, metrics_wrapped
 
 
 def train_over25_model(
@@ -325,12 +369,12 @@ def train_over25_model(
     n_iter: int = 20,
     max_samples: int | None = None,
     param_distributions: Mapping[str, Iterable[Any]] | None = None,
-) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Dict[str, float]]]:
+) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Any]]:
     """Binary RF pro Over 2.5 (s kalibrací a vyvážením tříd)."""
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
     from sklearn.calibration import CalibratedClassifierCV
-    from sklearn.metrics import precision_recall_fscore_support
+    from sklearn.metrics import precision_recall_fscore_support, log_loss
     from sklearn.utils.class_weight import compute_class_weight
     from sklearn.preprocessing import LabelEncoder
     from sklearn.base import clone
@@ -413,17 +457,44 @@ def train_over25_model(
     )
     from sklearn.metrics import brier_score_loss
 
-    metrics = {}
+    metrics: Dict[str, Dict[str, Any]] = {}
     for idx, (label, p, r) in enumerate(zip(label_enc.classes_, precisions, recalls)):
         true = (y == idx).astype(int)
         prob = y_proba[:, idx]
+        centers, acc, conf, ece = _reliability_curve_and_ece(true, prob)
         metrics[label] = {
             "precision": float(p),
             "recall": float(r),
             "brier": float(brier_score_loss(true, prob)),
+            "ece": float(ece),
+            "reliability": {
+                "bin_centers": centers.tolist(),
+                "accuracy": acc.tolist(),
+                "confidence": conf.tolist(),
+            },
         }
 
-    return calibrated_model, feature_names, label_enc, score, best_params, metrics
+    freq_counts = np.bincount(y, minlength=len(label_enc.classes_))
+    freq_probs = freq_counts / freq_counts.sum()
+    freq_ll = float(log_loss(y, np.tile(freq_probs, (len(y), 1))))
+    book_ll = None
+    for prefix in ["PS", "B365", "Avg", "P", "BW", "IW", "SB", "GB"]:
+        over_col = f"{prefix}>2.5"
+        under_col = f"{prefix}<2.5"
+        if all(c in df.columns for c in (over_col, under_col)):
+            odds = df.loc[X.index, [over_col, under_col]].astype(float)
+            probs = 1 / odds
+            probs = probs.div(probs.sum(axis=1), axis=0)
+            probs.columns = ["Over 2.5", "Under 2.5"]
+            try:
+                book_ll = float(log_loss(y, probs[label_enc.classes_].to_numpy()))
+                break
+            except KeyError:
+                continue
+    baselines = {"frequency_log_loss": freq_ll, "bookmaker_log_loss": book_ll}
+    metrics_wrapped = {"per_class": metrics, "baselines": baselines}
+
+    return calibrated_model, feature_names, label_enc, score, best_params, metrics_wrapped
 
 
 # ---------------------------------------------------------------------
