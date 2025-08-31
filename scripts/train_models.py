@@ -29,15 +29,18 @@ def main() -> None:
     )
     save_model(model, features, le, path=DEFAULT_MODEL_PATH, best_params=params)
     print(f"Outcome model trained with log-loss {score:.3f} and saved to {DEFAULT_MODEL_PATH}")
-    for lbl, m in metrics["per_class"].items():
+    per_class = metrics.get("per_class", metrics)
+    for lbl, m in per_class.items():
         print(
             f"  {lbl}: precision={m['precision']:.3f}, recall={m['recall']:.3f}, brier={m['brier']:.3f}, ece={m['ece']:.3f}"
         )
     print("Baselines:")
-    print(f"  Frequency log-loss={metrics['baselines']['frequency_log_loss']:.3f}")
-    book_ll = metrics['baselines']['bookmaker_log_loss']
-    if book_ll is not None:
-        print(f"  Bookmaker log-loss={book_ll:.3f}")
+    if 'baselines' in metrics:
+        print(f"  Frequency log-loss={metrics['baselines']['frequency_log_loss']:.3f}")
+        book_ll = metrics['baselines']['bookmaker_log_loss']
+        if book_ll is not None:
+            print(f"  Bookmaker log-loss={book_ll:.3f}")
+
 
     o25_model, o25_features, o25_le, o25_score, o25_params, o25_metrics = train_over25_model(
         args.data_dir,

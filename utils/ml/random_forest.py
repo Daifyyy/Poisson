@@ -18,6 +18,86 @@ try:  # pragma: no cover - optional dependency
 except Exception:  # pragma: no cover
     from sklearn.pipeline import Pipeline as _BasePipeline  # type: ignore
 
+from sklearn.metrics import log_loss  # doplň import kamkoliv nahoře
+
+def _binary_ece(y_true: np.ndarray, y_prob: np.ndarray, n_bins: int = 10) -> float:
+    """Expected Calibration Error pro binární (one-vs-rest)."""
+    y_true = np.asarray(y_true).astype(int)
+    y_prob = np.asarray(y_prob).astype(float)
+    bins = np.linspace(0.0, 1.0, n_bins + 1)
+    idx = np.digitize(y_prob, bins) - 1
+    total = len(y_prob)
+    ece = 0.0
+    for b in range(n_bins):
+        mask = (idx == b)
+        if not np.any(mask):
+            continue
+        acc = y_true[mask].mean()
+        conf = y_prob[mask].mean()
+        ece += (mask.sum() / total) * abs(acc - conf)
+    return float(ece)
+
+def _frequency_baseline_logloss_multiclass(y: np.ndarray) -> float:
+    """Log-loss baseline: konstantní pravděpodobnosti dle frekvence tříd."""
+    classes = np.unique(y)
+    freqs = np.bincount(y, minlength=len(classes)).astype(float)
+    freqs = freqs / freqs.sum()
+    P = np.tile(freqs, (len(y), 1))
+    return float(log_loss(y, P, labels=classes))
+
+def _bookmaker_baseline_logloss_outcome(df: pd.DataFrame, y_index: pd.Index, y_enc: np.ndarray) -> float | None:
+    """
+    Vypočti log-loss z bookmaker odds (H/D/A) – fair odds (bez marže).
+    Vrací None, pokud chybí dostupné sloupce.
+    """
+    # běžné sloupce: B365H/B365D/B365A, BWH/BWD/BWA, PSH/PSD/PSA...
+    CANDIDATES = [
+        ("B365H", "B365D", "B365A"),
+        ("BWH", "BWD", "BWA"),
+        ("PSH", "PSD", "PSA"),
+        ("WHH", "WHD", "WHA"),
+    ]
+    sub = df.loc[y_index]
+    for h,d,a in CANDIDATES:
+        if {h,d,a}.issubset(sub.columns):
+            odds = sub[[a,d,h]].to_numpy(dtype=float)  # pořadí A,D,H (viz LabelEncoder)
+            if np.any(odds <= 1.0) or np.any(~np.isfinite(odds)):
+                continue
+            inv = 1.0 / odds
+            probs = inv / inv.sum(axis=1, keepdims=True)  # fair
+            return float(log_loss(y_enc, probs, labels=np.unique(y_enc)))
+    return None
+
+def _bookmaker_baseline_logloss_over25(df: pd.DataFrame, y_index: pd.Index, y_enc: np.ndarray, label_enc) -> float | None:
+    """
+    Log-loss z bookmaker odds pro Over/Under 2.5. Vrací None, pokud chybí sloupce.
+    Pokouší se o několik možných názvů.
+    """
+    sub = df.loc[y_index]
+    CANDS = [
+        ("B365>2.5", "B365<2.5"),
+        ("B365O2.5", "B365U2.5"),
+        ("PS>2.5", "PS<2.5"),
+        ("PSO2.5", "PSU2.5"),
+    ]
+    for over_col, under_col in CANDS:
+        if over_col in sub.columns and under_col in sub.columns:
+            odds_over = sub[over_col].to_numpy(dtype=float)
+            odds_under = sub[under_col].to_numpy(dtype=float)
+            if np.any(odds_over <= 1.0) or np.any(odds_under <= 1.0):
+                continue
+            inv = np.vstack([1.0/odds_under, 1.0/odds_over]).T  # pořadí [Under, Over]
+            probs = inv / inv.sum(axis=1, keepdims=True)
+            # přeuspořádat do pořadí label_enc.classes_
+            order = list(label_enc.classes_)  # např. ['Over 2.5','Under 2.5'] nebo obráceně
+            base = np.zeros((len(probs), len(order)))
+            idx_under = order.index("Under 2.5")
+            idx_over  = order.index("Over 2.5")
+            base[:, idx_under] = probs[:, 0]
+            base[:, idx_over]  = probs[:, 1]
+            return float(log_loss(y_enc, base, labels=np.unique(y_enc)))
+    return None
+
 
 class SampleWeightPipeline(_BasePipeline):
     """Pipeline, která propouští sample_weight do posledního estimatoru."""
@@ -483,20 +563,31 @@ def train_model(
         y, y_pred, labels=classes_sorted
     )
 
-    # Přemapuj indexy do pořadí label_enc.classes_ při reportu metrik
+    # --- Výpočet per-class metrik + ECE ---
     idx_by_label = {cls: i for i, cls in enumerate(classes_sorted)}
     metrics: Dict[str, Dict[str, float]] = {}
     for lbl in label_enc.classes_:
-        idx = idx_by_label[label_enc.transform([lbl])[0]]  # index třídy v classes_sorted
+        idx = idx_by_label[label_enc.transform([lbl])[0]]
         true = (y == classes_sorted[idx]).astype(int)
         prob = y_proba[:, idx]
         metrics[lbl] = {
             "precision": float(precisions[idx]),
             "recall": float(recalls[idx]),
             "brier": float(brier_score_loss(true, prob)),
+            "ece": _binary_ece(true, prob, n_bins=10),
         }
 
-    return calibrated_model, feature_names, label_enc, score, best_params, metrics
+    # --- Baselines ---
+    freq_ll = _frequency_baseline_logloss_multiclass(y)
+    book_ll = _bookmaker_baseline_logloss_outcome(df, X.index, y)  # může být None
+    metrics_out = {
+        "per_class": metrics,
+        "baselines": {
+            "frequency_log_loss": float(freq_ll),
+            "bookmaker_log_loss": None if book_ll is None else float(book_ll),
+        },
+    }
+    return calibrated_model, feature_names, label_enc, score, best_params, metrics_out
 
 
 def train_over25_model(
@@ -603,16 +694,33 @@ def train_over25_model(
 
     metrics: Dict[str, Dict[str, float]] = {}
     for lbl in label_enc.classes_:
-        idx = label_enc.transform([lbl])[0]  # 0 nebo 1
+        idx = label_enc.transform([lbl])[0]  # 0/1
         true = (y == idx).astype(int)
         prob = y_proba[:, idx]
         metrics[lbl] = {
             "precision": float(precisions[idx]),
             "recall": float(recalls[idx]),
             "brier": float(brier_score_loss(true, prob)),
+            "ece": _binary_ece(true, prob, n_bins=10),
         }
 
-    return calibrated_model, feature_names, label_enc, score, best_params, metrics
+    # --- Baselines ---
+    # frekvenční baseline (binární)
+    freqs = np.bincount(y, minlength=len(classes)).astype(float)
+    freqs = freqs / freqs.sum()                         # tvar (2,)
+    base  = np.tile(freqs, (len(y), 1))                 # tvar (N, 2)
+    freq_ll = float(log_loss(y, base, labels=classes))
+
+    book_ll = _bookmaker_baseline_logloss_over25(df, X.index, y, label_enc)  # může být None
+
+    metrics_out = {
+        "per_class": metrics,
+        "baselines": {
+            "frequency_log_loss": float(freq_ll),
+            "bookmaker_log_loss": None if book_ll is None else float(book_ll),
+        },
+    }
+    return calibrated_model, feature_names, label_enc, score, best_params, metrics_out
 
 
 # ---------------------------------------------------------------------
