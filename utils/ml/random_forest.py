@@ -6,7 +6,7 @@ Updated to better handle different data providers and improved error handling.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Iterable, Tuple, Optional
+from typing import Any, Dict, Iterable, Mapping, Tuple, Optional
 
 import joblib
 import numpy as np
@@ -18,6 +18,404 @@ DEFAULT_MODEL_PATH = Path(__file__).with_name("random_forest_model.joblib")
 DEFAULT_OVER25_MODEL_PATH = Path(__file__).with_name(
     "random_forest_over25_model.joblib"
 )
+
+
+class SampleWeightPipeline:
+    """Minimal pipeline that forwards ``sample_weight`` to the final estimator."""
+
+    def __init__(self, steps):
+        from sklearn.pipeline import Pipeline
+
+        self.pipeline = Pipeline(steps)
+
+    def fit(self, X, y, sample_weight=None, **fit_params):
+        if sample_weight is not None:
+            last_step = self.pipeline.steps[-1][0] + "__sample_weight"
+            fit_params[last_step] = sample_weight
+        return self.pipeline.fit(X, y, **fit_params)
+
+    def predict(self, X):
+        return self.pipeline.predict(X)
+
+    def predict_proba(self, X):
+        return self.pipeline.predict_proba(X)
+
+    def get_params(self, *args, **kwargs):
+        return self.pipeline.get_params(*args, **kwargs)
+
+    def set_params(self, *args, **kwargs):
+        return self.pipeline.set_params(*args, **kwargs)
+
+
+def _clip_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Clip extreme feature values to reasonable ranges."""
+    bounds = {
+        "home_recent_form": (-1, 1),
+        "away_recent_form": (-1, 1),
+        "elo_diff": (-400, 400),
+        "xg_diff": (-5, 5),
+        "xga_diff": (-5, 5),
+        "home_conceded": (0, 5),
+        "away_conceded": (0, 5),
+        "conceded_diff": (-5, 5),
+        "shots_diff": (-20, 20),
+        "shot_target_diff": (-10, 10),
+        "poss_diff": (-100, 100),
+        "days_since_last_match": (-30, 30),
+        "attack_strength_diff": (-3, 3),
+        "defense_strength_diff": (-3, 3),
+    }
+    for col, (lo, hi) in bounds.items():
+        if col in df.columns:
+            df[col] = df[col].clip(lo, hi)
+    return df
+
+
+def _expected_calibration_error(y_true: np.ndarray, prob: np.ndarray, n_bins: int = 10) -> float:
+    """Compute expected calibration error for binary outcomes."""
+    bins = np.linspace(0.0, 1.0, n_bins + 1)
+    ece = 0.0
+    for i in range(n_bins):
+        mask = (prob >= bins[i]) & (prob < bins[i + 1])
+        if np.any(mask):
+            acc = np.mean(y_true[mask])
+            conf = np.mean(prob[mask])
+            ece += abs(acc - conf) * (np.sum(mask) / len(prob))
+    return float(ece)
+
+
+def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Iterable[str], Any]:
+    """Create feature matrix and labels from FBR-style match dataframe."""
+    df = df.copy()
+
+    required_cols = [
+        "date",
+        "team_name_H",
+        "team_name_A",
+        "gf_H",
+        "gf_A",
+        "ga_H",
+        "ga_A",
+        "xg_H",
+        "xg_A",
+        "xga_H",
+        "xga_A",
+        "shots_H",
+        "shots_A",
+        "sot_H",
+        "sot_A",
+        "poss_H",
+        "poss_A",
+    ]
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required columns: {missing}")
+
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df.sort_values("date", inplace=True)
+
+    results = {"H": 1, "D": 0, "A": -1}
+    result_col = "FTR" if "FTR" in df.columns else "outcome"
+    if result_col not in df.columns:
+        raise ValueError("DataFrame must contain 'FTR' or 'outcome'")
+    df["home_result"] = df[result_col].map(results)
+    df["away_result"] = -df["home_result"]
+    df["home_recent_form"] = df.groupby("team_name_H")["home_result"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df["away_recent_form"] = df.groupby("team_name_A")["away_result"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    df.drop(columns=["home_result", "away_result"], inplace=True)
+
+    df["home_xg"] = df.groupby("team_name_H")["xg_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["away_xg"] = df.groupby("team_name_A")["xg_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["xg_diff"] = df["home_xg"] - df["away_xg"]
+
+    df["home_xga"] = df.groupby("team_name_H")["xga_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["away_xga"] = df.groupby("team_name_A")["xga_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["xga_diff"] = df["home_xga"] - df["away_xga"]
+
+    df["home_conceded"] = df.groupby("team_name_H")["ga_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["away_conceded"] = df.groupby("team_name_A")["ga_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["conceded_diff"] = df["home_conceded"] - df["away_conceded"]
+
+    df["home_shots"] = df.groupby("team_name_H")["shots_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["away_shots"] = df.groupby("team_name_A")["shots_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["shots_diff"] = df["home_shots"] - df["away_shots"]
+
+    df["home_sot"] = df.groupby("team_name_H")["sot_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["away_sot"] = df.groupby("team_name_A")["sot_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["shot_target_diff"] = df["home_sot"] - df["away_sot"]
+
+    df["home_poss"] = df.groupby("team_name_H")["poss_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["away_poss"] = df.groupby("team_name_A")["poss_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["poss_diff"] = df["home_poss"] - df["away_poss"]
+
+    df["home_last"] = df.groupby("team_name_H")["date"].shift()
+    df["away_last"] = df.groupby("team_name_A")["date"].shift()
+    df["home_rest"] = (df["date"] - df["home_last"]).dt.days
+    df["away_rest"] = (df["date"] - df["away_last"]).dt.days
+    df["days_since_last_match"] = df["home_rest"] - df["away_rest"]
+    df.drop(columns=["home_last", "away_last", "home_rest", "away_rest"], inplace=True)
+
+    from utils.poisson_utils.stats import calculate_team_strengths
+
+    tmp = df.rename(
+        columns={"team_name_H": "HomeTeam", "team_name_A": "AwayTeam", "gf_H": "FTHG", "gf_A": "FTAG"}
+    )
+    attack_strength, defense_strength, _ = calculate_team_strengths(tmp)
+    df["attack_strength_diff"] = df["team_name_H"].map(attack_strength) - df["team_name_A"].map(attack_strength)
+    df["defense_strength_diff"] = df["team_name_H"].map(defense_strength) - df["team_name_A"].map(defense_strength)
+
+    df["home_advantage"] = 1.0
+
+    features = [
+        "home_recent_form",
+        "away_recent_form",
+        "elo_diff",
+        "xg_diff",
+        "xga_diff",
+        "home_conceded",
+        "away_conceded",
+        "conceded_diff",
+        "shots_diff",
+        "shot_target_diff",
+        "poss_diff",
+        "home_advantage",
+        "days_since_last_match",
+        "attack_strength_diff",
+        "defense_strength_diff",
+    ]
+
+    X = _clip_features(df[features])
+    y_raw = df[result_col].astype(str)
+    mask = X.notna().all(axis=1) & y_raw.notna()
+    X = X[mask]
+    y_raw = y_raw[mask]
+
+    from sklearn.preprocessing import LabelEncoder
+
+    label_enc = LabelEncoder()
+    y = label_enc.fit_transform(y_raw)
+    return X, y, features, label_enc
+
+
+def train_model(
+    df: pd.DataFrame,
+    n_splits: int = 5,
+    recent_years: int | None = None,
+    n_iter: int = 20,
+    max_samples: int | None = None,
+    param_distributions: Mapping[str, Iterable[Any]] | None = None,
+) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Dict[str, float]]]:
+    """Train RandomForest model for match outcome prediction using FBR API data."""
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV, cross_val_predict
+    from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.metrics import precision_recall_fscore_support, log_loss
+
+    df = df.copy()
+    if recent_years is not None and "date" in df.columns:
+        cutoff = df["date"].max() - pd.DateOffset(years=recent_years)
+        df = df[df["date"] >= cutoff]
+    if max_samples is not None:
+        df = df.tail(max_samples)
+
+    X, y, feature_names, label_enc = _prepare_features(df)
+
+    if param_distributions is None:
+        param_distributions = {
+            "n_estimators": [50, 100, 200],
+            "max_depth": [None, 5, 10, 20],
+            "min_samples_split": [2, 5, 10],
+            "min_samples_leaf": [1, 2, 4],
+            "max_features": ["sqrt", "log2", None],
+            "bootstrap": [True, False],
+        }
+
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+    search = RandomizedSearchCV(
+        estimator=RandomForestClassifier(random_state=42),
+        param_distributions=param_distributions,
+        n_iter=n_iter,
+        cv=tscv,
+        random_state=42,
+        n_jobs=-1,
+        scoring="neg_log_loss",
+    )
+    search.fit(X, y)
+    best_model = search.best_estimator_
+    score = float(-search.best_score_)
+
+    calibrated = CalibratedClassifierCV(best_model, method="isotonic", cv=tscv)
+    calibrated.fit(X, y)
+
+    probs_cv = cross_val_predict(best_model, X, y, cv=tscv, method="predict_proba", n_jobs=-1)
+    y_pred = probs_cv.argmax(axis=1)
+    precisions, recalls, _, _ = precision_recall_fscore_support(
+        y, y_pred, labels=np.arange(len(label_enc.classes_))
+    )
+
+    per_class: Dict[str, Dict[str, float]] = {}
+    for idx, label in enumerate(label_enc.classes_):
+        y_true_bin = (y == idx).astype(int)
+        prob = probs_cv[:, idx]
+        brier = float(np.mean((prob - y_true_bin) ** 2))
+        ece = _expected_calibration_error(y_true_bin, prob)
+        per_class[label] = {
+            "precision": float(precisions[idx]),
+            "recall": float(recalls[idx]),
+            "brier": brier,
+            "ece": ece,
+        }
+
+    freq = np.bincount(y) / len(y)
+    frequency_ll = float(log_loss(y, np.tile(freq, (len(y), 1))))
+
+    bookmaker_ll = None
+    book_cols_options = [
+        ("B365H", "B365D", "B365A"),
+        ("b365_home", "b365_draw", "b365_away"),
+    ]
+    for cols in book_cols_options:
+        if all(c in df.columns for c in cols):
+            odds = df.loc[X.index, list(cols)].astype(float)
+            probs = 1 / odds
+            probs = probs.div(probs.sum(axis=1), axis=0)
+            bookmaker_ll = float(log_loss(y, probs.values))
+            break
+
+    metrics = {
+        "per_class": per_class,
+        "baselines": {
+            "frequency_log_loss": frequency_ll,
+            "bookmaker_log_loss": bookmaker_ll,
+        },
+    }
+
+    return calibrated, feature_names, label_enc, score, search.best_params_, metrics
+
+
+def train_over25_model(
+    df: pd.DataFrame,
+    n_splits: int = 5,
+    recent_years: int | None = None,
+    n_iter: int = 20,
+    max_samples: int | None = None,
+    param_distributions: Mapping[str, Iterable[Any]] | None = None,
+) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Dict[str, float]]]:
+    """Train RandomForest model for Over/Under 2.5 prediction using FBR API data."""
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV, cross_val_predict
+    from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.preprocessing import LabelEncoder
+    from sklearn.metrics import precision_recall_fscore_support, log_loss
+
+    df = df.copy()
+    if recent_years is not None and "date" in df.columns:
+        cutoff = df["date"].max() - pd.DateOffset(years=recent_years)
+        df = df[df["date"] >= cutoff]
+    if max_samples is not None:
+        df = df.tail(max_samples)
+
+    df["over25"] = np.where(df["gf_H"] + df["gf_A"] > 2.5, "Over 2.5", "Under 2.5")
+    X, _, feature_names, _ = _prepare_features(df)
+    y_raw = df.loc[X.index, "over25"]
+
+    label_enc = LabelEncoder()
+    y = label_enc.fit_transform(y_raw)
+
+    if param_distributions is None:
+        param_distributions = {
+            "n_estimators": [50, 100, 200],
+            "max_depth": [None, 5, 10, 20],
+            "min_samples_split": [2, 5, 10],
+            "min_samples_leaf": [1, 2, 4],
+            "max_features": ["sqrt", "log2", None],
+            "bootstrap": [True, False],
+        }
+
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+    search = RandomizedSearchCV(
+        estimator=RandomForestClassifier(random_state=42),
+        param_distributions=param_distributions,
+        n_iter=n_iter,
+        cv=tscv,
+        random_state=42,
+        n_jobs=-1,
+        scoring="neg_log_loss",
+    )
+    search.fit(X, y)
+    best_model = search.best_estimator_
+    score = float(-search.best_score_)
+
+    calibrated = CalibratedClassifierCV(best_model, method="isotonic", cv=tscv)
+    calibrated.fit(X, y)
+
+    probs_cv = cross_val_predict(best_model, X, y, cv=tscv, method="predict_proba", n_jobs=-1)
+    y_pred = probs_cv.argmax(axis=1)
+    precisions, recalls, _, _ = precision_recall_fscore_support(
+        y, y_pred, labels=np.arange(len(label_enc.classes_))
+    )
+
+    per_class: Dict[str, Dict[str, float]] = {}
+    for idx, label in enumerate(label_enc.classes_):
+        y_true_bin = (y == idx).astype(int)
+        prob = probs_cv[:, idx]
+        brier = float(np.mean((prob - y_true_bin) ** 2))
+        ece = _expected_calibration_error(y_true_bin, prob)
+        per_class[label] = {
+            "precision": float(precisions[idx]),
+            "recall": float(recalls[idx]),
+            "brier": brier,
+            "ece": ece,
+        }
+
+    freq = np.bincount(y) / len(y)
+    frequency_ll = float(log_loss(y, np.tile(freq, (len(y), 1))))
+
+    bookmaker_ll = None
+    book_cols_options = [
+        ("B365>2.5", "B365<2.5"),
+        ("b365_over25", "b365_under25"),
+    ]
+    for cols in book_cols_options:
+        if all(c in df.columns for c in cols):
+            odds = df.loc[X.index, list(cols)].astype(float)
+            probs = 1 / odds
+            probs = probs.div(probs.sum(axis=1), axis=0)
+            bookmaker_ll = float(log_loss(y, probs.values))
+            break
+
+    metrics = {
+        "per_class": per_class,
+        "baselines": {
+            "frequency_log_loss": frequency_ll,
+            "bookmaker_log_loss": bookmaker_ll,
+        },
+    }
+
+    return calibrated, feature_names, label_enc, score, search.best_params_, metrics
+
+
+def save_model(
+    model: Any,
+    feature_names: Iterable[str],
+    label_encoder: Any,
+    path: str | Path = DEFAULT_MODEL_PATH,
+    best_params: Mapping[str, Any] | None = None,
+) -> None:
+    """Save model, feature names and label encoder to disk."""
+    joblib.dump(
+        {
+            "model": model,
+            "feature_names": list(feature_names),
+            "label_encoder": label_encoder,
+            "best_params": best_params or {},
+        },
+        Path(path),
+    )
 
 
 def load_model(path: str | Path = DEFAULT_MODEL_PATH) -> Tuple[Any, Iterable[str], Any]:
@@ -128,8 +526,8 @@ def construct_features_for_match(
 
     def recent_form(team: str, window: int = 5) -> float:
         """Calculate recent form for a team (last N matches)."""
-        home_matches = df[df.get("team_H") == team]
-        away_matches = df[df.get("team_A") == team]
+        home_matches = df[df.get("team_name_H") == team]
+        away_matches = df[df.get("team_name_A") == team]
         all_matches = pd.concat([home_matches, away_matches]).sort_values(date_col)
         recent_matches = all_matches.tail(window)
         
@@ -138,7 +536,7 @@ def construct_features_for_match(
         
         vals: list[float] = []
         for _, r in recent_matches.iterrows():
-            if r.get("team_H") == team:
+            if r.get("team_name_H") == team:
                 gf, ga = r.get("gf_H", 0), r.get("ga_H", 0)
             else:
                 gf, ga = r.get("gf_A", 0), r.get("ga_A", 0)
@@ -152,14 +550,14 @@ def construct_features_for_match(
 
     def rolling_avg(team: str, col_home: str, col_away: str, window: int = 5) -> float:
         """Calculate rolling average for a stat."""
-        home_matches = df[df.get("team_H") == team]
-        away_matches = df[df.get("team_A") == team]
+        home_matches = df[df.get("team_name_H") == team]
+        away_matches = df[df.get("team_name_A") == team]
         all_matches = pd.concat([home_matches, away_matches]).sort_values(date_col)
         recent_matches = all_matches.tail(window)
         
         vals: list[float] = []
         for _, r in recent_matches.iterrows():
-            if r.get("team_H") == team:
+            if r.get("team_name_H") == team:
                 val = r.get(col_home, 0.0)
             else:
                 val = r.get(col_away, 0.0)
@@ -171,8 +569,8 @@ def construct_features_for_match(
 
     def last_match_date(team: str) -> Optional[pd.Timestamp]:
         """Get date of last match for a team."""
-        home_matches = df[df.get("team_H") == team]
-        away_matches = df[df.get("team_A") == team]
+        home_matches = df[df.get("team_name_H") == team]
+        away_matches = df[df.get("team_name_A") == team]
         all_matches = pd.concat([home_matches, away_matches])
         
         if all_matches.empty:
@@ -210,13 +608,13 @@ def construct_features_for_match(
         try:
             from utils.poisson_utils.stats import calculate_team_strengths
 
-            required_cols = [date_col, "team_H", "team_A", "gf_H", "gf_A"]
+            required_cols = [date_col, "team_name_H", "team_name_A", "gf_H", "gf_A"]
             if all(col in df.columns for col in required_cols):
                 tmp = df[required_cols].rename(
                     columns={
                         date_col: "Date",
-                        "team_H": "HomeTeam", 
-                        "team_A": "AwayTeam",
+                        "team_name_H": "HomeTeam", 
+                        "team_name_A": "AwayTeam",
                         "gf_H": "FTHG",
                         "gf_A": "FTAG",
                     }
@@ -399,8 +797,8 @@ def validate_dataframe(df: pd.DataFrame) -> Dict[str, bool]:
     """Validate that DataFrame has required columns for feature construction."""
     
     required_cols = {
-        "team_H": "team_H" in df.columns,
-        "team_A": "team_A" in df.columns,
+        "team_name_H": "team_name_H" in df.columns,
+        "team_name_A": "team_name_A" in df.columns,
         "gf_H": "gf_H" in df.columns,
         "gf_A": "gf_A" in df.columns,
         "ga_H": "ga_H" in df.columns,
@@ -420,19 +818,5 @@ def validate_dataframe(df: pd.DataFrame) -> Dict[str, bool]:
         "poss_H": "poss_H" in df.columns,
         "poss_A": "poss_A" in df.columns,
     }
-    
+
     return {"required": required_cols, "optional": optional_cols}
-
-
-def create_sample_dataframe() -> pd.DataFrame:
-    """Create a sample DataFrame for testing."""
-    
-    data = {
-        "date": pd.date_range("2024-01-01", periods=10, freq="W"),
-        "team_H": ["Arsenal", "Chelsea", "Arsenal", "Liverpool", "Chelsea"] * 2,
-        "team_A": ["Chelsea", "Arsenal", "Liverpool", "Arsenal", "Liverpool"] * 2,
-        "gf_H": [2, 1, 3, 0, 2, 1, 2, 1, 0, 3],
-        "gf_A": [1, 2, 1, 1, 1, 1, 0, 2, 2, 1],
-        "ga_H": [1, 2, 1, 1, 1, 1, 0, 2, 2, 1],
-        "ga_A": [2, 1, 3, 0, 2, 1, 2, 1, 0, 3],
-        "xg_H": [1.8, 0.9, 2.7, 0.3, 1.9, 0.8, 1.7,

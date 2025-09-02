@@ -7,8 +7,8 @@ from fbrapi_dataset import _add_elo_columns
 def test_add_elo_columns_simple():
     df = pd.DataFrame(
         {
-            "team_H": ["A", "B", "A"],
-            "team_A": ["B", "A", "C"],
+            "team_name_H": ["A", "B", "A"],
+            "team_name_A": ["B", "A", "C"],
             "gf_H": [1, 0, 2],
             "gf_A": [0, 2, 1],
             "date": pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"]),
