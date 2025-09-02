@@ -22,27 +22,55 @@ def understat_success(no_cache, monkeypatch):
     us_mod = types.SimpleNamespace(
         get_team_xg_xga=lambda team, season: {"xg": 1.0, "xga": 2.0}
     )
+    fbr_mod = types.SimpleNamespace(
+        get_team_xg_xga=lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("fbrapi should not be called")
+        )
+    )
     fb_mod = types.SimpleNamespace(
         get_team_xg_xga=lambda *args, **kwargs: (_ for _ in ()).throw(
             AssertionError("fbref should not be called")
         )
     )
     monkeypatch.setitem(sys.modules, "utils.poisson_utils.xg_sources.understat", us_mod)
+    monkeypatch.setitem(sys.modules, "utils.poisson_utils.xg_sources.fbrapi", fbr_mod)
+    monkeypatch.setitem(sys.modules, "utils.poisson_utils.xg_sources.fbref", fb_mod)
+    return xg_sources.get_team_xg_xga("Team", "2020")
+
+
+@pytest.fixture
+def fbrapi_fallback(no_cache, monkeypatch):
+    us_mod = types.SimpleNamespace(
+        get_team_xg_xga=lambda *args, **kwargs: (_ for _ in ()).throw(
+            Exception("understat failure")
+        )
+    )
+    fbr_mod = types.SimpleNamespace(
+        get_team_xg_xga=lambda team, season: {"xg": 2.0, "xga": 3.0}
+    )
+    fb_mod = types.SimpleNamespace(
+        get_team_xg_xga=lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("fbref should not be called")
+        )
+    )
+    monkeypatch.setitem(sys.modules, "utils.poisson_utils.xg_sources.understat", us_mod)
+    monkeypatch.setitem(sys.modules, "utils.poisson_utils.xg_sources.fbrapi", fbr_mod)
     monkeypatch.setitem(sys.modules, "utils.poisson_utils.xg_sources.fbref", fb_mod)
     return xg_sources.get_team_xg_xga("Team", "2020")
 
 
 @pytest.fixture
 def fbref_fallback(no_cache, monkeypatch):
-    us_mod = types.SimpleNamespace(
+    fail_mod = types.SimpleNamespace(
         get_team_xg_xga=lambda *args, **kwargs: (_ for _ in ()).throw(
-            Exception("understat failure")
+            Exception("provider failure")
         )
     )
     fb_mod = types.SimpleNamespace(
         get_team_xg_xga=lambda team, season: {"xg": 3.0, "xga": 4.0}
     )
-    monkeypatch.setitem(sys.modules, "utils.poisson_utils.xg_sources.understat", us_mod)
+    monkeypatch.setitem(sys.modules, "utils.poisson_utils.xg_sources.understat", fail_mod)
+    monkeypatch.setitem(sys.modules, "utils.poisson_utils.xg_sources.fbrapi", fail_mod)
     monkeypatch.setitem(sys.modules, "utils.poisson_utils.xg_sources.fbref", fb_mod)
     return xg_sources.get_team_xg_xga("Team", "2020")
 
@@ -58,6 +86,7 @@ def pseudo_fallback(no_cache, monkeypatch):
         fetch_pseudo_xg=lambda team, df: {"xg": 5.0, "xga": 6.0}
     )
     monkeypatch.setitem(sys.modules, "utils.poisson_utils.xg_sources.understat", fail_mod)
+    monkeypatch.setitem(sys.modules, "utils.poisson_utils.xg_sources.fbrapi", fail_mod)
     monkeypatch.setitem(sys.modules, "utils.poisson_utils.xg_sources.fbref", fail_mod)
     monkeypatch.setitem(sys.modules, "utils.poisson_utils.xg_sources.pseudo", pseudo_mod)
     df = pd.DataFrame({"team": ["Team"], "x": [1]})
@@ -69,6 +98,13 @@ def test_understat_success(understat_success):
     assert result["source"] == "understat"
     assert result["xg"] == pytest.approx(1.0)
     assert result["xga"] == pytest.approx(2.0)
+
+
+def test_fbrapi_fallback(fbrapi_fallback):
+    result = fbrapi_fallback
+    assert result["source"] == "fbrapi"
+    assert result["xg"] == pytest.approx(2.0)
+    assert result["xga"] == pytest.approx(3.0)
 
 
 def test_fbref_fallback(fbref_fallback):
