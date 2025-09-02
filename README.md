@@ -40,15 +40,19 @@ Expected goals values are fetched from multiple providers with the following
 priority:
 
 1. **Understat** – primary source
-2. **FBref** – fallback if Understat is unavailable
-3. **pseudo‑xG** – computed from match statistics when no external provider
+2. **FBR API** – fallback if Understat is unavailable
+3. **FBref** – final fallback when the API fails
+4. **pseudo‑xG** – computed from match statistics when no external provider
    succeeds
 
 Results are cached to JSON files in `utils/poisson_utils/xg_sources/`:
 
 - `xg_cache.json` stores the final aggregated results
-- `understat_xg_cache.json` and `fbref_xg_cache.json` keep provider‑specific
-  responses
+- `understat_xg_cache.json`, `fbrapi_xg_cache.json` and `fbref_xg_cache.json`
+  keep provider‑specific responses
+
+FBR API requests require an API key provided via the environment variable
+`FBRAPI_KEY`.
 
 Caches persist between runs. Delete the files to refresh the stored data or
 allow the scripts to overwrite them when new values are available.

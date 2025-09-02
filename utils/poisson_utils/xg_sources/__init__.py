@@ -41,13 +41,13 @@ def get_team_xg_xga(
 ) -> Dict[str, Any]:
     """Return team xG and xGA for a season from available providers.
 
-    Providers are queried in order: ``understat`` and ``fbref``.  If both
-    fail and ``league_df`` is provided, pseudo-xG values computed from the
-    dataframe are used. Results are cached on disk to avoid repeated network
-    calls.
+    Providers are queried in order: ``understat``, ``fbrapi`` and ``fbref``.
+    If all fail and ``league_df`` is provided, pseudo-xG values computed from
+    the dataframe are used. Results are cached on disk to avoid repeated
+    network calls.
     """
     cache = _load_cache()
-    for source in ("understat", "fbref"):
+    for source in ("understat", "fbrapi", "fbref"):
         key = f"{season}|{team}|{source}"
         if key in cache:
             data = cache[key]
