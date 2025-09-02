@@ -7,7 +7,14 @@ from typing import Dict, Optional
 
 import requests
 
+# On-disk cache for team xG/xGA results
 CACHE_FILE = Path(__file__).with_name("fbrapi_xg_cache.json")
+
+# Location where the generated API key is stored so that we do not have to
+# hit the ``/generate_api_key`` endpoint on every run. The file lives in the
+# user's home directory which is outside of the repository and therefore will
+# not be committed.
+API_KEY_FILE = Path.home() / ".fbrapi_api_key"
 
 
 def _load_cache() -> Dict[str, Dict[str, float]]:
@@ -25,13 +32,47 @@ def _save_cache(cache: Dict[str, Dict[str, float]]) -> None:
         json.dump(cache, f)
 
 
+def get_fbrapi_api_key() -> Optional[str]:
+    """Return an API key for the FBR API, generating and caching it if needed.
+
+    The key is looked up in the ``FBRAPI_KEY`` environment variable first. If
+    not present, we try to read it from ``API_KEY_FILE``. As a last resort the
+    key is requested from ``https://fbrapi.com/generate_api_key`` and stored to
+    the cache file for subsequent runs.
+    """
+
+    env_key = os.getenv("FBRAPI_KEY")
+    if env_key:
+        return env_key.strip()
+
+    if API_KEY_FILE.exists():
+        key = API_KEY_FILE.read_text(encoding="utf-8").strip()
+        if key:
+            os.environ["FBRAPI_KEY"] = key
+            return key
+
+    try:
+        resp = requests.post("https://fbrapi.com/generate_api_key", timeout=10)
+        resp.raise_for_status()
+        key = resp.json().get("api_key")
+    except Exception:
+        return None
+
+    if key:
+        API_KEY_FILE.write_text(key, encoding="utf-8")
+        os.environ["FBRAPI_KEY"] = key
+        return key
+    return None
+
+
 def fetch_fbrapi_team_xg(team: str, season: str) -> Optional[Dict[str, float]]:
     """Fetch xG and xGA for a team from the FBR API.
 
     Returns a dictionary with keys ``xg`` and ``xga`` if available,
-    otherwise ``None``.
+    otherwise ``None``. The function automatically handles API key
+    generation and caching so the key request is made only once.
     """
-    api_key = os.getenv("FBRAPI_KEY")
+    api_key = get_fbrapi_api_key()
     if not api_key:
         return None
 
