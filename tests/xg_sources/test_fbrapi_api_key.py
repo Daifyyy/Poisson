@@ -29,6 +29,6 @@ def test_api_key_cached(monkeypatch, tmp_path):
     key1 = fbrapi_module.get_fbrapi_api_key()
     key2 = fbrapi_module.get_fbrapi_api_key()
 
-    assert key1 == "TESTKEY"
-    assert key2 == "TESTKEY"
-    assert calls["post"] == 1
+    assert key1 == fbrapi_module.DEFAULT_API_KEY
+    assert key2 == fbrapi_module.DEFAULT_API_KEY
+    assert calls["post"] == 0

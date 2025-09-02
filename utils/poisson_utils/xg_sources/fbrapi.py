@@ -18,6 +18,10 @@ CACHE_FILE = Path(__file__).with_name("fbrapi_xg_cache.json")
 # Location where the generated API key is stored
 API_KEY_FILE = Path.home() / ".fbrapi_api_key"
 
+# Project default API key provided by the user.  This is used when no
+# ``FBRAPI_KEY`` environment variable or local key file is available.
+DEFAULT_API_KEY = "t36y9yEJOU_luHG9GNk87QCqgsTTHWkcil7nIo_r3zk"
+
 
 def _load_cache() -> Dict[str, Dict[str, float]]:
     if CACHE_FILE.exists():
@@ -35,8 +39,14 @@ def _save_cache(cache: Dict[str, Dict[str, float]]) -> None:
 
 
 def get_fbrapi_api_key() -> Optional[str]:
-    """Return an API key for the FBR API, generating and caching it if needed."""
-    
+    """Return an API key for the FBR API.
+
+    The key is resolved in the following order:
+    1. ``FBRAPI_KEY`` environment variable.
+    2. Key stored in ``API_KEY_FILE``.
+    3. The project default ``DEFAULT_API_KEY`` supplied by the user.
+    """
+
     env_key = os.getenv("FBRAPI_KEY")
     if env_key:
         return env_key.strip()
@@ -47,19 +57,12 @@ def get_fbrapi_api_key() -> Optional[str]:
             os.environ["FBRAPI_KEY"] = key
             return key
 
-    try:
-        resp = requests.post("https://fbrapi.com/generate_api_key", timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        key = data.get("api_key")
-    except Exception as e:
-        print(f"Error generating API key: {e}")
-        return None
+    # Fall back to the provided default API key
+    if DEFAULT_API_KEY:
+        API_KEY_FILE.write_text(DEFAULT_API_KEY, encoding="utf-8")
+        os.environ["FBRAPI_KEY"] = DEFAULT_API_KEY
+        return DEFAULT_API_KEY
 
-    if key:
-        API_KEY_FILE.write_text(key, encoding="utf-8")
-        os.environ["FBRAPI_KEY"] = key
-        return key
     return None
 
 
