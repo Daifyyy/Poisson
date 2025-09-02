@@ -2,6 +2,7 @@
 
 import argparse
 
+from fbrapi_dataset import build_three_seasons
 from utils.ml.random_forest import (
     DEFAULT_MODEL_PATH,
     DEFAULT_OVER25_MODEL_PATH,
@@ -13,15 +14,18 @@ from utils.ml.random_forest import (
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train Random Forest models")
-    parser.add_argument("--data-dir", default="data")
+    parser.add_argument("--league-id", type=int, required=True)
+    parser.add_argument("--seasons", nargs="+", required=True, help="Season identifiers from FBR API")
     parser.add_argument("--n-splits", type=int, default=3)
     parser.add_argument("--recent-years", type=int, default=1)
     parser.add_argument("--n-iter", type=int, default=1)
     parser.add_argument("--max-samples", type=int, default=500)
     args = parser.parse_args()
 
+    df = build_three_seasons(args.league_id, args.seasons)
+
     model, features, le, score, params, metrics = train_model(
-        args.data_dir,
+        df,
         n_splits=args.n_splits,
         recent_years=args.recent_years,
         n_iter=args.n_iter,
@@ -43,7 +47,7 @@ def main() -> None:
 
 
     o25_model, o25_features, o25_le, o25_score, o25_params, o25_metrics = train_over25_model(
-        args.data_dir,
+        df,
         n_splits=args.n_splits,
         recent_years=args.recent_years,
         n_iter=args.n_iter,
