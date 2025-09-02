@@ -72,6 +72,22 @@ def _get(path: str, params: Dict[str, Any] | None = None, cache_key: str | None 
     raise RuntimeError(f"FBR API failed: {url} params={params} err={last_exc}")
 
 
+def _flatten_stats(d: Dict[str, Any] | None) -> Dict[str, Any]:
+    """Recursively flatten a nested stats dictionary."""
+
+    def _flatten(current: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
+        items: Dict[str, Any] = {}
+        for k, v in (current or {}).items():
+            new_key = f"{prefix}{k}" if prefix else k
+            if isinstance(v, dict):
+                items.update(_flatten(v, new_key + "_"))
+            else:
+                items[new_key] = v
+        return items
+
+    return _flatten(d or {})
+
+
 def fetch_teams(league_id: int, season_id: str) -> pd.DataFrame:
     data = _get(
         "/teams",
@@ -102,8 +118,16 @@ def fetch_team_match_stats(team_id: int, league_id: int, season_id: str) -> pd.D
         {"team_id": team_id, "league_id": league_id, "season_id": season_id},
         cache_key=f"teamstats_{team_id}_{league_id}_{season_id}.json",
     )
-    df = pd.DataFrame(data.get("data", []))
-    for c in [
+
+    rows = []
+    for row in data.get("data", []):
+        base = {k: v for k, v in row.items() if k != "stats"}
+        stats = row.get("stats") or {}
+        base.update(_flatten_stats(stats))
+        rows.append(base)
+
+    df = pd.DataFrame(rows)
+    core_cols = [
         "match_id",
         "date",
         "team_id",
@@ -117,29 +141,14 @@ def fetch_team_match_stats(team_id: int, league_id: int, season_id: str) -> pd.D
         "sot",
         "poss",
         "home_away",
-    ]:
+    ]
+    for c in core_cols:
         if c not in df.columns:
             df[c] = np.nan
     df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True).dt.tz_localize(None)
     df["season_id"] = season_id
-    return df[
-        [
-            "match_id",
-            "date",
-            "season_id",
-            "team_id",
-            "opponent_id",
-            "team",
-            "gf",
-            "ga",
-            "xg",
-            "xga",
-            "shots",
-            "sot",
-            "poss",
-            "home_away",
-        ]
-    ]
+    ordered = core_cols + [c for c in df.columns if c not in core_cols]
+    return df[ordered]
 
 
 def _assemble_one_season(league_id: int, season_id: str) -> pd.DataFrame:
