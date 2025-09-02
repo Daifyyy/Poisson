@@ -18,6 +18,7 @@ import pandas as pd
 import requests
 
 from utils.poisson_utils.xg_sources.fbrapi import get_fbrapi_api_key
+from utils.poisson_utils.elo import calculate_elo_ratings
 
 
 BASE = "https://fbrapi.com"
@@ -176,6 +177,50 @@ def _assemble_one_season(league_id: int, season_id: str) -> pd.DataFrame:
     return Xdf
 
 
+def _add_elo_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Add pre-match ELO ratings for home and away teams.
+
+    The calculation uses :func:`calculate_elo_ratings` on all matches up to
+    (but not including) the current one so the ratings represent the teams'
+    strength entering the fixture.
+    """
+
+    # Prepare a minimal DataFrame in the format expected by
+    # ``calculate_elo_ratings`` and ensure chronological order.
+    matches = (
+        df[
+            ["date", "team_H", "team_A", "gf_H", "gf_A"]
+        ]
+        .rename(
+            columns={
+                "date": "Date",
+                "team_H": "HomeTeam",
+                "team_A": "AwayTeam",
+                "gf_H": "FTHG",
+                "gf_A": "FTAG",
+            }
+        )
+        .sort_values("Date")
+        .reset_index(drop=True)
+    )
+
+    elo_home: list[float] = []
+    elo_away: list[float] = []
+
+    for i in range(len(matches)):
+        past = matches.iloc[:i]
+        elo_dict = calculate_elo_ratings(past) if i > 0 else {}
+        row = matches.iloc[i]
+        elo_home.append(float(elo_dict.get(row.HomeTeam, 1500)))
+        elo_away.append(float(elo_dict.get(row.AwayTeam, 1500)))
+
+    df = df.sort_values("date").reset_index(drop=True)
+    df["elo_home"] = elo_home
+    df["elo_away"] = elo_away
+    df["elo_diff"] = df["elo_home"] - df["elo_away"]
+    return df
+
+
 def build_three_seasons(league_id: int, seasons: Iterable[str]) -> pd.DataFrame:
     parts = [_assemble_one_season(league_id, s) for s in seasons]
     df = pd.concat(parts, ignore_index=True).sort_values("date").reset_index(drop=True)
@@ -205,6 +250,9 @@ def build_three_seasons(league_id: int, seasons: Iterable[str]) -> pd.DataFrame:
         return (w / (w.mean() if w.mean() > 0 else 1.0)).values
 
     df["sample_weight"] = compute_time_weights(df["date"], half_life_days=240)
+
+    # Add ELO-based strength metrics for each matchup.
+    df = _add_elo_columns(df)
 
     keep = [
         "match_id",
@@ -244,6 +292,9 @@ def build_three_seasons(league_id: int, seasons: Iterable[str]) -> pd.DataFrame:
         "gf_roll5_A",
         "ga_roll5_A",
         "poss_roll5_A",
+        "elo_home",
+        "elo_away",
+        "elo_diff",
         "over25",
         "outcome",
         "sample_weight",
