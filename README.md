@@ -47,8 +47,14 @@ priority:
 
 Results are cached to JSON files in `utils/poisson_utils/xg_sources/`:
 
+
 - `xg_cache.json` stores the final results from the FBR API
 - `fbrapi_xg_cache.json` keeps provider‑specific responses
+=======
+- `xg_cache.json` stores the final aggregated results
+- `understat_xg_cache.json`, `fbrapi_xg_cache.json` and `fbref_xg_cache.json`
+  keep provider‑specific responses
+
 - raw responses from the FBR API are stored in the `fbrapi_raw` directory for
   debugging and inspection
 
