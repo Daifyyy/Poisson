@@ -1,0 +1,33 @@
+name: Test FBR API
+
+on:
+  workflow_dispatch:  # allow manual trigger
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      FBRAPI_KEY: ${{ secrets.FBRAPI_KEY }}
+
+    steps:
+      - name: 🧾 Checkout repo
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🧪 Run live FBR API script
+        run: |
+          echo "::add-mask::$FBRAPI_KEY"
+          if [ -z "$FBRAPI_KEY" ]; then
+            echo "❌ FBRAPI_KEY is not set."
+            exit 1
+          fi
+          python tests/test_fbrapi_live.py
