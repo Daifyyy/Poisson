@@ -1,7 +1,7 @@
 name: Test FBR API
 
 on:
-  workflow_dispatch:  # allow manual trigger
+  workflow_dispatch:
 
 jobs:
   test:
@@ -21,7 +21,7 @@ jobs:
       - name: 📦 Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install requests pandas
 
       - name: 🧪 Run live FBR API script
         run: |
@@ -31,3 +31,9 @@ jobs:
             exit 1
           fi
           python tests/test_fbrapi_live.py
+
+      - name: 💾 Upload sample data
+        uses: actions/upload-artifact@v4
+        with:
+          name: fbrapi-sample-data
+          path: data_fbrapi/*.csv
