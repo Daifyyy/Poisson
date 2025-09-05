@@ -8,12 +8,16 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import requests
 
 # On-disk cache for team xG/xGA results
 CACHE_FILE = Path(__file__).with_name("fbrapi_xg_cache.json")
+
+# Directory for storing raw FBR API responses for debugging/inspection
+RAW_OUTPUT_DIR = Path(__file__).with_name("fbrapi_raw")
+RAW_OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Location where the generated API key is stored
 API_KEY_FILE = Path.home() / ".fbrapi_api_key"
@@ -36,6 +40,15 @@ def _load_cache() -> Dict[str, Dict[str, float]]:
 def _save_cache(cache: Dict[str, Dict[str, float]]) -> None:
     with CACHE_FILE.open("w", encoding="utf-8") as f:
         json.dump(cache, f)
+
+
+def _save_raw_response(filename: str, data: Dict[str, Any]) -> None:
+    """Persist raw API responses for later inspection."""
+    try:
+        with (RAW_OUTPUT_DIR / filename).open("w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
 
 
 def get_fbrapi_api_key() -> Optional[str]:
@@ -76,12 +89,13 @@ def find_team_in_standings(team_name: str, league_id: int, season_id: str, api_k
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=10)
         print(f"Standings request status: {resp.status_code}")
-        
+
         if resp.status_code != 200:
             print(f"Standings error response: {resp.text}")
             return None
-            
+
         data = resp.json()
+        _save_raw_response(f"standings_{league_id}_{season_id}.json", data)
         
         # Hledáme tým ve všech tabulkách standings
         for standings_table in data.get("data", []):
@@ -114,12 +128,13 @@ def find_team_in_season_stats(team_name: str, league_id: int, season_id: str, ap
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=10)
         print(f"Season stats request status: {resp.status_code}")
-        
+
         if resp.status_code != 200:
             print(f"Season stats error response: {resp.text}")
             return None
-            
+
         data = resp.json()
+        _save_raw_response(f"season_stats_{league_id}_{season_id}.json", data)
         
         # Hledáme tým v datech
         for team_data in data.get("data", []):
