@@ -8,19 +8,16 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import requests
 
 # On-disk cache for team xG/xGA results
 CACHE_FILE = Path(__file__).with_name("fbrapi_xg_cache.json")
 
-# Location where the generated API key is stored
-API_KEY_FILE = Path.home() / ".fbrapi_api_key"
-
-# Project default API key provided by the user.  This is used when no
-# ``FBRAPI_KEY`` environment variable or local key file is available.
-DEFAULT_API_KEY = "t36y9yEJOU_luHG9GNk87QCqgsTTHWkcil7nIo_r3zk"
+# Directory for storing raw FBR API responses for debugging/inspection
+RAW_OUTPUT_DIR = Path(__file__).with_name("fbrapi_raw")
+RAW_OUTPUT_DIR.mkdir(exist_ok=True)
 
 
 def _load_cache() -> Dict[str, Dict[str, float]]:
@@ -38,30 +35,24 @@ def _save_cache(cache: Dict[str, Dict[str, float]]) -> None:
         json.dump(cache, f)
 
 
+def _save_raw_response(filename: str, data: Dict[str, Any]) -> None:
+    """Persist raw API responses for later inspection."""
+    try:
+        with (RAW_OUTPUT_DIR / filename).open("w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
 def get_fbrapi_api_key() -> Optional[str]:
     """Return an API key for the FBR API.
 
-    The key is resolved in the following order:
-    1. ``FBRAPI_KEY`` environment variable.
-    2. Key stored in ``API_KEY_FILE``.
-    3. The project default ``DEFAULT_API_KEY`` supplied by the user.
+    The key is read from the ``FBRAPI`` environment variable.
     """
 
-    env_key = os.getenv("FBRAPI_KEY")
+    env_key = os.getenv("FBRAPI")
     if env_key:
         return env_key.strip()
-
-    if API_KEY_FILE.exists():
-        key = API_KEY_FILE.read_text(encoding="utf-8").strip()
-        if key:
-            os.environ["FBRAPI_KEY"] = key
-            return key
-
-    # Fall back to the provided default API key
-    if DEFAULT_API_KEY:
-        API_KEY_FILE.write_text(DEFAULT_API_KEY, encoding="utf-8")
-        os.environ["FBRAPI_KEY"] = DEFAULT_API_KEY
-        return DEFAULT_API_KEY
 
     return None
 
@@ -76,12 +67,13 @@ def find_team_in_standings(team_name: str, league_id: int, season_id: str, api_k
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=10)
         print(f"Standings request status: {resp.status_code}")
-        
+
         if resp.status_code != 200:
             print(f"Standings error response: {resp.text}")
             return None
-            
+
         data = resp.json()
+        _save_raw_response(f"standings_{league_id}_{season_id}.json", data)
         
         # Hledáme tým ve všech tabulkách standings
         for standings_table in data.get("data", []):
@@ -114,12 +106,13 @@ def find_team_in_season_stats(team_name: str, league_id: int, season_id: str, ap
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=10)
         print(f"Season stats request status: {resp.status_code}")
-        
+
         if resp.status_code != 200:
             print(f"Season stats error response: {resp.text}")
             return None
-            
+
         data = resp.json()
+        _save_raw_response(f"season_stats_{league_id}_{season_id}.json", data)
         
         # Hledáme tým v datech
         for team_data in data.get("data", []):

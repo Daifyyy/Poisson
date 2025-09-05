@@ -51,7 +51,7 @@ def _get_api_key() -> str:
     api_key = get_fbrapi_api_key()
     if not api_key:
         raise RuntimeError(
-            "Missing FBR API key. Please set FBRAPI_KEY environment variable "
+            "Missing FBR API key. Please set the FBRAPI environment variable "
             "or ensure the API key generation is working."
         )
     return api_key
