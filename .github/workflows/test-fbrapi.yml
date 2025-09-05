@@ -7,7 +7,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      FBRAPI_KEY: ${{ secrets.FBRAPI_KEY }}
+      FBRAPI_KEY: ${{ secrets.FBRAPI }}
 
     steps:
       - name: 🧾 Checkout repo
