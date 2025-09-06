@@ -196,15 +196,19 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
 
+    # datum + řazení
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df.sort_values("date", inplace=True)
 
+    # outcome/FTR → číselná forma
     results = {"H": 1, "D": 0, "A": -1}
     result_col = "FTR" if "FTR" in df.columns else "outcome"
     if result_col not in df.columns:
         raise ValueError("DataFrame must contain 'FTR' or 'outcome'")
+
     df["home_result"] = df[result_col].map(results)
     df["away_result"] = -df["home_result"]
+
     df["home_recent_form"] = df.groupby("team_name_H")["home_result"].transform(
         lambda x: x.shift().rolling(5, min_periods=1).mean()
     )
@@ -213,9 +217,10 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
     )
     df.drop(columns=["home_result", "away_result"], inplace=True)
 
-    df["home_xg"] = df.groupby("team_name_H")["xg_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
-    df["away_xg"] = df.groupby("team_name_A")["xg_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
-    df["xg_diff"] = df["home_xg"] - df["away_xg"]
+    # xG/xGA a derived differences (rolling 5)
+    df["home_xg"]  = df.groupby("team_name_H")["xg_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["away_xg"]  = df.groupby("team_name_A")["xg_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["xg_diff"]  = df["home_xg"] - df["away_xg"]
 
     df["home_xga"] = df.groupby("team_name_H")["xga_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
     df["away_xga"] = df.groupby("team_name_A")["xga_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
@@ -227,6 +232,7 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
     away_ga = df.groupby("team_name_A")["ga_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
     df["goal_balance_diff"] = (home_gf - home_ga) - (away_gf - away_ga)
 
+    # střely / SOT (rolling)
     df["home_shots"] = df.groupby("team_name_H")["shots_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
     df["away_shots"] = df.groupby("team_name_A")["shots_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
     df["shots_diff"] = df["home_shots"] - df["away_shots"]
@@ -235,60 +241,66 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
     df["away_sot"] = df.groupby("team_name_A")["sot_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
     df["shot_target_diff"] = df["home_sot"] - df["away_sot"]
 
-    # Efficiency metrics
-    df["shot_accuracy_diff"] = (df["home_sot"] / df["home_shots"]).replace([np.inf, -np.inf], np.nan) - (
-        df["away_sot"] / df["away_shots"]
-    ).replace([np.inf, -np.inf], np.nan)
-
-    df["conversion_rate_diff"] = (home_gf / df["home_shots"]).replace([np.inf, -np.inf], np.nan) - (
-        away_gf / df["away_shots"]
-    ).replace([np.inf, -np.inf], np.nan)
-
-    home_shots_against = df.groupby("team_name_H")["shots_A"].transform(
-        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    # Efektivita/kompaktnost (guard proti dělení nulou)
+    df["shot_accuracy_diff"] = (
+        (df["home_sot"] / df["home_shots"]).replace([np.inf, -np.inf], np.nan)
+        - (df["away_sot"] / df["away_shots"]).replace([np.inf, -np.inf], np.nan)
     )
-    away_shots_against = df.groupby("team_name_A")["shots_H"].transform(
-        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    df["conversion_rate_diff"] = (
+        (home_gf / df["home_shots"]).replace([np.inf, -np.inf], np.nan)
+        - (away_gf / df["away_shots"]).replace([np.inf, -np.inf], np.nan)
     )
+
+    home_shots_against = df.groupby("team_name_H")["shots_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    away_shots_against = df.groupby("team_name_A")["shots_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
     home_def = (home_shots_against / home_ga).replace([np.inf, -np.inf], np.nan)
     away_def = (away_shots_against / away_ga).replace([np.inf, -np.inf], np.nan)
     df["def_compactness_diff"] = home_def - away_def
 
-    df.loc[:, "shot_accuracy_diff"] = df["shot_accuracy_diff"].fillna(0.0)
-    df.loc[:, "conversion_rate_diff"] = df["conversion_rate_diff"].fillna(0.0)
-    df.loc[:, "def_compactness_diff"] = df["def_compactness_diff"].fillna(0.0)
+    df["shot_accuracy_diff"]  = df["shot_accuracy_diff"].fillna(0.0)
+    df["conversion_rate_diff"] = df["conversion_rate_diff"].fillna(0.0)
+    df["def_compactness_diff"] = df["def_compactness_diff"].fillna(0.0)
 
+    # uklid nepotřebných mezisloupců
     df.drop(
-        columns=[
-            "home_shots",
-            "away_shots",
-            "home_sot",
-            "away_sot",
-            "home_xg",
-            "away_xg",
-            "home_xga",
-            "away_xga",
-        ],
+        columns=["home_shots","away_shots","home_sot","away_sot","home_xg","away_xg","home_xga","away_xga"],
         inplace=True,
         errors="ignore",
     )
 
+    # Odpočinek
     df["home_last"] = df.groupby("team_name_H")["date"].shift()
     df["away_last"] = df.groupby("team_name_A")["date"].shift()
     df["home_rest"] = (df["date"] - df["home_last"]).dt.days
     df["away_rest"] = (df["date"] - df["away_last"]).dt.days
     df["days_since_last_match"] = df["home_rest"] - df["away_rest"]
-    df.drop(columns=["home_last", "away_last", "home_rest", "away_rest"], inplace=True)
+    df.drop(columns=["home_last","away_last","home_rest","away_rest"], inplace=True)
 
+    # ELO difference pro FBR názvy sloupců
+    def _compute_elo_diff_fbr(frame: pd.DataFrame, k: int = 20) -> pd.Series:
+        teams = pd.unique(frame[["team_name_H","team_name_A"]].values.ravel())
+        ratings = {t: 1500.0 for t in teams}
+        diffs: list[float] = []
+        for _, r in frame.iterrows():
+            h, a, res = r["team_name_H"], r["team_name_A"], r[result_col]
+            diffs.append(ratings[h] - ratings[a])
+            # update
+            res_home = 1.0 if res == "H" else 0.5 if res == "D" else 0.0
+            exp_home = 1.0 / (1.0 + 10.0 ** ((ratings[a] - ratings[h]) / 400.0))
+            ratings[h] += k * (res_home - exp_home)
+            ratings[a] += k * ((1.0 - res_home) - (1.0 - exp_home))
+        return pd.Series(diffs, index=frame.index, dtype=float)
+
+    df["elo_diff"] = _compute_elo_diff_fbr(df)
+
+    # Poisson team strengths (přejmenujeme na očekávané názvy)
     from utils.poisson_utils.stats import calculate_team_strengths
-
-    tmp = df.rename(
-        columns={"team_name_H": "HomeTeam", "team_name_A": "AwayTeam", "gf_H": "FTHG", "gf_A": "FTAG"}
-    )
+    tmp = df.rename(columns={"team_name_H": "HomeTeam", "team_name_A": "AwayTeam", "gf_H": "FTHG", "gf_A": "FTAG"})
     attack_strength, defense_strength, _ = calculate_team_strengths(tmp)
     df["attack_strength_diff"] = df["team_name_H"].map(attack_strength) - df["team_name_A"].map(attack_strength)
     df["defense_strength_diff"] = df["team_name_H"].map(defense_strength) - df["team_name_A"].map(defense_strength)
 
+    # konstanta – je součástí tréninku
     df["home_advantage"] = 1.0
 
     features = [
@@ -309,17 +321,20 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
         "defense_strength_diff",
     ]
 
+    # sestavení X/y
     X = _clip_features(df[features])
     y_raw = df[result_col].astype(str)
+
     mask = X.notna().all(axis=1) & y_raw.notna()
     X = X[mask]
     y_raw = y_raw[mask]
 
     from sklearn.preprocessing import LabelEncoder
-
     label_enc = LabelEncoder()
     y = label_enc.fit_transform(y_raw)
+
     return X, y, features, label_enc
+
 
 
 def train_model(
