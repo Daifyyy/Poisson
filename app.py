@@ -91,7 +91,6 @@ LEAGUE_START_MONTH = {
 if st.sidebar.button("🏠 Home"):
     st.session_state.clear()
     st.query_params.clear()
-    st.rerun()
 
 # --- Sidebar: Správa dat ---
 with st.sidebar.expander("🔧 Správa dat"):
@@ -125,8 +124,19 @@ default_league_index = (
     else 0
 )
 
+
+def change_league() -> None:
+    st.query_params.clear()
+    st.query_params["selected_league"] = st.session_state["league_select"]
+    st.session_state["last_selected_league"] = st.session_state["league_select"]
+
+
 league_name = st.sidebar.selectbox(
-    "🌍 Vyber ligu", list(league_files.keys()), index=default_league_index
+    "🌍 Vyber ligu",
+    list(league_files.keys()),
+    index=default_league_index,
+    key="league_select",
+    on_change=change_league,
 )
 league_file = league_files[league_name]
 
@@ -404,21 +414,6 @@ if isinstance(raw_team, list):
     raw_team = raw_team[0]
 selected_team = urllib.parse.unquote_plus(raw_team) if raw_team else None
 
-# liga z query param (pro jistotu stejně jako výše)
-selected_league_from_url = query_params.get("selected_league", None)
-if isinstance(selected_league_from_url, list):
-    selected_league_from_url = selected_league_from_url[0]
-
-# --- Detekce změny ligy ---
-if "last_selected_league" not in st.session_state:
-    st.session_state["last_selected_league"] = league_name
-elif st.session_state["last_selected_league"] != league_name:
-    selected_team = None
-    query_params.clear()
-    query_params["selected_league"] = league_name
-    st.session_state["last_selected_league"] = league_name
-    st.rerun()
-
 # === ROUTING ===
 if navigation == "My Bets":
     render_my_bets()
@@ -463,7 +458,6 @@ elif selected_team:
     if st.button("🔙 Zpět na ligový přehled"):
         st.query_params.clear()
         st.query_params["selected_league"] = league_name
-        st.rerun()
 
 else:
     render_league_overview(season_df, league_name, gii_dict, elo_dict)
