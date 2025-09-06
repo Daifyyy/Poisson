@@ -15,7 +15,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 # ⚠️ Season ranges to include
 SEASON_CODES = ["2526", "2425", "2324"]  # Adjust as needed
-LEAGUE_CODES = ["E0", "E1", "D1", "D2", "SP1", "I1", "F1", "N1", "P1", "B1"]
+LEAGUE_CODES = ["E0", "E1", "D1", "D2", "SP1", "I1", "F1", "N1", "P1", "B1", "T1"]
 
 EXPECTED_COLS = [
     "Div", "Date", "Time", "HomeTeam", "AwayTeam", "FTHG", "FTAG", "FTR",
