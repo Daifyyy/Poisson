@@ -140,16 +140,18 @@ Hyperparametry se hledají pomocí `RandomizedSearchCV` optimalizovaného na
 `log_loss`. Skript po dokončení vypíše také Brierovy skóre a kalibrační křivky
 pro jednotlivé třídy. Parametry křížové validace i rozsah vyhledávání
 hyperparametrů lze upravit pomocí argumentů příkazové řádky:
-=======
-Parametry křížové validace i rozsah vyhledávání hyperparametrů lze upravit
-pomocí argumentů příkazové řádky:
 
 ```bash
-python scripts/train_models.py --n-iter 20 --n-splits 5 --recent-years 2
+python scripts/train_models.py --data-dir data --n-iter 20 --n-splits 5 --recent-years 2
 ```
 
 Volitelný argument `--max-samples` může omezit počet zpracovaných zápasů pro
 rychlé experimenty.
+
+Protože základní CSV data neobsahují oficiální hodnoty očekávaných gólů,
+skript při načítání vytváří jednoduchý pseudo‑xG ukazatel ze střel a střel na
+branku (0.1 × střely + 0.3 × střely na branku). Statistiky držení míče se
+ignorují.
 
 ## ✅ Testy
 
