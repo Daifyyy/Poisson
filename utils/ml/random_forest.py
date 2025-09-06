@@ -151,6 +151,8 @@ def _clip_features(df: pd.DataFrame) -> pd.DataFrame:
         "days_since_last_match": (-30, 30),
         "attack_strength_diff": (-3, 3),
         "defense_strength_diff": (-3, 3),
+        "tempo": (0, 40),
+        "style_diff": (-5, 5),
     }
     for col, (lo, hi) in bounds.items():
         if col in df.columns:
@@ -226,10 +228,12 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
     home_ga = df.groupby("team_name_H")["ga_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
     away_ga = df.groupby("team_name_A")["ga_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
     df["goal_balance_diff"] = (home_gf - home_ga) - (away_gf - away_ga)
+    df["style_diff"] = (home_gf + home_ga) - (away_gf + away_ga)
 
     df["home_shots"] = df.groupby("team_name_H")["shots_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
     df["away_shots"] = df.groupby("team_name_A")["shots_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
     df["shots_diff"] = df["home_shots"] - df["away_shots"]
+    df["tempo"] = df["home_shots"] + df["away_shots"]
 
     df["home_sot"] = df.groupby("team_name_H")["sot_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
     df["away_sot"] = df.groupby("team_name_A")["sot_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
@@ -307,6 +311,8 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
         "days_since_last_match",
         "attack_strength_diff",
         "defense_strength_diff",
+        "tempo",
+        "style_diff",
     ]
 
     X = _clip_features(df[features])
@@ -322,14 +328,17 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
     return X, y, features, label_enc
 
 
-def _time_series_cross_val_predict_proba(model, X, y, cv, n_classes):
+def _time_series_cross_val_predict_proba(model, X, y, cv, n_classes, sample_weight=None):
     """Manually compute out-of-fold predicted probabilities for time series CV."""
     from sklearn.base import clone
 
     preds = np.full((len(X), n_classes), np.nan)
     for train_idx, test_idx in cv.split(X):
         m = clone(model)
-        m.fit(X.iloc[train_idx], y[train_idx])
+        if sample_weight is not None:
+            m.fit(X.iloc[train_idx], y[train_idx], sample_weight=sample_weight[train_idx])
+        else:
+            m.fit(X.iloc[train_idx], y[train_idx])
         preds[test_idx] = m.predict_proba(X.iloc[test_idx])
     mask = ~np.isnan(preds).any(axis=1)
     return preds[mask], mask
@@ -476,6 +485,9 @@ def train_over25_model(
     label_enc = LabelEncoder()
     y = label_enc.fit_transform(y_raw)
 
+    # sample weights favouring matches between similarly rated teams
+    weights = 1 / (1 + np.abs(df.loc[X.index, "elo_diff"]).to_numpy() / 400)
+
     if param_distributions is None:
         param_distributions = {
             "n_estimators": [50, 100, 200],
@@ -502,7 +514,7 @@ def train_over25_model(
         n_jobs=-1,
         scoring=neg_log_loss_scorer,
     )
-    search.fit(X, y)
+    search.fit(X, y, sample_weight=weights)
     best_model = search.best_estimator_
     score = float(-search.best_score_)
 
@@ -510,10 +522,10 @@ def train_over25_model(
     cal_splits = max(2, cal_splits)
     cal_cv = StratifiedKFold(n_splits=cal_splits, shuffle=True, random_state=42)
     calibrated = CalibratedClassifierCV(best_model, method="isotonic", cv=cal_cv)
-    calibrated.fit(X, y)
+    calibrated.fit(X, y, sample_weight=weights)
 
     probs_cv, mask_cv = _time_series_cross_val_predict_proba(
-        best_model, X, y, tscv, len(label_enc.classes_)
+        best_model, X, y, tscv, len(label_enc.classes_), sample_weight=weights
     )
     y_valid = y[mask_cv]
     y_pred = probs_cv.argmax(axis=1)
@@ -761,10 +773,12 @@ def construct_features_for_match(
         home_ga = rolling_avg(home_team, "ga_H", "ga_A")
         away_ga = rolling_avg(away_team, "ga_H", "ga_A")
         goal_balance_diff = (home_gf - home_ga) - (away_gf - away_ga)
+        style_diff = (home_gf + home_ga) - (away_gf + away_ga)
 
         home_shots = rolling_avg(home_team, "shots_H", "shots_A")
         away_shots = rolling_avg(away_team, "shots_H", "shots_A")
         shots_diff = home_shots - away_shots
+        tempo = home_shots + away_shots
 
         home_sot = rolling_avg(home_team, "sot_H", "sot_A")
         away_sot = rolling_avg(away_team, "sot_H", "sot_A")
@@ -820,6 +834,7 @@ def construct_features_for_match(
             "xga_diff": xga_diff,
             "goal_balance_diff": goal_balance_diff,
             "shots_diff": shots_diff,
+            "tempo": tempo,
             "shot_target_diff": shot_target_diff,
             "shot_accuracy_diff": shot_accuracy_diff,
             "conversion_rate_diff": conversion_rate_diff,
@@ -828,6 +843,7 @@ def construct_features_for_match(
             "days_since_last_match": days_since_last,
             "attack_strength_diff": attack_strength_diff,
             "defense_strength_diff": defense_strength_diff,
+            "style_diff": style_diff,
         }
         
         if debug:
@@ -852,6 +868,7 @@ def _get_default_features(home_team: str, away_team: str, elo_dict: Dict[str, fl
         "xga_diff": 0.0,
         "goal_balance_diff": 0.0,
         "shots_diff": 0.0,
+        "tempo": 0.0,
         "shot_target_diff": 0.0,
         "shot_accuracy_diff": 0.0,
         "conversion_rate_diff": 0.0,
@@ -860,6 +877,7 @@ def _get_default_features(home_team: str, away_team: str, elo_dict: Dict[str, fl
         "days_since_last_match": 0.0,
         "attack_strength_diff": 0.0,
         "defense_strength_diff": 0.0,
+        "style_diff": 0.0,
     }
 
 
