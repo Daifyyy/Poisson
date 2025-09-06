@@ -20,6 +20,92 @@ DEFAULT_OVER25_MODEL_PATH = Path(__file__).with_name(
 )
 
 
+def load_csv_data(data_dir: str | Path = "data") -> pd.DataFrame:
+    """Load match data from local CSV files.
+
+    The project originally fetched training data from an external API.  For
+    offline use we instead read the prepared ``*_combined_full_updated.csv``
+    files from ``data_dir`` and reshape them into the FBR-like format expected
+    by the existing feature engineering pipeline.
+    """
+    data_dir = Path(data_dir)
+    frames: list[pd.DataFrame] = []
+    for csv in sorted(data_dir.glob("*_combined_full_updated.csv")):
+        df = pd.read_csv(csv)
+        if "Date" in df.columns:
+            df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+        frames.append(df)
+
+    if not frames:
+        raise FileNotFoundError(f"No training files found in {data_dir}")
+
+    df = pd.concat(frames, ignore_index=True)
+    df.sort_values("Date", inplace=True)
+    df = _add_elo_difference(df)
+
+    # pseudo xG derived purely from shot counts (0.1*shots + 0.3*sot)
+    shots_h = df.get("HS", pd.Series(0, index=df.index))
+    shots_a = df.get("AS", pd.Series(0, index=df.index))
+    sot_h = df.get("HST", pd.Series(0, index=df.index))
+    sot_a = df.get("AST", pd.Series(0, index=df.index))
+    xg_h = 0.1 * shots_h + 0.3 * sot_h
+    xg_a = 0.1 * shots_a + 0.3 * sot_a
+
+    # Map football-data column names to FBR-style names used internally
+    out = pd.DataFrame(
+        {
+            "date": df["Date"],
+            "team_name_H": df["HomeTeam"],
+            "team_name_A": df["AwayTeam"],
+            "gf_H": df["FTHG"],
+            "gf_A": df["FTAG"],
+            "ga_H": df["FTAG"],
+            "ga_A": df["FTHG"],
+            # pseudo expected goals from shots
+            "xg_H": xg_h,
+            "xg_A": xg_a,
+            "xga_H": xg_a,
+            "xga_A": xg_h,
+            "shots_H": shots_h,
+            "shots_A": shots_a,
+            "sot_H": sot_h,
+            "sot_A": sot_a,
+            "FTR": df["FTR"],
+            "B365H": df.get("B365H"),
+            "B365D": df.get("B365D"),
+            "B365A": df.get("B365A"),
+            "B365>2.5": df.get("B365>2.5"),
+            "B365<2.5": df.get("B365<2.5"),
+            "elo_diff": df["elo_diff"],
+        }
+    )
+
+    return out
+
+
+def _add_elo_difference(df: pd.DataFrame, k: int = 20) -> pd.DataFrame:
+    """Compute and append ``elo_diff`` from historical results.
+
+    Parameters mirror the simple approach from :mod:`tests.test_random_forest_model`
+    where ratings start at 1500 and are updated after each match.
+    """
+    df = df.copy()
+    teams = pd.unique(df[["HomeTeam", "AwayTeam"]].values.ravel())
+    ratings: Dict[str, float] = {team: 1500.0 for team in teams}
+    diffs: list[float] = []
+
+    for _, row in df.iterrows():
+        h, a, res = row["HomeTeam"], row["AwayTeam"], row["FTR"]
+        diffs.append(ratings[h] - ratings[a])
+        res_home = 1 if res == "H" else 0.5 if res == "D" else 0
+        exp_home = 1 / (1 + 10 ** ((ratings[a] - ratings[h]) / 400))
+        ratings[h] += k * (res_home - exp_home)
+        ratings[a] += k * ((1 - res_home) - (1 - exp_home))
+
+    df["elo_diff"] = diffs
+    return df
+
+
 class SampleWeightPipeline:
     """Minimal pipeline that forwards ``sample_weight`` to the final estimator."""
 
@@ -55,12 +141,12 @@ def _clip_features(df: pd.DataFrame) -> pd.DataFrame:
         "elo_diff": (-400, 400),
         "xg_diff": (-5, 5),
         "xga_diff": (-5, 5),
-        "home_conceded": (0, 5),
-        "away_conceded": (0, 5),
-        "conceded_diff": (-5, 5),
+        "goal_balance_diff": (-5, 5),
         "shots_diff": (-20, 20),
         "shot_target_diff": (-10, 10),
-        "poss_diff": (-100, 100),
+        "shot_accuracy_diff": (-1, 1),
+        "conversion_rate_diff": (-1, 1),
+        "def_compactness_diff": (-10, 10),
         "days_since_last_match": (-30, 30),
         "attack_strength_diff": (-3, 3),
         "defense_strength_diff": (-3, 3),
@@ -104,8 +190,6 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
         "shots_A",
         "sot_H",
         "sot_A",
-        "poss_H",
-        "poss_A",
     ]
     missing = [c for c in required_cols if c not in df.columns]
     if missing:
@@ -136,9 +220,11 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
     df["away_xga"] = df.groupby("team_name_A")["xga_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
     df["xga_diff"] = df["home_xga"] - df["away_xga"]
 
-    df["home_conceded"] = df.groupby("team_name_H")["ga_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
-    df["away_conceded"] = df.groupby("team_name_A")["ga_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
-    df["conceded_diff"] = df["home_conceded"] - df["away_conceded"]
+    home_gf = df.groupby("team_name_H")["gf_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    away_gf = df.groupby("team_name_A")["gf_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    home_ga = df.groupby("team_name_H")["ga_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    away_ga = df.groupby("team_name_A")["ga_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
+    df["goal_balance_diff"] = (home_gf - home_ga) - (away_gf - away_ga)
 
     df["home_shots"] = df.groupby("team_name_H")["shots_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
     df["away_shots"] = df.groupby("team_name_A")["shots_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
@@ -148,9 +234,43 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
     df["away_sot"] = df.groupby("team_name_A")["sot_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
     df["shot_target_diff"] = df["home_sot"] - df["away_sot"]
 
-    df["home_poss"] = df.groupby("team_name_H")["poss_H"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
-    df["away_poss"] = df.groupby("team_name_A")["poss_A"].transform(lambda x: x.shift().rolling(5, min_periods=1).mean())
-    df["poss_diff"] = df["home_poss"] - df["away_poss"]
+    # Efficiency metrics
+    df["shot_accuracy_diff"] = (df["home_sot"] / df["home_shots"]).replace([np.inf, -np.inf], np.nan) - (
+        df["away_sot"] / df["away_shots"]
+    ).replace([np.inf, -np.inf], np.nan)
+
+    df["conversion_rate_diff"] = (home_gf / df["home_shots"]).replace([np.inf, -np.inf], np.nan) - (
+        away_gf / df["away_shots"]
+    ).replace([np.inf, -np.inf], np.nan)
+
+    home_shots_against = df.groupby("team_name_H")["shots_A"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    away_shots_against = df.groupby("team_name_A")["shots_H"].transform(
+        lambda x: x.shift().rolling(5, min_periods=1).mean()
+    )
+    home_def = (home_shots_against / home_ga).replace([np.inf, -np.inf], np.nan)
+    away_def = (away_shots_against / away_ga).replace([np.inf, -np.inf], np.nan)
+    df["def_compactness_diff"] = home_def - away_def
+
+    df["shot_accuracy_diff"].fillna(0.0, inplace=True)
+    df["conversion_rate_diff"].fillna(0.0, inplace=True)
+    df["def_compactness_diff"].fillna(0.0, inplace=True)
+
+    df.drop(
+        columns=[
+            "home_shots",
+            "away_shots",
+            "home_sot",
+            "away_sot",
+            "home_xg",
+            "away_xg",
+            "home_xga",
+            "away_xga",
+        ],
+        inplace=True,
+        errors="ignore",
+    )
 
     df["home_last"] = df.groupby("team_name_H")["date"].shift()
     df["away_last"] = df.groupby("team_name_A")["date"].shift()
@@ -176,12 +296,12 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
         "elo_diff",
         "xg_diff",
         "xga_diff",
-        "home_conceded",
-        "away_conceded",
-        "conceded_diff",
+        "goal_balance_diff",
         "shots_diff",
         "shot_target_diff",
-        "poss_diff",
+        "shot_accuracy_diff",
+        "conversion_rate_diff",
+        "def_compactness_diff",
         "home_advantage",
         "days_since_last_match",
         "attack_strength_diff",
@@ -433,16 +553,16 @@ def load_model(path: str | Path = DEFAULT_MODEL_PATH) -> Tuple[Any, Iterable[str
         print("Falling back to dummy model")
         return DummyModel(), [
             "home_recent_form",
-            "away_recent_form", 
+            "away_recent_form",
             "elo_diff",
             "xg_diff",
             "xga_diff",
-            "home_conceded",
-            "away_conceded",
-            "conceded_diff",
+            "goal_balance_diff",
             "shots_diff",
             "shot_target_diff",
-            "poss_diff",
+            "shot_accuracy_diff",
+            "conversion_rate_diff",
+            "def_compactness_diff",
             "home_advantage",
             "days_since_last_match",
             "attack_strength_diff",
@@ -464,15 +584,15 @@ def load_over25_model(
         return DummyModel(), [
             "home_recent_form",
             "away_recent_form",
-            "elo_diff", 
+            "elo_diff",
             "xg_diff",
             "xga_diff",
-            "home_conceded",
-            "away_conceded",
-            "conceded_diff",
+            "goal_balance_diff",
             "shots_diff",
             "shot_target_diff",
-            "poss_diff",
+            "shot_accuracy_diff",
+            "conversion_rate_diff",
+            "def_compactness_diff",
             "home_advantage",
             "days_since_last_match",
             "attack_strength_diff",
@@ -590,13 +710,33 @@ def construct_features_for_match(
         away_xga = rolling_avg(away_team, "xga_H", "xga_A")
         xga_diff = home_xga - away_xga
 
-        home_conc = rolling_avg(home_team, "ga_H", "ga_A")
-        away_conc = rolling_avg(away_team, "ga_H", "ga_A")
-        conceded_diff = home_conc - away_conc
+        home_gf = rolling_avg(home_team, "gf_H", "gf_A")
+        away_gf = rolling_avg(away_team, "gf_H", "gf_A")
+        home_ga = rolling_avg(home_team, "ga_H", "ga_A")
+        away_ga = rolling_avg(away_team, "ga_H", "ga_A")
+        goal_balance_diff = (home_gf - home_ga) - (away_gf - away_ga)
 
-        shots_diff = rolling_avg(home_team, "shots_H", "shots_A") - rolling_avg(away_team, "shots_H", "shots_A")
-        shot_target_diff = rolling_avg(home_team, "sot_H", "sot_A") - rolling_avg(away_team, "sot_H", "sot_A")
-        poss_diff = rolling_avg(home_team, "poss_H", "poss_A") - rolling_avg(away_team, "poss_H", "poss_A")
+        home_shots = rolling_avg(home_team, "shots_H", "shots_A")
+        away_shots = rolling_avg(away_team, "shots_H", "shots_A")
+        shots_diff = home_shots - away_shots
+
+        home_sot = rolling_avg(home_team, "sot_H", "sot_A")
+        away_sot = rolling_avg(away_team, "sot_H", "sot_A")
+        shot_target_diff = home_sot - away_sot
+
+        shot_accuracy_diff = (
+            (home_sot / home_shots) if home_shots else 0.0
+        ) - ((away_sot / away_shots) if away_shots else 0.0)
+
+        conversion_rate_diff = (
+            (home_gf / home_shots) if home_shots else 0.0
+        ) - ((away_gf / away_shots) if away_shots else 0.0)
+
+        home_shots_against = rolling_avg(home_team, "shots_A", "shots_H")
+        away_shots_against = rolling_avg(away_team, "shots_A", "shots_H")
+        def_compactness_diff = (
+            (home_shots_against / home_ga) if home_ga else 0.0
+        ) - ((away_shots_against / away_ga) if away_ga else 0.0)
 
         h_last = last_match_date(home_team)
         a_last = last_match_date(away_team)
@@ -632,13 +772,12 @@ def construct_features_for_match(
             "elo_diff": float(elo_dict.get(home_team, 1500) - elo_dict.get(away_team, 1500)),
             "xg_diff": xg_diff,
             "xga_diff": xga_diff,
-            "home_conceded": home_conc,
-            "away_conceded": away_conc,
-            "conceded_diff": conceded_diff,
+            "goal_balance_diff": goal_balance_diff,
             "shots_diff": shots_diff,
             "shot_target_diff": shot_target_diff,
-            "poss_diff": poss_diff,
-            "corners_diff": 0.0,  # Not available in FBR dataset
+            "shot_accuracy_diff": shot_accuracy_diff,
+            "conversion_rate_diff": conversion_rate_diff,
+            "def_compactness_diff": def_compactness_diff,
             "home_advantage": 1.0,
             "days_since_last_match": days_since_last,
             "attack_strength_diff": attack_strength_diff,
@@ -665,13 +804,12 @@ def _get_default_features(home_team: str, away_team: str, elo_dict: Dict[str, fl
         "elo_diff": float(elo_dict.get(home_team, 1500) - elo_dict.get(away_team, 1500)),
         "xg_diff": 0.0,
         "xga_diff": 0.0,
-        "home_conceded": 1.0,
-        "away_conceded": 1.0,
-        "conceded_diff": 0.0,
+        "goal_balance_diff": 0.0,
         "shots_diff": 0.0,
         "shot_target_diff": 0.0,
-        "poss_diff": 0.0,
-        "corners_diff": 0.0,
+        "shot_accuracy_diff": 0.0,
+        "conversion_rate_diff": 0.0,
+        "def_compactness_diff": 0.0,
         "home_advantage": 1.0,
         "days_since_last_match": 0.0,
         "attack_strength_diff": 0.0,
@@ -815,8 +953,6 @@ def validate_dataframe(df: pd.DataFrame) -> Dict[str, bool]:
         "shots_A": "shots_A" in df.columns,
         "sot_H": "sot_H" in df.columns,
         "sot_A": "sot_A" in df.columns,
-        "poss_H": "poss_H" in df.columns,
-        "poss_A": "poss_A" in df.columns,
     }
 
     return {"required": required_cols, "optional": optional_cols}

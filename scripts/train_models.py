@@ -2,10 +2,10 @@
 
 import argparse
 
-from fbrapi_dataset import build_three_seasons
 from utils.ml.random_forest import (
     DEFAULT_MODEL_PATH,
     DEFAULT_OVER25_MODEL_PATH,
+    load_csv_data,
     save_model,
     train_model,
     train_over25_model,
@@ -14,15 +14,18 @@ from utils.ml.random_forest import (
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train Random Forest models")
-    parser.add_argument("--league-id", type=int, required=True)
-    parser.add_argument("--seasons", nargs="+", required=True, help="Season identifiers from FBR API")
+    parser.add_argument(
+        "--data-dir",
+        default="data",
+        help="Directory containing *_combined_full_updated.csv files",
+    )
     parser.add_argument("--n-splits", type=int, default=3)
     parser.add_argument("--recent-years", type=int, default=1)
     parser.add_argument("--n-iter", type=int, default=1)
     parser.add_argument("--max-samples", type=int, default=500)
     args = parser.parse_args()
 
-    df = build_three_seasons(args.league_id, args.seasons)
+    df = load_csv_data(args.data_dir)
 
     model, features, le, score, params, metrics = train_model(
         df,
