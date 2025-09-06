@@ -135,6 +135,7 @@ class SampleWeightPipeline:
 
 def _clip_features(df: pd.DataFrame) -> pd.DataFrame:
     """Clip extreme feature values to reasonable ranges."""
+    df = df.copy()
     bounds = {
         "home_recent_form": (-1, 1),
         "away_recent_form": (-1, 1),
@@ -153,7 +154,7 @@ def _clip_features(df: pd.DataFrame) -> pd.DataFrame:
     }
     for col, (lo, hi) in bounds.items():
         if col in df.columns:
-            df[col] = df[col].clip(lo, hi)
+            df.loc[:, col] = df[col].clip(lo, hi)
     return df
 
 
@@ -253,9 +254,9 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
     away_def = (away_shots_against / away_ga).replace([np.inf, -np.inf], np.nan)
     df["def_compactness_diff"] = home_def - away_def
 
-    df["shot_accuracy_diff"].fillna(0.0, inplace=True)
-    df["conversion_rate_diff"].fillna(0.0, inplace=True)
-    df["def_compactness_diff"].fillna(0.0, inplace=True)
+    df["shot_accuracy_diff"] = df["shot_accuracy_diff"].fillna(0.0)
+    df["conversion_rate_diff"] = df["conversion_rate_diff"].fillna(0.0)
+    df["def_compactness_diff"] = df["def_compactness_diff"].fillna(0.0)
 
     df.drop(
         columns=[
@@ -321,6 +322,19 @@ def _prepare_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, Itera
     return X, y, features, label_enc
 
 
+def _time_series_cross_val_predict_proba(model, X, y, cv, n_classes):
+    """Manually compute out-of-fold predicted probabilities for time series CV."""
+    from sklearn.base import clone
+
+    preds = np.full((len(X), n_classes), np.nan)
+    for train_idx, test_idx in cv.split(X):
+        m = clone(model)
+        m.fit(X.iloc[train_idx], y[train_idx])
+        preds[test_idx] = m.predict_proba(X.iloc[test_idx])
+    mask = ~np.isnan(preds).any(axis=1)
+    return preds[mask], mask
+
+
 def train_model(
     df: pd.DataFrame,
     n_splits: int = 5,
@@ -331,7 +345,7 @@ def train_model(
 ) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Dict[str, float]]]:
     """Train RandomForest model for match outcome prediction using FBR API data."""
     from sklearn.ensemble import RandomForestClassifier
-    from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV, cross_val_predict
+    from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV, StratifiedKFold
     from sklearn.calibration import CalibratedClassifierCV
     from sklearn.metrics import precision_recall_fscore_support, log_loss
 
@@ -355,6 +369,12 @@ def train_model(
         }
 
     tscv = TimeSeriesSplit(n_splits=n_splits)
+    labels = np.arange(len(label_enc.classes_))
+
+    def neg_log_loss_scorer(estimator, X_val, y_val):
+        prob = estimator.predict_proba(X_val)
+        return -log_loss(y_val, prob, labels=labels)
+
     search = RandomizedSearchCV(
         estimator=RandomForestClassifier(random_state=42),
         param_distributions=param_distributions,
@@ -362,24 +382,30 @@ def train_model(
         cv=tscv,
         random_state=42,
         n_jobs=-1,
-        scoring="neg_log_loss",
+        scoring=neg_log_loss_scorer,
     )
     search.fit(X, y)
     best_model = search.best_estimator_
     score = float(-search.best_score_)
 
-    calibrated = CalibratedClassifierCV(best_model, method="isotonic", cv=tscv)
+    cal_splits = min(3, np.min(np.bincount(y)))
+    cal_splits = max(2, cal_splits)
+    cal_cv = StratifiedKFold(n_splits=cal_splits, shuffle=True, random_state=42)
+    calibrated = CalibratedClassifierCV(best_model, method="isotonic", cv=cal_cv)
     calibrated.fit(X, y)
 
-    probs_cv = cross_val_predict(best_model, X, y, cv=tscv, method="predict_proba", n_jobs=-1)
+    probs_cv, mask_cv = _time_series_cross_val_predict_proba(
+        best_model, X, y, tscv, len(label_enc.classes_)
+    )
+    y_valid = y[mask_cv]
     y_pred = probs_cv.argmax(axis=1)
     precisions, recalls, _, _ = precision_recall_fscore_support(
-        y, y_pred, labels=np.arange(len(label_enc.classes_))
+        y_valid, y_pred, labels=np.arange(len(label_enc.classes_))
     )
 
     per_class: Dict[str, Dict[str, float]] = {}
     for idx, label in enumerate(label_enc.classes_):
-        y_true_bin = (y == idx).astype(int)
+        y_true_bin = (y_valid == idx).astype(int)
         prob = probs_cv[:, idx]
         brier = float(np.mean((prob - y_true_bin) ** 2))
         ece = _expected_calibration_error(y_true_bin, prob)
@@ -390,8 +416,8 @@ def train_model(
             "ece": ece,
         }
 
-    freq = np.bincount(y) / len(y)
-    frequency_ll = float(log_loss(y, np.tile(freq, (len(y), 1))))
+    freq = np.bincount(y_valid) / len(y_valid)
+    frequency_ll = float(log_loss(y_valid, np.tile(freq, (len(y_valid), 1))))
 
     bookmaker_ll = None
     book_cols_options = [
@@ -400,11 +426,15 @@ def train_model(
     ]
     for cols in book_cols_options:
         if all(c in df.columns for c in cols):
-            odds = df.loc[X.index, list(cols)].astype(float)
-            probs = 1 / odds
-            probs = probs.div(probs.sum(axis=1), axis=0)
-            bookmaker_ll = float(log_loss(y, probs.values))
-            break
+            odds = df.loc[X.index[mask_cv], list(cols)].astype(float)
+            mask_odds = odds.notna().all(axis=1)
+            odds = odds[mask_odds]
+            if not odds.empty:
+                probs = 1 / odds
+                probs = probs.div(probs.sum(axis=1), axis=0)
+                y_book = y_valid[mask_odds.to_numpy()]
+                bookmaker_ll = float(log_loss(y_book, probs.values))
+                break
 
     metrics = {
         "per_class": per_class,
@@ -427,7 +457,7 @@ def train_over25_model(
 ) -> Tuple[Any, Iterable[str], Any, float, Dict[str, Any], Dict[str, Dict[str, float]]]:
     """Train RandomForest model for Over/Under 2.5 prediction using FBR API data."""
     from sklearn.ensemble import RandomForestClassifier
-    from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV, cross_val_predict
+    from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV, StratifiedKFold
     from sklearn.calibration import CalibratedClassifierCV
     from sklearn.preprocessing import LabelEncoder
     from sklearn.metrics import precision_recall_fscore_support, log_loss
@@ -457,6 +487,12 @@ def train_over25_model(
         }
 
     tscv = TimeSeriesSplit(n_splits=n_splits)
+    labels = np.arange(len(label_enc.classes_))
+
+    def neg_log_loss_scorer(estimator, X_val, y_val):
+        prob = estimator.predict_proba(X_val)
+        return -log_loss(y_val, prob, labels=labels)
+
     search = RandomizedSearchCV(
         estimator=RandomForestClassifier(random_state=42),
         param_distributions=param_distributions,
@@ -464,24 +500,30 @@ def train_over25_model(
         cv=tscv,
         random_state=42,
         n_jobs=-1,
-        scoring="neg_log_loss",
+        scoring=neg_log_loss_scorer,
     )
     search.fit(X, y)
     best_model = search.best_estimator_
     score = float(-search.best_score_)
 
-    calibrated = CalibratedClassifierCV(best_model, method="isotonic", cv=tscv)
+    cal_splits = min(3, np.min(np.bincount(y)))
+    cal_splits = max(2, cal_splits)
+    cal_cv = StratifiedKFold(n_splits=cal_splits, shuffle=True, random_state=42)
+    calibrated = CalibratedClassifierCV(best_model, method="isotonic", cv=cal_cv)
     calibrated.fit(X, y)
 
-    probs_cv = cross_val_predict(best_model, X, y, cv=tscv, method="predict_proba", n_jobs=-1)
+    probs_cv, mask_cv = _time_series_cross_val_predict_proba(
+        best_model, X, y, tscv, len(label_enc.classes_)
+    )
+    y_valid = y[mask_cv]
     y_pred = probs_cv.argmax(axis=1)
     precisions, recalls, _, _ = precision_recall_fscore_support(
-        y, y_pred, labels=np.arange(len(label_enc.classes_))
+        y_valid, y_pred, labels=np.arange(len(label_enc.classes_))
     )
 
     per_class: Dict[str, Dict[str, float]] = {}
     for idx, label in enumerate(label_enc.classes_):
-        y_true_bin = (y == idx).astype(int)
+        y_true_bin = (y_valid == idx).astype(int)
         prob = probs_cv[:, idx]
         brier = float(np.mean((prob - y_true_bin) ** 2))
         ece = _expected_calibration_error(y_true_bin, prob)
@@ -492,8 +534,8 @@ def train_over25_model(
             "ece": ece,
         }
 
-    freq = np.bincount(y) / len(y)
-    frequency_ll = float(log_loss(y, np.tile(freq, (len(y), 1))))
+    freq = np.bincount(y_valid) / len(y_valid)
+    frequency_ll = float(log_loss(y_valid, np.tile(freq, (len(y_valid), 1))))
 
     bookmaker_ll = None
     book_cols_options = [
@@ -502,11 +544,15 @@ def train_over25_model(
     ]
     for cols in book_cols_options:
         if all(c in df.columns for c in cols):
-            odds = df.loc[X.index, list(cols)].astype(float)
-            probs = 1 / odds
-            probs = probs.div(probs.sum(axis=1), axis=0)
-            bookmaker_ll = float(log_loss(y, probs.values))
-            break
+            odds = df.loc[X.index[mask_cv], list(cols)].astype(float)
+            mask_odds = odds.notna().all(axis=1)
+            odds = odds[mask_odds]
+            if not odds.empty:
+                probs = 1 / odds
+                probs = probs.div(probs.sum(axis=1), axis=0)
+                y_book = y_valid[mask_odds.to_numpy()]
+                bookmaker_ll = float(log_loss(y_book, probs.values))
+                break
 
     metrics = {
         "per_class": per_class,
