@@ -331,24 +331,24 @@ Date,HomeTeam,AwayTeam,FTHG,FTAG,Season,Competition
 2025-09-18,Manchester City FC,SSC Napoli,2.0,0.0,2025,CL
 2025-09-18,Eintracht Frankfurt,Galatasaray SK,5.0,1.0,2025,CL
 2025-09-18,Sporting Clube de Portugal,FK Kairat,4.0,1.0,2025,CL
-2025-09-30,Atalanta BC,Club Brugge KV,,,2025,CL
-2025-09-30,FK Kairat,Real Madrid CF,,,2025,CL
-2025-09-30,Galatasaray SK,Liverpool FC,,,2025,CL
-2025-09-30,Club Atlético de Madrid,Eintracht Frankfurt,,,2025,CL
-2025-09-30,Olympique de Marseille,AFC Ajax,,,2025,CL
-2025-09-30,FK Bodø/Glimt,Tottenham Hotspur FC,,,2025,CL
-2025-09-30,Paphos FC,FC Bayern München,,,2025,CL
-2025-09-30,Chelsea FC,Sport Lisboa e Benfica,,,2025,CL
-2025-09-30,FC Internazionale Milano,SK Slavia Praha,,,2025,CL
-2025-10-01,Qarabağ Ağdam FK,FC København,,,2025,CL
-2025-10-01,Royale Union Saint-Gilloise,Newcastle United FC,,,2025,CL
-2025-10-01,Borussia Dortmund,Athletic Club,,,2025,CL
-2025-10-01,FC Barcelona,Paris Saint-Germain FC,,,2025,CL
-2025-10-01,AS Monaco FC,Manchester City FC,,,2025,CL
-2025-10-01,Bayer 04 Leverkusen,PSV,,,2025,CL
-2025-10-01,Arsenal FC,PAE Olympiakos SFP,,,2025,CL
-2025-10-01,Villarreal CF,Juventus FC,,,2025,CL
-2025-10-01,SSC Napoli,Sporting Clube de Portugal,,,2025,CL
+2025-09-30,Atalanta BC,Club Brugge KV,2.0,1.0,2025,CL
+2025-09-30,FK Kairat,Real Madrid CF,0.0,5.0,2025,CL
+2025-09-30,Galatasaray SK,Liverpool FC,1.0,0.0,2025,CL
+2025-09-30,Club Atlético de Madrid,Eintracht Frankfurt,5.0,1.0,2025,CL
+2025-09-30,Olympique de Marseille,AFC Ajax,4.0,0.0,2025,CL
+2025-09-30,FK Bodø/Glimt,Tottenham Hotspur FC,2.0,2.0,2025,CL
+2025-09-30,Paphos FC,FC Bayern München,1.0,5.0,2025,CL
+2025-09-30,Chelsea FC,Sport Lisboa e Benfica,1.0,0.0,2025,CL
+2025-09-30,FC Internazionale Milano,SK Slavia Praha,3.0,0.0,2025,CL
+2025-10-01,Qarabağ Ağdam FK,FC København,2.0,0.0,2025,CL
+2025-10-01,Royale Union Saint-Gilloise,Newcastle United FC,0.0,4.0,2025,CL
+2025-10-01,Borussia Dortmund,Athletic Club,4.0,1.0,2025,CL
+2025-10-01,FC Barcelona,Paris Saint-Germain FC,1.0,2.0,2025,CL
+2025-10-01,AS Monaco FC,Manchester City FC,2.0,2.0,2025,CL
+2025-10-01,Bayer 04 Leverkusen,PSV,1.0,1.0,2025,CL
+2025-10-01,Arsenal FC,PAE Olympiakos SFP,2.0,0.0,2025,CL
+2025-10-01,Villarreal CF,Juventus FC,2.0,2.0,2025,CL
+2025-10-01,SSC Napoli,Sporting Clube de Portugal,2.0,1.0,2025,CL
 2025-10-21,FC Barcelona,PAE Olympiakos SFP,,,2025,CL
 2025-10-21,FK Kairat,Paphos FC,,,2025,CL
 2025-10-21,Royale Union Saint-Gilloise,FC Internazionale Milano,,,2025,CL
