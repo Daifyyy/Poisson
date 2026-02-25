@@ -47,21 +47,25 @@ priority:
 
 Results are cached to JSON files in `utils/poisson_utils/xg_sources/`:
 
+
+- `xg_cache.json` stores the final results from the FBR API
+- `fbrapi_xg_cache.json` keeps provider‑specific responses
+=======
 - `xg_cache.json` stores the final aggregated results
 - `understat_xg_cache.json`, `fbrapi_xg_cache.json` and `fbref_xg_cache.json`
   keep provider‑specific responses
+
 - raw responses from the FBR API are stored in the `fbrapi_raw` directory for
   debugging and inspection
 
 FBR API requests require an API key provided via the environment variable
-`FBRAPI_KEY`.
+`FBRAPI`.
 
 Caches persist between runs. Delete the files to refresh the stored data or
 allow the scripts to overwrite them when new values are available.
 
-Data from Understat and FBref/StatsBomb is subject to their respective terms of
-use. When distributing or displaying the data, provide appropriate attribution
-to the original sources.
+Data from FBRAPI is subject to their terms of use. When distributing or
+displaying the data, provide appropriate attribution to the original source.
 
 ### Extending Providers
 
