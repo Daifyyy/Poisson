@@ -493,10 +493,10 @@ Date,HomeTeam,AwayTeam,FTHG,FTAG,Season,Competition
 2026-04-07,Sporting Clube de Portugal,Arsenal FC,0.0,1.0,2025,CL
 2026-04-08,Paris Saint-Germain FC,Liverpool FC,2.0,0.0,2025,CL
 2026-04-08,FC Barcelona,Club Atlético de Madrid,0.0,2.0,2025,CL
-2026-04-14,Liverpool FC,Paris Saint-Germain FC,,,2025,CL
-2026-04-14,Club Atlético de Madrid,FC Barcelona,,,2025,CL
-2026-04-15,FC Bayern München,Real Madrid CF,,,2025,CL
-2026-04-15,Arsenal FC,Sporting Clube de Portugal,,,2025,CL
+2026-04-14,Liverpool FC,Paris Saint-Germain FC,0.0,2.0,2025,CL
+2026-04-14,Club Atlético de Madrid,FC Barcelona,1.0,3.0,2025,CL
+2026-04-15,FC Bayern München,Real Madrid CF,4.0,3.0,2025,CL
+2026-04-15,Arsenal FC,Sporting Clube de Portugal,0.0,0.0,2025,CL
 2026-04-28,,,,,2025,CL
 2026-04-29,,,,,2025,CL
 2026-05-05,,,,,2025,CL
