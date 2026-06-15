@@ -39,39 +39,16 @@ def _save_cache(cache: Dict[str, Dict[str, float]]) -> None:
 def get_team_xg_xga(
     team: str, season: str, league_df: Optional[pd.DataFrame] = None
 ) -> Dict[str, Any]:
-    """Return team xG and xGA for a season from available providers.
+    """Return team xG and xGA for a season from the FBR API.
 
-    Providers are queried in order: ``understat``, ``fbrapi`` and ``fbref``.
-    If all fail and ``league_df`` is provided, pseudo-xG values computed from
-    the dataframe are used. Results are cached on disk to avoid repeated
-    network calls.
+    Results are cached on disk to avoid repeated network calls.
     """
     cache = _load_cache()
-    for source in ("understat", "fbrapi", "fbref"):
-        key = f"{season}|{team}|{source}"
-        if key in cache:
-            data = cache[key]
-            if "xg" in data and "xga" in data:
-                logger.info(
-                    "xG source %s for %s %s: xG=%s xGA=%s",
-                    source,
-                    season,
-                    team,
-                    data["xg"],
-                    data["xga"],
-                )
-                return {**data, "source": source}
-        try:
-            module = import_module(f".{source}", __name__)
-            provider_fn = getattr(module, "get_team_xg_xga")
-            data = provider_fn(team, season)
-        except Exception:
-            continue
-        if not isinstance(data, dict):
-            continue
+    source = "fbrapi"
+    key = f"{season}|{team}|{source}"
+    if key in cache:
+        data = cache[key]
         if "xg" in data and "xga" in data:
-            cache[key] = {"xg": data["xg"], "xga": data["xga"]}
-            _save_cache(cache)
             logger.info(
                 "xG source %s for %s %s: xG=%s xGA=%s",
                 source,
@@ -80,41 +57,25 @@ def get_team_xg_xga(
                 data["xg"],
                 data["xga"],
             )
-            return {"xg": data["xg"], "xga": data["xga"], "source": source}
-
-    if league_df is not None:
-        source = "pseudo"
-        key = f"{season}|{team}|{source}"
-        if key in cache:
-            data = cache[key]
-            if "xg" in data and "xga" in data:
-                logger.info(
-                    "xG source %s for %s %s: xG=%s xGA=%s",
-                    source,
-                    season,
-                    team,
-                    data["xg"],
-                    data["xga"],
-                )
-                return {**data, "source": source}
-        try:
-            from .pseudo import fetch_pseudo_xg
-
-            data = fetch_pseudo_xg(team, league_df)
-        except Exception:
-            data = {}
-        if isinstance(data, dict) and "xg" in data and "xga" in data:
-            cache[key] = {"xg": data["xg"], "xga": data["xga"]}
-            _save_cache(cache)
-            logger.info(
-                "xG source %s for %s %s: xG=%s xGA=%s",
-                source,
-                season,
-                team,
-                data["xg"],
-                data["xga"],
-            )
-            return {"xg": data["xg"], "xga": data["xga"], "source": source}
+            return {**data, "source": source}
+    try:
+        module = import_module(".fbrapi", __name__)
+        provider_fn = getattr(module, "get_team_xg_xga")
+        data = provider_fn(team, season)
+    except Exception:
+        data = {}
+    if isinstance(data, dict) and "xg" in data and "xga" in data:
+        cache[key] = {"xg": data["xg"], "xga": data["xga"]}
+        _save_cache(cache)
+        logger.info(
+            "xG source %s for %s %s: xG=%s xGA=%s",
+            source,
+            season,
+            team,
+            data["xg"],
+            data["xga"],
+        )
+        return {"xg": data["xg"], "xga": data["xga"], "source": source}
 
     logger.warning("No xG data for %s %s", season, team)
     return {"xg": float("nan"), "xga": float("nan"), "source": None}
